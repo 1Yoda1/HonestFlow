@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net6.0-windows</TargetFramework>
+		<Nullable>disable</Nullable>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ImplicitUsings>disable</ImplicitUsings>
+
+		<!-- Имя EXE -->
+		<AssemblyName>HonestFlow</AssemblyName>
+		<RootNamespace>HonestFlow</RootNamespace>
+
+		<!-- Для одного EXE -->
+		<SelfContained>true</SelfContained>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<PublishSingleFile>true</PublishSingleFile>
+		<PublishTrimmed>false</PublishTrimmed>
+		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+
+		<!-- Версии и информация -->
+		<AssemblyVersion>1.2.3.0</AssemblyVersion>
+		<FileVersion>1.2.3.0</FileVersion>
+		<Version>1.2.3.0</Version>
+		<Authors>Pavel Shadrov</Authors>
+		<Company>OOO "Morkovka"</Company>
+		<Product>Honest Flow</Product>
+		<Description>Установка и настройка компонентов Честного Знака</Description>
+		<Copyright>Copyright © Pavel Shadrov 2024-2026</Copyright>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+	</ItemGroup>
+
+</Project>
