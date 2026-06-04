@@ -8,4 +8,8 @@ namespace ESM_Installer_SPI.Models
         public string Inn { get; set; }
         public string Architecture { get; set; } = "x64";
     }
+    public class test
+    {
+        public string testVar = "Hello World";
+    }
 }
