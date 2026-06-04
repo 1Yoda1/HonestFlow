@@ -70,13 +70,11 @@ namespace HonestFlow.Infrastructure.Services
                     RedirectStandardOutput = true
                 };
 
-                using (var process = Process.Start(psi))
-                {
-                    string output = await process.StandardOutput.ReadToEndAsync();
-                    if (output.Contains("RUNNING")) return "running";
-                    if (output.Contains("STOPPED")) return "stopped";
-                    return "unknown";
-                }
+                using var process = Process.Start(psi);
+                string output = await process.StandardOutput.ReadToEndAsync();
+                if (output.Contains("RUNNING")) return "running";
+                if (output.Contains("STOPPED")) return "stopped";
+                return "unknown";
             }
             catch
             {

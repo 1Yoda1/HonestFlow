@@ -1,14 +1,15 @@
-﻿using ESM_Installer_SPI.Classes;
-using ESM_Installer_SPI.Models;
-using HonestFlow.Helpers;
-using HonestFlow.Infrastructure;
-using HonestFlow.Services.Core;
-using HonestFlow.Services.Lm;
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using HonestFlow.Helpers;
+using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure.Installers;
+using HonestFlow.Models;
+using HonestFlow.Services.Core;
+using HonestFlow.Services.Lm;
+
 
 namespace HonestFlow.Services.Installation
 {
@@ -37,7 +38,7 @@ namespace HonestFlow.Services.Installation
             try
             {
                 var versions = ConfigManager.LoadVersions();
-                string expectedVersion = versions?.lm_module ?? "2.5.1-2";
+                string expectedVersion = versions?.LmModule ?? "2.5.1-2";
                 _log.LogDebug($"Ожидаемая версия ЛМ ЧЗ: {expectedVersion}");
 
                 var status = await _lmValidator.GetLmStatus(expectedVersion);
@@ -50,13 +51,13 @@ namespace HonestFlow.Services.Installation
                     return true;
                 }
 
-                _log.LogUser($"ЛМ ЧЗ: версия {status.version}, статус: {status.status}");
-                _log.LogDebug($"ЛМ активен: версия={status.version}, статус={status.status}, inn={status.inn ?? "не задан"}");
+                _log.LogUser($"ЛМ ЧЗ: версия {status.Version}, статус: {status.Status}");
+                _log.LogDebug($"ЛМ активен: версия={status.Version}, статус={status.Status}, inn={status.Inn ?? "не задан"}");
 
                 // Проверка ИНН
-                if (!string.IsNullOrEmpty(selectedIP.Inn) && !string.IsNullOrEmpty(status.inn) && status.inn != selectedIP.Inn)
+                if (!string.IsNullOrEmpty(selectedIP.Inn) && !string.IsNullOrEmpty(status.Inn) && status.Inn != selectedIP.Inn)
                 {
-                    var result = await HandleInnMismatch(selectedIP, status.inn);
+                    var result = await HandleInnMismatch(selectedIP, status.Inn);
                     if (!result) return false;
                 }
 
@@ -100,7 +101,7 @@ namespace HonestFlow.Services.Installation
 
             // Получаем ожидаемую версию (можно захардкодить или взять из ConfigManager)
             var versions = ConfigManager.LoadVersions();
-            string expectedVersion = versions?.lm_module ?? "2.5.1-2";
+            string expectedVersion = versions?.LmModule ?? "2.5.1-2";
 
             while (elapsedSeconds < maxWaitSeconds)
             {
@@ -158,11 +159,11 @@ namespace HonestFlow.Services.Installation
 
             _progress.SetProgress(20, "Проверка версий...");
 
-            var (NeedInstall, DisplayStatus) = await _lmValidator.GetLmStatusInfo(versions?.lm_module);
+            var (NeedInstall, DisplayStatus) = await _lmValidator.GetLmStatusInfo(versions?.LmModule);
             bool needLmInstall = NeedInstall;
-            bool needAtolInstall = _versionChecker.NeedAtolInstall(selectedIP, versions?.atol_driver);
-            bool needEsmInstall = _versionChecker.NeedEsmInstall(versions?.esm);
-            bool needControllerInstall = _versionChecker.NeedControllerInstall(versions?.controller);
+            bool needAtolInstall = _versionChecker.NeedAtolInstall(selectedIP, versions?.AtolDriver);
+            bool needEsmInstall = _versionChecker.NeedEsmInstall(versions?.ESM);
+            bool needControllerInstall = _versionChecker.NeedControllerInstall(versions?.Controller);
 
             _log.LogUser("");
             _log.LogUser("=== РЕЗУЛЬТАТ ===");
@@ -193,7 +194,7 @@ namespace HonestFlow.Services.Installation
                 if (lmPath == null) throw new Exception("Не найден установщик ЛМ ЧЗ");
                 _log.LogUser("Установка ЛМ ЧЗ...");
                 _log.LogDebug($"Запуск: {lmPath}");
-                var lm = new LmModule(lmPath, versions?.lm_module ?? "2.5.1-2");
+                var lm = new LmModule(lmPath, versions?.LmModule ?? "2.5.1-2");
                 await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
                 _log.LogUser("✅ ЛМ ЧЗ установлен");
             }

@@ -1,11 +1,12 @@
-﻿using HonestFlow.Models;
-using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
+using HonestFlow.Models;
+
 
 namespace HonestFlow.Infrastructure.Api
 {
@@ -263,7 +264,7 @@ namespace HonestFlow.Infrastructure.Api
 
                 if (result.IsSuccess && result.Data != null)
                 {
-                    if (result.Data.version != null && result.Data.version.StartsWith("1."))
+                    if (result.Data.Version != null && result.Data.Version.StartsWith("1."))
                         _apiVersion = "v1";
 
                     return result;

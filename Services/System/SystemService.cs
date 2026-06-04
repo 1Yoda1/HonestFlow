@@ -1,5 +1,4 @@
-﻿using ESM_Installer_SPI.Classes;
-using HonestFlow.Infrastructure;
+﻿using HonestFlow.Infrastructure;
 using HonestFlow.Models;
 using HonestFlow.Services.Core;
 using System;
@@ -150,9 +149,9 @@ namespace HonestFlow.Services.System
                 var status = Task.Run(async () => await lm.GetStatus()).GetAwaiter().GetResult();
                 if (status != null)
                 {
-                    sb.AppendLine($"  Версия: {status.version}");
-                    sb.AppendLine($"  Статус: {status.status}");
-                    sb.AppendLine($"  ИНН: {status.inn ?? "не задан"}");
+                    sb.AppendLine($"  Версия: {status.Version}");
+                    sb.AppendLine($"  Статус: {status.Status}");
+                    sb.AppendLine($"  ИНН: {status.Inn ?? "не задан"}");
                 }
                 else
                 {
@@ -173,10 +172,10 @@ namespace HonestFlow.Services.System
 
             sb.AppendLine("【ОЖИДАЕМЫЕ ВЕРСИИ (versions.json)】");
             var versions = ConfigManager.LoadVersions();
-            sb.AppendLine($"  ЛМ ЧЗ: {versions?.lm_module ?? "не задана"}");
-            sb.AppendLine($"  Драйвер АТОЛ: {versions?.atol_driver ?? "не задана"}");
-            sb.AppendLine($"  ЕСМ: {versions?.esm ?? "не задана"}");
-            sb.AppendLine($"  Контроллер: {versions?.controller ?? "не задана"}");
+            sb.AppendLine($"  ЛМ ЧЗ: {versions?.LmModule ?? "не задана"}");
+            sb.AppendLine($"  Драйвер АТОЛ: {versions?.AtolDriver ?? "не задана"}");
+            sb.AppendLine($"  ЕСМ: {versions?.ESM ?? "не задана"}");
+            sb.AppendLine($"  Контроллер: {versions?.Controller ?? "не задана"}");
             sb.AppendLine();
 
             sb.AppendLine("═══════════════════════════════════════════════════════════════");

@@ -1,4 +1,3 @@
-using HonestFlow;
 using HonestFlow.Infrastructure;
 using HonestFlow.Services.Auth;
 using HonestFlow.Services.Core;
@@ -10,7 +9,7 @@ using System.Windows.Forms;
 
 
 
-namespace ESM_Installer_SPI
+namespace HonestFlow
 {
     public partial class MainForm : Form
     {
@@ -24,8 +23,6 @@ namespace ESM_Installer_SPI
         public MainForm()
         {
             InitializeComponent();
-            //var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-            //this.Text = $"HonestFlow - Честный Знак (v{version})";
 
             // Инициализация сервисов
             _logService = new LogService();

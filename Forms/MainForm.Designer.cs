@@ -1,5 +1,5 @@
 
-namespace ESM_Installer_SPI
+namespace HonestFlow
 
 {
     partial class MainForm

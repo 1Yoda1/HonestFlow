@@ -20,18 +20,14 @@ namespace HonestFlow.Infrastructure.Services
 
             foreach (var regPath in paths)
             {
-                using (var key = Registry.LocalMachine.OpenSubKey(regPath))
+                using var key = Registry.LocalMachine.OpenSubKey(regPath);
+                if (key == null) continue;
+                foreach (string sub in key.GetSubKeyNames())
                 {
-                    if (key == null) continue;
-                    foreach (string sub in key.GetSubKeyNames())
-                    {
-                        using (var subkey = key.OpenSubKey(sub))
-                        {
-                            string name = subkey?.GetValue("DisplayName")?.ToString();
-                            if (name?.Contains("Локальный модуль ЧЗ") == true)
-                                return true;
-                        }
-                    }
+                    using var subkey = key.OpenSubKey(sub);
+                    string name = subkey?.GetValue("DisplayName")?.ToString();
+                    if (name?.Contains("Локальный модуль ЧЗ") == true)
+                        return true;
                 }
             }
             return false;
@@ -50,23 +46,19 @@ namespace HonestFlow.Infrastructure.Services
 
             foreach (var regPath in paths)
             {
-                using (var key = Registry.LocalMachine.OpenSubKey(regPath))
+                using var key = Registry.LocalMachine.OpenSubKey(regPath);
+                if (key == null) continue;
+                foreach (string sub in key.GetSubKeyNames())
                 {
-                    if (key == null) continue;
-                    foreach (string sub in key.GetSubKeyNames())
+                    using var subkey = key.OpenSubKey(sub);
+                    string name = subkey?.GetValue("DisplayName")?.ToString();
+                    if (name?.Contains("Локальный модуль ЧЗ") == true)
                     {
-                        using (var subkey = key.OpenSubKey(sub))
+                        string uninst = subkey?.GetValue("UninstallString")?.ToString();
+                        if (uninst?.Contains('{') == true)
                         {
-                            string name = subkey?.GetValue("DisplayName")?.ToString();
-                            if (name?.Contains("Локальный модуль ЧЗ") == true)
-                            {
-                                string uninst = subkey?.GetValue("UninstallString")?.ToString();
-                                if (uninst?.Contains('{') == true)
-                                {
-                                    int s = uninst.IndexOf('{'), e = uninst.IndexOf('}');
-                                    return uninst.Substring(s, e - s + 1);
-                                }
-                            }
+                            int s = uninst.IndexOf('{'), e = uninst.IndexOf('}');
+                            return uninst.Substring(s, e - s + 1);
                         }
                     }
                 }

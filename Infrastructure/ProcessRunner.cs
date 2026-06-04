@@ -17,11 +17,9 @@ namespace HonestFlow.Infrastructure
                 CreateNoWindow = true
             };
 
-            using (var process = Process.Start(startInfo))
-            {
-                process.WaitForExit();
-                return process.ExitCode;
-            }
+            using var process = Process.Start(startInfo);
+            process.WaitForExit();
+            return process.ExitCode;
         }
 
         public static async Task<int> RunAsync(string fileName, string arguments, bool asAdmin = false)
@@ -51,16 +49,13 @@ namespace HonestFlow.Infrastructure
                 CreateNoWindow = true
             };
 
-            using (var process = Process.Start(startInfo))
-            {
-                // Ждём основной процесс
-                await Task.Run(() => process.WaitForExit());
+            using var process = Process.Start(startInfo);
+            
+            await Task.Run(() => process.WaitForExit()); // Ждём основной процесс
 
-                // Небольшая пауза для дочерних процессов
-                await Task.Delay(3000);
+            await Task.Delay(3000); // Небольшая пауза для дочерних процессов
 
-                return process.ExitCode;
-            }
+            return process.ExitCode;
         }
     }
 }

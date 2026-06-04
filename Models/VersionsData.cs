@@ -1,10 +1,10 @@
-namespace ESM_Installer_SPI.Models
+namespace HonestFlow.Models
 {
     public class VersionsData
     {
-        public string lm_module { get; set; }
-        public string atol_driver { get; set; }
-        public string esm { get; set; }
-        public string controller { get; set; }
+        public string LmModule { get; set; }
+        public string AtolDriver { get; set; }
+        public string ESM { get; set; }
+        public string Controller { get; set; }
     }
 }

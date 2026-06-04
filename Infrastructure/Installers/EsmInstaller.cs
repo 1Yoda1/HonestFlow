@@ -1,8 +1,7 @@
-﻿using HonestFlow.Infrastructure;
-using System.IO;
+﻿using System.IO;
 using System.Threading.Tasks;
 
-namespace ESM_Installer_SPI.Classes
+namespace HonestFlow.Infrastructure.Installers
 {
     /// <summary>
     /// Установщик ЕСМ и Контроллера

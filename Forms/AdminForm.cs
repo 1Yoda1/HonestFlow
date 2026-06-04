@@ -1,5 +1,5 @@
-using ESM_Installer_SPI;
-using ESM_Installer_SPI.Models;
+using HonestFlow;
+using HonestFlow.Models;
 using HonestFlow.Infrastructure;
 using HonestFlow.Models;
 using HonestFlow.Services.Core;
@@ -113,7 +113,7 @@ namespace HonestFlow
                 if (isAvailable)
                 {
                     var status = await _systemService.GetApiStatus();
-                    MessageBox.Show($"API доступен!\n\nВерсия: {status?.version}\nСтатус: {status?.status}\nИНН: {status?.inn ?? "не задан"}",
+                    MessageBox.Show($"API доступен!\n\nВерсия: {status?.Version}\nСтатус: {status?.Status}\nИНН: {status?.Inn ?? "не задан"}",
                         "Результат", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
@@ -129,7 +129,7 @@ namespace HonestFlow
             }
         }
 
-        private void OpenLogsFolder()
+        private static void OpenLogsFolder()
         {
             string logFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
             if (System.IO.Directory.Exists(logFolder))
@@ -151,8 +151,10 @@ namespace HonestFlow
             dataGridViewIps.Rows[e.RowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
 
             var row = dataGridViewIps.Rows[e.RowIndex];
-            var timer = new Timer();
-            timer.Interval = 1000;
+            var timer = new Timer
+            {
+                Interval = 1000
+            };
             timer.Tick += (s, args) =>
             {
                 row.DefaultCellStyle.BackColor = Color.White;
@@ -184,10 +186,10 @@ namespace HonestFlow
             if (dataGridViewIps.Columns["Architecture"] != null)
                 dataGridViewIps.Columns["Architecture"].HeaderText = "Разрядность";
 
-            txtLmVersion.Text = _versions?.lm_module ?? "";
-            txtAtolVersion.Text = _versions?.atol_driver ?? "";
-            txtEsmVersion.Text = _versions?.esm ?? "";
-            txtControllerVersion.Text = _versions?.controller ?? "";
+            txtLmVersion.Text = _versions?.LmModule ?? "";
+            txtAtolVersion.Text = _versions?.AtolDriver ?? "";
+            txtEsmVersion.Text = _versions?.ESM ?? "";
+            txtControllerVersion.Text = _versions?.Controller ?? "";
         }
 
         private void SetupSearchBox()
@@ -253,7 +255,7 @@ namespace HonestFlow
             }
         }
 
-        private void btnAddIp_Click(object sender, EventArgs e)
+        private void BtnAddIp_Click(object sender, EventArgs e)
         {
             var form = new IpEditForm(null);
             if (form.ShowDialog() == DialogResult.OK)
@@ -264,7 +266,7 @@ namespace HonestFlow
             }
         }
 
-        private void btnEditIp_Click(object sender, EventArgs e)
+        private void BtnEditIp_Click(object sender, EventArgs e)
         {
             if (dataGridViewIps.CurrentRow?.DataBoundItem is IPData selected)
             {
@@ -277,7 +279,7 @@ namespace HonestFlow
             }
         }
 
-        private void btnDeleteIp_Click(object sender, EventArgs e)
+        private void BtnDeleteIp_Click(object sender, EventArgs e)
         {
             if (dataGridViewIps.CurrentRow?.DataBoundItem is IPData selected)
             {
@@ -301,14 +303,14 @@ namespace HonestFlow
             ConfigManager.SaveIps(_ips);
         }
 
-        private void btnSaveVersions_Click(object sender, EventArgs e)
+        private void BtnSaveVersions_Click(object sender, EventArgs e)
         {
             _versions = new VersionsData
             {
-                lm_module = txtLmVersion.Text.Trim(),
-                atol_driver = txtAtolVersion.Text.Trim(),
-                esm = txtEsmVersion.Text.Trim(),
-                controller = txtControllerVersion.Text.Trim()
+                LmModule = txtLmVersion.Text.Trim(),
+                AtolDriver = txtAtolVersion.Text.Trim(),
+                ESM = txtEsmVersion.Text.Trim(),
+                Controller = txtControllerVersion.Text.Trim()
             };
             ConfigManager.SaveVersions(_versions);
             MessageBox.Show("Версии сохранены", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);

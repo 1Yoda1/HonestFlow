@@ -1,5 +1,4 @@
-﻿using ESM_Installer_SPI.Classes;
-using HonestFlow.Infrastructure;
+﻿using HonestFlow.Infrastructure;
 using HonestFlow.Models;
 using HonestFlow.Services.Core;
 using System;
@@ -14,7 +13,7 @@ namespace HonestFlow.Services.Lm
     {
         private readonly ILogService _log;
         private LmModule _cachedLmModule; // Кэшируем экземпляр
-        private readonly object _lockObject = new object();
+        private readonly object _lockObject = new();
 
         public LmValidationService(ILogService logService)
         {
@@ -57,17 +56,17 @@ namespace HonestFlow.Services.Lm
                 if (status == null)
                     return (true, "не установлен");
 
-                if (status.version != expectedVersion)
+                if (status.Version != expectedVersion)
                     return (true, "требуется обновление");
 
-                if (status.status == "ready")
+                if (status.Status == "ready")
                     return (false, "OK (активен)");
-                if (status.status == "initialization")
+                if (status.Status == "initialization")
                     return (false, "OK (инициализирован)");
-                if (status.status == "not_configured")
+                if (status.Status == "not_configured")
                     return (true, "не инициализирован");
 
-                return (true, $"статус: {status.status}");
+                return (true, $"статус: {status.Status}");
             }
             catch (Exception ex)
             {

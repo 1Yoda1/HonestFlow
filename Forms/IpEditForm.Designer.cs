@@ -1,4 +1,4 @@
-namespace ESM_Installer_SPI
+namespace HonestFlow
 {
     partial class IpEditForm
     {
@@ -63,7 +63,7 @@ namespace ESM_Installer_SPI
             this.btnSave.Location = new System.Drawing.Point(150, 200);
             this.btnSave.Size = new System.Drawing.Size(100, 30);
             this.btnSave.Text = "Сохранить";
-            this.btnSave.Click += new System.EventHandler(this.btnSave_Click);
+            this.btnSave.Click += new System.EventHandler(this.BtnSave_Click);
 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;

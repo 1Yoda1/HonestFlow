@@ -1,10 +1,10 @@
-using ESM_Installer_SPI.Models;
-using HonestFlow.Infrastructure;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using HonestFlow.Models;
+using Newtonsoft.Json;
+
 
 namespace HonestFlow.Infrastructure
 {
@@ -80,8 +80,8 @@ namespace HonestFlow.Infrastructure
         {
             return new List<IPData>
             {
-                new IPData { Name = "ИП Кураев", Password = "kuraev123", Token = "631ace8b-43aa-4490-9f4f-f404dff01d83", Inn = "170109778389", Architecture = "x64" },
-                new IPData { Name = "ИП Бабкин", Password = "babkin456", Token = "e6c03c42-2186-4ae8-adc7-878be4c56f5d", Inn = "550409070683", Architecture = "x64" }
+                new() { Name = "ИП Кураев", Password = "kuraev123", Token = "631ace8b-43aa-4490-9f4f-f404dff01d83", Inn = "170109778389", Architecture = "x64" },
+                new() { Name = "ИП Бабкин", Password = "babkin456", Token = "e6c03c42-2186-4ae8-adc7-878be4c56f5d", Inn = "550409070683", Architecture = "x64" }
             };
         }
 
@@ -89,10 +89,10 @@ namespace HonestFlow.Infrastructure
         {
             return new VersionsData
             {
-                lm_module = "2.5.1-2",
-                atol_driver = "10.10.8.23",
-                esm = "1.6.1.2",
-                controller = "1.6.1.0"
+                LmModule = "2.5.1-2",
+                AtolDriver = "10.10.8.23",
+                ESM = "1.6.1.2",
+                Controller = "1.6.1.0"
             };
         }
     }

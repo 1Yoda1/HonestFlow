@@ -2,8 +2,8 @@
 {
     public class LmStatus
     {
-        public string version { get; set; }
-        public string inn { get; set; }
-        public string status { get; set; }
+        public string Version { get; set; }
+        public string Inn { get; set; }
+        public string Status { get; set; }
     }
 }

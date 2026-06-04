@@ -1,6 +1,7 @@
-﻿using HonestFlow.Infrastructure;
-using System;
+﻿using System;
 using System.Text;
+using HonestFlow.Infrastructure;
+
 
 namespace HonestFlow.Services.Core
 {
@@ -9,7 +10,7 @@ namespace HonestFlow.Services.Core
     /// </summary>
     public class LogService : ILogService
     {
-        private readonly StringBuilder _userLog = new StringBuilder();
+        private readonly StringBuilder _userLog = new();
 
         public void LogUser(string message, bool isError = false)
         {

@@ -1,11 +1,12 @@
-using HonestFlow.Infrastructure.Api;
-using HonestFlow.Infrastructure.Installers;
-using HonestFlow.Infrastructure.Services;
-using HonestFlow.Models;
 using System;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using HonestFlow.Infrastructure.Api;
+using HonestFlow.Infrastructure.Installers;
+using HonestFlow.Infrastructure.Services;
+using HonestFlow.Models;
+
 
 namespace HonestFlow.Infrastructure
 {
@@ -185,13 +186,13 @@ namespace HonestFlow.Infrastructure
 
             if (actualStatus != null)
             {
-                DetectApiVersion(actualStatus.version);
-                Utils.Log($"✓ Активен: {actualStatus.version}, статус: {actualStatus.status}");
+                DetectApiVersion(actualStatus.Version);
+                Utils.Log($"✓ Активен: {actualStatus.Version}, статус: {actualStatus.Status}");
 
                 // Версия не совпадает → обновление
-                if (actualStatus.version != _expectedVersion)
+                if (actualStatus.Version != _expectedVersion)
                 {
-                    Utils.Log($"⚠️ Версия {actualStatus.version} != {_expectedVersion}, обновление...");
+                    Utils.Log($"⚠️ Версия {actualStatus.Version} != {_expectedVersion}, обновление...");
                     await _installer.ForceReinstall();
 
                     if (!await StartServiceAndWaitForApi())
@@ -209,12 +210,12 @@ namespace HonestFlow.Infrastructure
                 }
 
                 // Уже инициализирован или готов
-                if (actualStatus.status == "initialization" || actualStatus.status == "ready")
+                if (actualStatus.Status == "initialization" || actualStatus.Status == "ready")
                 {
-                    if (!string.IsNullOrEmpty(expectedInn) && !string.IsNullOrEmpty(actualStatus.inn) && actualStatus.inn != expectedInn)
+                    if (!string.IsNullOrEmpty(expectedInn) && !string.IsNullOrEmpty(actualStatus.Inn) && actualStatus.Inn != expectedInn)
                     {
                         MessageBox.Show(
-                            $"ЛМ ЧЗ инициализирован на ИНН {actualStatus.inn}\nОжидался {expectedInn}\nУдалите вручную и запустите снова.",
+                            $"ЛМ ЧЗ инициализирован на ИНН {actualStatus.Inn}\nОжидался {expectedInn}\nУдалите вручную и запустите снова.",
                             "Конфликт ИНН", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
                     else
@@ -225,7 +226,7 @@ namespace HonestFlow.Infrastructure
                 }
 
                 // Не инициализирован → инициализация
-                if (actualStatus.status == "not_configured")
+                if (actualStatus.Status == "not_configured")
                 {
                     Utils.Log("⚠️ Не инициализирован, инициализируем...");
                     var initResult = await InitializeFull(token);
@@ -260,7 +261,7 @@ namespace HonestFlow.Infrastructure
                 }
 
                 actualStatus = await GetStatus();
-                if (actualStatus != null && actualStatus.status == "not_configured")
+                if (actualStatus != null && actualStatus.Status == "not_configured")
                 {
                     var initResult = await InitializeFull(token);
                     if (!initResult.IsSuccess)

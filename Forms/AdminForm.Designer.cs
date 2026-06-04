@@ -87,19 +87,19 @@ namespace HonestFlow
             this.btnAddIp.Size = new System.Drawing.Size(100, 35);
             this.btnAddIp.Text = "➕ Добавить";
             this.btnAddIp.UseVisualStyleBackColor = true;
-            this.btnAddIp.Click += new System.EventHandler(this.btnAddIp_Click);
+            this.btnAddIp.Click += new System.EventHandler(this.BtnAddIp_Click);
 
             this.btnEditIp.Location = new System.Drawing.Point(120, 370);
             this.btnEditIp.Size = new System.Drawing.Size(100, 35);
             this.btnEditIp.Text = "✏️ Редактировать";
             this.btnEditIp.UseVisualStyleBackColor = true;
-            this.btnEditIp.Click += new System.EventHandler(this.btnEditIp_Click);
+            this.btnEditIp.Click += new System.EventHandler(this.BtnEditIp_Click);
 
             this.btnDeleteIp.Location = new System.Drawing.Point(230, 370);
             this.btnDeleteIp.Size = new System.Drawing.Size(100, 35);
             this.btnDeleteIp.Text = "🗑️ Удалить";
             this.btnDeleteIp.UseVisualStyleBackColor = true;
-            this.btnDeleteIp.Click += new System.EventHandler(this.btnDeleteIp_Click);
+            this.btnDeleteIp.Click += new System.EventHandler(this.BtnDeleteIp_Click);
 
             // ========== ВКЛАДКА "ВЕРСИИ" ==========
             this.tabVersions.Controls.Add(this.txtLmVersion);
@@ -157,7 +157,7 @@ namespace HonestFlow
             this.btnSaveVersions.Size = new System.Drawing.Size(120, 35);
             this.btnSaveVersions.Text = "💾 Сохранить";
             this.btnSaveVersions.UseVisualStyleBackColor = true;
-            this.btnSaveVersions.Click += new System.EventHandler(this.btnSaveVersions_Click);
+            this.btnSaveVersions.Click += new System.EventHandler(this.BtnSaveVersions_Click);
 
             // ========== ВКЛАДКА "СЕРВИС" ==========
             this.tabService.Controls.Add(this.groupBoxService);

@@ -1,8 +1,8 @@
-using ESM_Installer_SPI.Models;
+using HonestFlow.Models;
 using System;
 using System.Windows.Forms;
 
-namespace ESM_Installer_SPI
+namespace HonestFlow
 {
     public partial class IpEditForm : Form
     {
@@ -28,7 +28,7 @@ namespace ESM_Installer_SPI
             }
         }
 
-        private void btnSave_Click(object sender, EventArgs e)
+        private void BtnSave_Click(object sender, EventArgs e)
         {
             // Валидация обязательных полей
             if (string.IsNullOrWhiteSpace(txtName.Text))
