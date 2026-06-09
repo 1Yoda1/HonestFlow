@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Forms;
+using HonestFlow.Infrastructure;
 
 namespace HonestFlow
 {
@@ -8,6 +9,7 @@ namespace HonestFlow
         [STAThread]
         static void Main()
         {
+            Logger.Initialize();
             // Настройка приложения (для .NET 6+)
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);

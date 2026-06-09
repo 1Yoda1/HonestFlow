@@ -163,9 +163,39 @@ namespace HonestFlow
 
         private void LoadData()
         {
-            _ips = ConfigManager.LoadIps();
-            _versions = ConfigManager.LoadVersions();
+            try
+            {
+                _ips = ConfigManager.LoadIps();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogToFile($"Ошибка загрузки ips.json: {ex.Message}", true);
+                _ips = new List<IPData>();
+                MessageBox.Show(
+                    $"Не удалось загрузить ips.json:\n{ex.Message}\n\n" +
+                    "Список ИП будет пустым. Сохраните данные через админ-панель, чтобы создать файл.",
+                    "Предупреждение",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
 
+            try
+            {
+                _versions = ConfigManager.LoadVersions();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogToFile($"Ошибка загрузки versions.json: {ex.Message}", true);
+                _versions = new VersionsData();
+                MessageBox.Show(
+                    $"Не удалось загрузить versions.json:\n{ex.Message}\n\n" +
+                    "Версии будут пустыми. Сохраните версии через админ-панель, чтобы создать файл.",
+                    "Предупреждение",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+
+            // Настройка DataGridView
             dataGridViewIps.AutoGenerateColumns = true;
             dataGridViewIps.DataSource = null;
             dataGridViewIps.DataSource = _ips;
@@ -184,6 +214,7 @@ namespace HonestFlow
             if (dataGridViewIps.Columns["Architecture"] != null)
                 dataGridViewIps.Columns["Architecture"].HeaderText = "Разрядность";
 
+            // Заполняем поля версий (даже если _versions пустой)
             txtLmVersion.Text = _versions?.LmModule ?? "";
             txtAtolVersion.Text = _versions?.AtolDriver ?? "";
             txtEsmVersion.Text = _versions?.ESM ?? "";
@@ -292,8 +323,26 @@ namespace HonestFlow
 
         private void RefreshIpGrid()
         {
-            dataGridViewIps.DataSource = null;
-            dataGridViewIps.DataSource = _ips;
+            string searchText = txtSearchIp.Text.ToLower();  // берем текст из поля поиска
+
+            if (string.IsNullOrWhiteSpace(searchText))
+            {
+                // Если поиск пустой — показываем всех
+                dataGridViewIps.DataSource = null;
+                dataGridViewIps.DataSource = _ips;
+            }
+            else
+            {
+                // Если поиск НЕ пустой — фильтруем снова
+                var filtered = _ips.Where(ip =>
+                    ip.Name.ToLower().Contains(searchText) ||
+                    ip.Inn.ToLower().Contains(searchText) ||
+                    ip.Token.ToLower().Contains(searchText)
+                ).ToList();
+
+                dataGridViewIps.DataSource = null;
+                dataGridViewIps.DataSource = filtered;
+            }
         }
 
         private void SaveIps()

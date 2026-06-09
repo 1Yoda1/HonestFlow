@@ -15,8 +15,6 @@ namespace HonestFlow
 
         private void InitializeComponent()
         {
-            this.listBox1 = new System.Windows.Forms.ListBox();
-            this.button1 = new System.Windows.Forms.Button();
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.button2 = new System.Windows.Forms.Button();
@@ -51,29 +49,6 @@ namespace HonestFlow
             this.label1.Size = new System.Drawing.Size(133, 21);
             this.label1.TabIndex = 2;
             this.label1.Text = "Выберите ваше ИП";
-
-            // ========== LISTBOX ==========
-            this.listBox1.BackColor = System.Drawing.Color.FromArgb(250, 250, 250);
-            this.listBox1.Font = new System.Drawing.Font("Segoe UI", 12F);
-            this.listBox1.FormattingEnabled = true;
-            this.listBox1.ItemHeight = 21;
-            this.listBox1.Location = new System.Drawing.Point(30, 120);
-            this.listBox1.Name = "listBox1";
-            this.listBox1.Size = new System.Drawing.Size(240, 130);
-            this.listBox1.TabIndex = 0;
-
-            // ========== BUTTON1 (Выбрать ИП) ==========
-            this.button1.BackColor = System.Drawing.Color.FromArgb(52, 73, 94);
-            this.button1.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.button1.FlatAppearance.BorderSize = 0;
-            this.button1.Font = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
-            this.button1.ForeColor = System.Drawing.Color.White;
-            this.button1.Location = new System.Drawing.Point(290, 120);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(140, 40);
-            this.button1.TabIndex = 1;
-            this.button1.Text = "Выбрать ИП";
-            this.button1.UseVisualStyleBackColor = false;
 
             // ========== LABEL2 ==========
             this.label2.AutoSize = true;
@@ -165,8 +140,6 @@ namespace HonestFlow
             this.Controls.Add(this.button2);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
-            this.Controls.Add(this.button1);
-            this.Controls.Add(this.listBox1);
             this.Controls.Add(this.panelHeader);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
@@ -177,8 +150,6 @@ namespace HonestFlow
             this.PerformLayout();
         }
 
-        private System.Windows.Forms.ListBox listBox1;
-        private System.Windows.Forms.Button button1;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Button button2;

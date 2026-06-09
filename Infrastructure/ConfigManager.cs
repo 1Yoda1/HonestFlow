@@ -5,7 +5,6 @@ using System.Text;
 using HonestFlow.Models;
 using Newtonsoft.Json;
 
-
 namespace HonestFlow.Infrastructure
 {
     /// <summary>
@@ -38,12 +37,22 @@ namespace HonestFlow.Infrastructure
         public static List<IPData> LoadIps()
         {
             if (!File.Exists(IpsPath))
-                return GetDefaultIps();
+            {
+                Logger.LogToFile("❌ ips.json не найден!", true);
+                throw new FileNotFoundException("Файл ips.json не найден в папке программы.");
+            }
 
             var encryptedJson = File.ReadAllText(IpsPath);
             var json = Deobfuscate(encryptedJson);
-            Logger.LogToFile($"Загрузка {Path.GetFileName(IpsPath)}: файл найден");
-            return JsonConvert.DeserializeObject<List<IPData>>(json) ?? GetDefaultIps();
+            var ips = JsonConvert.DeserializeObject<List<IPData>>(json);
+
+            if (ips == null || ips.Count == 0)
+            {
+                throw new InvalidOperationException("ips.json пуст или имеет неверный формат.");
+            }
+
+            Logger.LogToFile($"✅ ips.json загружен, найдено {ips.Count} ИП");
+            return ips;
         }
 
         public static void SaveIps(List<IPData> ips)
@@ -51,21 +60,44 @@ namespace HonestFlow.Infrastructure
             var json = JsonConvert.SerializeObject(ips, Formatting.Indented);
             var encryptedJson = Obfuscate(json);
             File.WriteAllText(IpsPath, encryptedJson);
+            Logger.LogToFile($"✅ ips.json сохранён ({ips.Count} записей)");
         }
 
         // ========== Versions ==========
         public static VersionsData LoadVersions()
         {
             if (!File.Exists(VersionsPath))
-                return GetDefaultVersions();
+            {
+                Logger.LogToFile("❌ versions.json не найден!", true);
+                throw new FileNotFoundException("Файл versions.json не найден в папке программы.");
+            }
+
             var json = File.ReadAllText(VersionsPath);
-            return JsonConvert.DeserializeObject<VersionsData>(json) ?? GetDefaultVersions();
+            var versions = JsonConvert.DeserializeObject<VersionsData>(json);
+
+            if (versions == null)
+            {
+                throw new InvalidOperationException("versions.json пуст или имеет неверный формат.");
+            }
+
+            // Проверка обязательных полей
+            if (string.IsNullOrEmpty(versions.LmModule) ||
+                string.IsNullOrEmpty(versions.AtolDriver) ||
+                string.IsNullOrEmpty(versions.ESM) ||
+                string.IsNullOrEmpty(versions.Controller))
+            {
+                Logger.LogToFile("⚠️ versions.json: не все версии заполнены", true);
+            }
+
+            Logger.LogToFile($"✅ versions.json загружен: ЛМ={versions.LmModule}, АТОЛ={versions.AtolDriver}, ЕСМ={versions.ESM}, Контроллер={versions.Controller}");
+            return versions;
         }
 
         public static void SaveVersions(VersionsData versions)
         {
             var json = JsonConvert.SerializeObject(versions, Formatting.Indented);
             File.WriteAllText(VersionsPath, json);
+            Logger.LogToFile($"✅ versions.json сохранён");
         }
 
         // ========== Папка с установщиками ==========
@@ -73,27 +105,6 @@ namespace HonestFlow.Infrastructure
         {
             string distrPath = Path.Combine(BasePath, "Distr");
             return Directory.Exists(distrPath) ? distrPath : BasePath;
-        }
-
-        // ========== Дефолтные значения ==========
-        private static List<IPData> GetDefaultIps()
-        {
-            return new List<IPData>
-            {
-                new() { Name = "ИП Кураев", Password = "kuraev123", Token = "631ace8b-43aa-4490-9f4f-f404dff01d83", Inn = "170109778389", Architecture = "x64" },
-                new() { Name = "ИП Бабкин", Password = "babkin456", Token = "e6c03c42-2186-4ae8-adc7-878be4c56f5d", Inn = "550409070683", Architecture = "x64" }
-            };
-        }
-
-        private static VersionsData GetDefaultVersions()
-        {
-            return new VersionsData
-            {
-                LmModule = "2.5.1-2",
-                AtolDriver = "10.10.8.23",
-                ESM = "1.6.1.2",
-                Controller = "1.6.1.0"
-            };
         }
     }
 }

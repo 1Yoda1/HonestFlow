@@ -39,12 +39,12 @@ namespace HonestFlow
 
         private void SetupForm()
         {
+            const string adminPassword = "bckfvgbljhfc228";
+
             progressBar.Minimum = 0;
             progressBar.Maximum = 100;
             progressBar.Value = 0;
 
-            listBox1.Hide();
-            button1.Hide();
             buttonInstall.Visible = false;
             buttonInstall.Enabled = false;
             label2.Hide();
@@ -66,11 +66,42 @@ namespace HonestFlow
                 string password = Microsoft.VisualBasic.Interaction.InputBox(
                     "Введите пароль администратора:", "Доступ к админ-панели", "");
 
-                if (password == "bckfvgbljhfc228")
+                if (password == adminPassword)
                 {
                     var adminForm = new AdminForm();
                     adminForm.ShowDialog();
-                    _authService.LoadIpList();
+                    try
+                    {
+                        _authService.LoadIpList();
+                    }
+                    catch (FileNotFoundException ex)
+                    {
+                        MessageBox.Show(
+                            $"{ex.Message}\n\n" +
+                            "Программа не может работать без файлов конфигурации:\n" +
+                            "• ips.json (список ИП, зашифрованный)\n" +
+                            "• versions.json (ожидаемые версии компонентов)\n\n" +
+                            "Поместите эти файлы в папку с программой и перезапустите приложение.",
+                            "Ошибка конфигурации",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                        Environment.Exit(1);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        MessageBox.Show(
+                            $"Ошибка в файле конфигурации:\n{ex.Message}\n\n" +
+                            "Проверьте формат файлов ips.json и versions.json.",
+                            "Ошибка формата",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                        Environment.Exit(1);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Неожиданная ошибка загрузки конфигурации:\n{ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        Environment.Exit(1);
+                    }
                 }
                 else if (!string.IsNullOrEmpty(password))
                 {
