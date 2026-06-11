@@ -1,18 +1,19 @@
-﻿using HonestFlow.Infrastructure;
-using HonestFlow.Models;
-using HonestFlow.Services.Core;
 using System;
 using System.Threading.Tasks;
+using HonestFlow.Models;
+using HonestFlow.Services.Core;
 
 namespace HonestFlow.Services.Lm
 {
     /// <summary>
-    /// Реализация сервиса проверки ЛМ ЧЗ
+    /// Лёгкая проверка ЛМ ЧЗ для построения плана установки.
+    /// Тяжёлые сценарии установки/переустановки находятся в LmModuleService.
     /// </summary>
     public class LmValidationService : ILmValidationService
     {
         private readonly ILogService _log;
-        private LmModule _cachedLmModule; // Кэшируем экземпляр
+        private LmModuleService _cachedLmModule;
+        private string _cachedExpectedVersion;
         private readonly object _lockObject = new();
 
         public LmValidationService(ILogService logService)
@@ -20,19 +21,17 @@ namespace HonestFlow.Services.Lm
             _log = logService;
         }
 
-        /// <summary>
-        /// Получить или создать экземпляр LmModule
-        /// </summary>
-        private LmModule GetLmModule(string expectedVersion)
+        private LmModuleService GetLmModule(string expectedVersion)
         {
             lock (_lockObject)
             {
-                if (_cachedLmModule == null)
+                if (_cachedLmModule == null || _cachedExpectedVersion != expectedVersion)
                 {
-                    // Создаём один раз и переиспользуем
-                    _cachedLmModule = new LmModule("", expectedVersion);
-                    _log.LogDebug("LmModule создан и закэширован");
+                    _cachedLmModule = new LmModuleService(string.Empty, expectedVersion);
+                    _cachedExpectedVersion = expectedVersion;
+                    _log.LogDebug($"LmModuleService создан и закэширован для версии {expectedVersion}");
                 }
+
                 return _cachedLmModule;
             }
         }
@@ -61,8 +60,10 @@ namespace HonestFlow.Services.Lm
 
                 if (status.Status == "ready")
                     return (false, "OK (активен)");
+
                 if (status.Status == "initialization")
                     return (false, "OK (инициализирован)");
+
                 if (status.Status == "not_configured")
                     return (true, "не инициализирован");
 

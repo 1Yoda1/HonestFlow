@@ -7,6 +7,9 @@ namespace HonestFlow.Services.Installation
     /// </summary>
     public interface IVersionCheckService
     {
+        string GetAtolDriverInfo();
+        string GetEsmVersion();
+        string GetControllerVersion();
         /// <summary>Проверить нужна ли установка драйвера АТОЛ</summary>
         bool NeedAtolInstall(IPData selectedIP, string expectedVersion);
 

@@ -1,11 +1,12 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace HonestFlow.Infrastructure.Services
 {
     /// <summary>
-    /// Управление Windows-службой Regime (Локальный модуль ЧЗ)
+    /// Управление Windows-службой Regime (Локальный модуль ЧЗ).
+    /// Публичного удаления службы здесь нет: удаление должно выполняться MSI uninstall-сценарием.
     /// </summary>
     public static class WindowsServiceManager
     {
@@ -33,18 +34,6 @@ namespace HonestFlow.Infrastructure.Services
             }
         }
 
-        public static async Task DeleteService()
-        {
-            try
-            {
-                await ProcessRunner.RunAsync("sc", "delete Regime", true);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogToFile($"Ошибка при удалении службы Regime: {ex.Message}", true);
-            }
-        }
-
         public static async Task<string> GetServiceStatus()
         {
             try
@@ -59,9 +48,18 @@ namespace HonestFlow.Infrastructure.Services
                 };
 
                 using var process = Process.Start(psi);
+                if (process == null)
+                    return "notfound";
+
                 string output = await process.StandardOutput.ReadToEndAsync();
-                if (output.Contains("RUNNING")) return "running";
-                if (output.Contains("STOPPED")) return "stopped";
+                await process.WaitForExitAsync();
+
+                if (output.Contains("RUNNING"))
+                    return "running";
+
+                if (output.Contains("STOPPED"))
+                    return "stopped";
+
                 return "unknown";
             }
             catch

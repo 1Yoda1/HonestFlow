@@ -22,8 +22,8 @@ namespace HonestFlow.Services.Installation
     {
         private readonly ILogService _log;
         private readonly IProgressService _progress;
-        private readonly LmValidationService _lmValidator;
-        private readonly VersionCheckService _versionChecker;
+        private readonly ILmValidationService _lmValidator;
+        private readonly IVersionCheckService _versionChecker;
         private readonly bool _useGitHubMode;
 
         public InstallationService(ILogService logService, IProgressService progressService, bool useGitHubMode = false)
@@ -302,7 +302,7 @@ namespace HonestFlow.Services.Installation
             switch (item.Component)
             {
                 case InstallationComponent.LmModule:
-                    var lm = new LmModule(item.InstallerPath, versions?.LmModule ?? "2.5.1-2");
+                    var lm = new LmModuleService(item.InstallerPath, versions?.LmModule ?? "2.5.1-2");
                     bool lmSuccess = await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
                     _log.LogUser(lmSuccess ? "✅ ЛМ ЧЗ установлен" : "❌ ЛМ ЧЗ не установлен", !lmSuccess);
                     return lmSuccess;

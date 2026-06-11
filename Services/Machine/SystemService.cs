@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using HonestFlow.Services.Installation;
 using System.Windows.Forms;
 
 namespace HonestFlow.Services.Machine
@@ -14,10 +15,12 @@ namespace HonestFlow.Services.Machine
     public class SystemService : ISystemService
     {
         private readonly ILogService _log;
+        private readonly IVersionCheckService _versionCheckService;
 
         public SystemService(ILogService logService)
         {
             _log = logService;
+            _versionCheckService = new VersionCheckService(logService);
         }
 
         /// <summary>
@@ -137,9 +140,9 @@ namespace HonestFlow.Services.Machine
             sb.AppendLine();
 
             sb.AppendLine("【УСТАНОВЛЕННЫЕ КОМПОНЕНТЫ】");
-            sb.AppendLine($"  Драйвер АТОЛ: {VersionChecker.GetAtolDriverInfo()}");
-            sb.AppendLine($"  ЕСМ: {VersionChecker.GetEsmVersion()}");
-            sb.AppendLine($"  Контроллер: {VersionChecker.GetControllerVersion()}");
+            sb.AppendLine($"  Драйвер АТОЛ: {_versionCheckService.GetAtolDriverInfo()}");
+            sb.AppendLine($"  ЕСМ: {_versionCheckService.GetEsmVersion()}");
+            sb.AppendLine($"  Контроллер: {_versionCheckService.GetControllerVersion()}");
             sb.AppendLine();
 
             sb.AppendLine("【ЛОКАЛЬНЫЙ МОДУЛЬ ЧЗ】");
