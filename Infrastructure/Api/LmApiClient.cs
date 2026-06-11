@@ -257,23 +257,11 @@ namespace HonestFlow.Infrastructure.Api
             return ApiResponse<LmStatus>.Failure(HttpStatusCode.ServiceUnavailable, "API не доступен", null, 0);
         }
 
-        public async Task<LmStatus> GetStatusSimple()
-        {
-            var response = await GetStatus();
-            return response.IsSuccess ? response.Data : null;
-        }
-
         public async Task<ApiSimpleResponse> InitializeFull(string token)
         {
             EnsureClientCreated();
             var data = new { token };
             return await PostAsync("init", data);
-        }
-
-        public async Task<bool> Initialize(string token)
-        {
-            var response = await InitializeFull(token);
-            return response.IsSuccess;
         }
 
         public void Dispose()

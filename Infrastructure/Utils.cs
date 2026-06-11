@@ -14,36 +14,6 @@ namespace HonestFlow.Infrastructure
             Logger.LogToFile(message, isError);
         }
 
-        public static void LogInfo(string message)
-        {
-            WriteToUi(message, Color.LightGreen);
-            Logger.Info(message);
-        }
-
-        public static void LogSuccess(string message)
-        {
-            WriteToUi(message, Color.LightGreen);
-            Logger.Success(message);
-        }
-
-        public static void LogWarning(string message)
-        {
-            WriteToUi(message, Color.Khaki);
-            Logger.Warning(message);
-        }
-
-        public static void LogError(string message)
-        {
-            WriteToUi(message, Color.Red);
-            Logger.Error(message);
-        }
-
-        public static void LogDebug(string message)
-        {
-            WriteToUi(message, Color.Gray);
-            Logger.DebugLog(message);
-        }
-
         private static void WriteToUi(string message, Color color)
         {
             if (LogBox == null) return;

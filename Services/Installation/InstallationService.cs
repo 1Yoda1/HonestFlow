@@ -91,69 +91,6 @@ namespace HonestFlow.Services.Installation
             return inn.Substring(0, 4) + new string('*', Math.Max(0, inn.Length - 6)) + inn.Substring(inn.Length - 2);
         }
 
-        [Obsolete("INN mismatch теперь обрабатывается в LmModule через GUID/службы, без ручного ожидания по HTTP.")]
-        private async Task<bool> HandleInnMismatch(IPData selectedIP, string currentInn, string expectedVersion)
-        {
-            _log.LogUser($"ИНН не совпадает! (ЛМ: {currentInn}, нужно: {selectedIP.Inn})", true);
-            _log.LogDebug("КРИТИЧЕСКАЯ ОШИБКА: ИНН не совпадает!");
-
-            while (true)
-            {
-                var result = MessageBox.Show(
-                    $"ЛМ ЧЗ инициализирован на ИНН: {currentInn}\n\nОжидался ИНН: {selectedIP.Inn}\n\n" +
-                    "Установка НЕ МОЖЕТ быть продолжена!\n\nНажмите 'OK' чтобы открыть окно удаления программ.\n" +
-                    "Найдите в списке 'Локальный модуль ЧЗ' и удалите его.\n\nПосле удаления нажмите 'OK' для повторной проверки.",
-                    "Конфликт ИНН", MessageBoxButtons.OKCancel, MessageBoxIcon.Error);
-
-                if (result == DialogResult.Cancel)
-                {
-                    _log.LogUser("Операция отменена пользователем");
-                    return false;
-                }
-
-                ProcessRunner.OpenUninstallPrograms();
-                _log.LogUser("Ожидание удаления ЛМ ЧЗ...");
-
-                if (await WaitForLmDeletion(expectedVersion))
-                {
-                    _log.LogUser("ЛМ ЧЗ удалён");
-                    return true;
-                }
-
-                var retry = MessageBox.Show(
-                    "ЛМ ЧЗ всё ещё обнаружен.\n\nУдалите его вручную через 'Установку и удаление программ'.\n\n" +
-                    "Нажмите 'OK' для повторной проверки или 'Отмена' для выхода.",
-                    "Повторить?", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
-
-                if (retry != DialogResult.OK)
-                    return false;
-            }
-        }
-
-        private async Task<bool> WaitForLmDeletion(string expectedVersion)
-        {
-            const int maxWaitSeconds = 120;
-            const int checkIntervalSeconds = 5;
-            int elapsedSeconds = 0;
-
-            while (elapsedSeconds < maxWaitSeconds)
-            {
-                await Task.Delay(checkIntervalSeconds * 1000);
-                elapsedSeconds += checkIntervalSeconds;
-
-                _log.LogDebug($"Проверка наличия ЛМ ЧЗ... (прошло {elapsedSeconds} сек)");
-
-                var checkAgain = await _lmValidator.GetLmStatus(expectedVersion);
-                if (checkAgain == null)
-                {
-                    _log.LogUser($"✅ ЛМ ЧЗ удалён (через {elapsedSeconds} сек)");
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         private async Task<bool> PerformInstallation(IPData selectedIP, VersionsData versions, LmStatus precheckedLmStatus, bool forceLmInstall, string lmPlanReason)
         {
             _progress.SetProgress(10, "Проверка версий...");

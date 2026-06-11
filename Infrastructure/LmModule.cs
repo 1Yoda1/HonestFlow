@@ -57,23 +57,6 @@ namespace HonestFlow.Infrastructure
         }
 
         /// <summary>
-        /// Получение статуса с полной информацией (HTTP-статус, ошибки)
-        /// </summary>
-        public async Task<ApiResponse<LmStatus>> GetStatusFull()
-        {
-            return await _apiClient.GetStatus();
-        }
-
-        /// <summary>
-        /// Инициализация ЛМ ЧЗ с токеном (упрощённо, для обратной совместимости)
-        /// </summary>
-        public async Task<bool> Initialize(string token)
-        {
-            Utils.Log($"🔑 Инициализация (API {_apiVersion})...");
-            return await _apiClient.Initialize(token);
-        }
-
-        /// <summary>
         /// Инициализация с детальной обработкой ошибок
         /// </summary>
         public async Task<ApiSimpleResponse> InitializeFull(string token)
