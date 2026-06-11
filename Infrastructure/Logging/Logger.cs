@@ -18,13 +18,24 @@ namespace HonestFlow.Infrastructure
     public static class Logger
     {
         private static readonly object Sync = new();
-        private static readonly Regex SecretRegex = new(
-            @"(?i)(token|password|passwd|pwd|secret|api[_-]?key)\s*[:=]\s*([^\s;,&]+)",
+
+        private static readonly Regex SecretKeyValueRegex = new(
+            @"(?i)(token|password|passwd|pwd|secret|api[_-]?key)\s*[:=]\s*([^\s;,&}""']+)",
+            RegexOptions.Compiled);
+
+        private static readonly Regex JsonSecretRegex = new(
+            @"(?i)(""(?:token|password|passwd|pwd|secret|api[_-]?key)""\s*:\s*"")[^""]*("")",
+            RegexOptions.Compiled);
+
+        private static readonly Regex InnInTextRegex = new(
+            @"(?i)\b(инн\s*[:=]?\s*)(\d{10,12})\b",
             RegexOptions.Compiled);
 
         private static string _logFilePath;
         private static string _sessionId;
         private static bool _initialized;
+
+        public static bool EnableDebug { get; set; } = true;
 
         public static void Initialize()
         {
@@ -35,7 +46,7 @@ namespace HonestFlow.Infrastructure
                 CleanupOldLogs(daysToKeep: 30);
 
                 _sessionId = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-                _logFilePath = Path.Combine(AppPaths.LogsFolder, $"{DateTime.Now:yyyy-MM-dd}.log");
+                _logFilePath = Path.Combine(AppPaths.LogsFolder, $"install_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log");
                 _initialized = true;
 
                 WriteSessionHeader();
@@ -54,7 +65,11 @@ namespace HonestFlow.Infrastructure
         public static void Success(string message, string module = null) => Write("SUCCESS", message, module);
         public static void Warning(string message, string module = null) => Write("WARNING", message, module);
         public static void Error(string message, string module = null) => Write("ERROR", message, module);
-        public static void DebugLog(string message, string module = null) => Write("DEBUG", message, module);
+        public static void DebugLog(string message, string module = null)
+        {
+            if (!EnableDebug) return;
+            Write("DEBUG", message, module);
+        }
         public static void Start(string message, string module = null) => Write("START", message, module);
         public static void End(string message, string module = null) => Write("END", message, module);
 
@@ -65,10 +80,40 @@ namespace HonestFlow.Infrastructure
 
         /// <summary>
         /// Старый метод оставлен, чтобы не ломать существующий код.
+        /// Если старый код пишет "[DEBUG] ...", уровень будет автоматически нормализован в DEBUG.
         /// </summary>
         public static void LogToFile(string message, bool isError = false)
         {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                Write(isError ? "ERROR" : "INFO", message, null);
+                return;
+            }
+
+            string trimmed = message.TrimStart();
+            if (trimmed.StartsWith("[DEBUG]", StringComparison.OrdinalIgnoreCase))
+            {
+                DebugLog(trimmed.Substring("[DEBUG]".Length).TrimStart(), null);
+                return;
+            }
+
             Write(isError ? "ERROR" : "INFO", message, null);
+        }
+
+        public static void LogHttp(string method, string url, int? statusCode, string statusText, double durationMs, bool isError = false, string body = null)
+        {
+            string result = statusCode.HasValue ? $"{statusCode} {statusText}" : statusText;
+            string line = $"HTTP {method} {url} -> {result} ({durationMs:F0} мс)";
+
+            if (!string.IsNullOrWhiteSpace(body))
+                line += $" | Body: {Truncate(body, 500)}";
+
+            Write(isError ? "ERROR" : "DEBUG", line, "HTTP");
+        }
+
+        public static void LogHttpPolling(string message, string module = "HTTP")
+        {
+            Write("DEBUG", message, module);
         }
 
         public static void LogException(string context, Exception ex)
@@ -186,7 +231,7 @@ namespace HonestFlow.Infrastructure
             {
                 Directory.CreateDirectory(AppPaths.LogsFolder);
                 _sessionId = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-                _logFilePath ??= Path.Combine(AppPaths.LogsFolder, $"{DateTime.Now:yyyy-MM-dd}.log");
+                _logFilePath ??= Path.Combine(AppPaths.LogsFolder, $"install_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log");
                 _initialized = true;
                 WriteSessionHeader();
             }
@@ -222,7 +267,26 @@ namespace HonestFlow.Infrastructure
             if (string.IsNullOrEmpty(text))
                 return text;
 
-            return SecretRegex.Replace(text, "$1=***");
+            string masked = SecretKeyValueRegex.Replace(text, "$1=***");
+            masked = JsonSecretRegex.Replace(masked, "$1***$2");
+            masked = InnInTextRegex.Replace(masked, m => m.Groups[1].Value + MaskInn(m.Groups[2].Value));
+            return masked;
+        }
+
+        private static string MaskInn(string inn)
+        {
+            if (string.IsNullOrWhiteSpace(inn) || inn.Length < 6)
+                return "***";
+
+            return inn.Substring(0, 4) + new string('*', inn.Length - 6) + inn.Substring(inn.Length - 2);
+        }
+
+        private static string Truncate(string text, int maxLength)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+                return text;
+
+            return text.Substring(0, maxLength) + "...";
         }
 
         private static bool IsAdministratorSafe()

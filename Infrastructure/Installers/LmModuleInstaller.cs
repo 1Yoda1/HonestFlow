@@ -1,16 +1,37 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 using HonestFlow.Infrastructure.Services;
-
-
 
 namespace HonestFlow.Infrastructure.Installers
 {
     public class LmModuleInstaller
     {
+        private const int MsiSuccess = 0;
+        private const int MsiRestartRequired = 3010;
+        private const int MsiAnotherInstallInProgress = 1618;
+        private const int MsiProductNotInstalled = 1605;
+
+        // Важно: НЕ считаем любой msiexec.exe блокером.
+        // Windows Installer часто держит фоновый msiexec.exe даже когда реальной установки уже нет.
+        // Если ждать все msiexec.exe, чистая установка может зависнуть на несколько минут или до таймаута.
+        // Реальную занятость MSI ловим по ExitCode=1618 и делаем retry.
+        private static readonly string[] MsiBlockingProcessNames =
+        {
+            "InstallAutoUpdateLM",
+            "AutoUpdateLM"
+        };
+
+        private static readonly string[] LmRuntimeProcessNames =
+        {
+            "Regime",
+            "UpdateLM",
+            "AutoUpdateLM"
+        };
+
         private readonly string _installerPath;
 
         public LmModuleInstaller(string installerPath)
@@ -18,123 +39,362 @@ namespace HonestFlow.Infrastructure.Installers
             _installerPath = installerPath;
         }
 
-        public async Task ForceReinstall()
+        public bool IsInstalledByGuid() => !string.IsNullOrWhiteSpace(FindLmModuleGuid());
+        public string GetInstalledGuid() => FindLmModuleGuid();
+
+        public async Task CleanInstall()
         {
-            Logger.LogToFile("🗑️ Принудительная переустановка ЛМ ЧЗ...");
+            using var operation = Logger.BeginOperation("Чистая установка ЛМ ЧЗ", nameof(LmModuleInstaller));
+
+            string existingGuid = FindLmModuleGuid();
+            if (!string.IsNullOrWhiteSpace(existingGuid))
+            {
+                Logger.Warning($"Запрошена чистая установка, но GUID уже найден: {existingGuid}. Переключаемся на переустановку.", nameof(LmModuleInstaller));
+                await ReinstallExisting("ЛМ уже установлен перед чистой установкой");
+                return;
+            }
+
+            Logger.Info("ЛМ ЧЗ не найден по GUID. Запуск чистой установки.", nameof(LmModuleInstaller));
+            await Install();
+            Logger.Success("Чистая установка ЛМ ЧЗ завершена успешно", nameof(LmModuleInstaller));
+        }
+
+        public async Task ReinstallExisting(string reason)
+        {
+            using var operation = Logger.BeginOperation($"Переустановка ЛМ ЧЗ: {reason}", nameof(LmModuleInstaller));
 
             string guid = FindLmModuleGuid();
-
-            if (!string.IsNullOrEmpty(guid))
+            if (!string.IsNullOrWhiteSpace(guid))
             {
-                Logger.LogToFile($"Найден GUID: {guid}");
-                await Uninstall(guid);
+                Logger.Info($"Найден GUID ЛМ ЧЗ: {guid}. Причина переустановки: {reason}", nameof(LmModuleInstaller));
+                await Uninstall(guid, reason);
             }
             else
             {
-                Logger.LogToFile("GUID не найден, возможно модуль не установлен");
+                Logger.Warning($"GUID ЛМ ЧЗ не найден перед переустановкой. Причина: {reason}. Переходим к чистой установке.", nameof(LmModuleInstaller));
+                await WaitForMsiSystemIdleAsync("перед установкой, GUID уже отсутствует", 120);
             }
 
             await Install();
-
-            Logger.LogToFile("✅ Переустановка завершена успешно");
+            Logger.Success($"Переустановка ЛМ ЧЗ завершена успешно. Причина: {reason}", nameof(LmModuleInstaller));
         }
 
-        private static async Task Uninstall(string guid)
+        public async Task ReinstallBecauseInnMismatch(string currentInn, string expectedInn)
         {
-            Logger.LogToFile($"Удаление {guid}...");
+            string reason = $"INN mismatch: current={MaskInn(currentInn)}, expected={MaskInn(expectedInn)}";
+            using var operation = Logger.BeginOperation($"Forced reinstall ЛМ ЧЗ из-за INN mismatch", nameof(LmModuleInstaller));
+
+            Logger.Warning($"Запрошена переустановка ЛМ ЧЗ из-за конфликта ИНН: {reason}", nameof(LmModuleInstaller));
+            await ReinstallExisting(reason);
+        }
+
+        public async Task ForceReinstall()
+        {
+            string guid = FindLmModuleGuid();
+            if (string.IsNullOrWhiteSpace(guid))
+                await CleanInstall();
+            else
+                await ReinstallExisting("принудительная переустановка");
+        }
+
+        private static async Task Uninstall(string guid, string reason)
+        {
+            using var operation = Logger.BeginOperation("Удаление ЛМ ЧЗ", nameof(LmModuleInstaller));
+
+            Logger.Info($"Удаление ЛМ ЧЗ: {guid}. Причина: {reason}", nameof(LmModuleInstaller));
 
             await WindowsServiceManager.StopService();
             await Task.Delay(1000);
 
             KillProcess("InstallAutoUpdateLM");
+            KillProcess("AutoUpdateLM");
+            KillProcess("UpdateLM");
             KillProcess("Regime");
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = "msiexec.exe",
-                Arguments = $"/x {guid} /qn /norestart",
-                UseShellExecute = true,
-                Verb = "runas",
-                CreateNoWindow = true
-            };
+            await WaitForMsiSystemIdleAsync("перед удалением ЛМ ЧЗ", 120);
 
-            using (var process = Process.Start(psi))
+            int exitCode = await RunMsiWithRetryAsync(
+                arguments: $"/x {guid} /qn /norestart",
+                actionName: "удаление ЛМ ЧЗ",
+                acceptedExitCodes: new[] { MsiSuccess, MsiRestartRequired, MsiProductNotInstalled });
+
+            Logger.Info($"msiexec uninstall exit code: {exitCode}", nameof(LmModuleInstaller));
+
+            if (exitCode == MsiProductNotInstalled)
             {
-                await Task.Run(() => process.WaitForExit());
-                Logger.LogToFile($"msiexec /x exit code: {process.ExitCode}");
+                Logger.Warning("MSI сообщает, что продукт уже не установлен. Продолжаем.", nameof(LmModuleInstaller));
             }
 
-            // Ждём с увеличивающимся интервалом (1, 2, 3, 5, 10 сек)
-            await WaitForFullUninstall(guid, 30);
+            await WaitForFullUninstall(guid, 180);
+            await WaitForMsiSystemIdleAsync("после удаления ЛМ ЧЗ", 180);
         }
 
         private async Task Install()
         {
-            Logger.LogToFile($"📦 Установка {Path.GetFileName(_installerPath)}...");
+            using var operation = Logger.BeginOperation("Установка ЛМ ЧЗ", nameof(LmModuleInstaller));
+
+            if (string.IsNullOrWhiteSpace(_installerPath) || !File.Exists(_installerPath))
+                throw new FileNotFoundException("Не найден MSI установщик ЛМ ЧЗ", _installerPath);
+
+            Logger.Info($"Установка {Path.GetFileName(_installerPath)}...", nameof(LmModuleInstaller));
+
+            await WaitForLmChildInstallersIdleAsync("перед установкой ЛМ ЧЗ", 60);
+
+            int exitCode = await RunMsiWithRetryAsync(
+                arguments: $"/i \"{_installerPath}\" /qn /norestart",
+                actionName: "установка ЛМ ЧЗ",
+                acceptedExitCodes: new[] { MsiSuccess, MsiRestartRequired });
+
+            Logger.Info($"msiexec install exit code: {exitCode}", nameof(LmModuleInstaller));
+
+            if (exitCode == MsiRestartRequired)
+            {
+                Logger.Warning("MSI вернул 3010: установка успешна, но требуется перезагрузка", nameof(LmModuleInstaller));
+            }
+
+            await WaitForLmChildInstallersIdleAsync("после установки ЛМ ЧЗ / дочернего MSI", 120);
+            await WaitForInstalledState(180);
+        }
+
+        private static async Task<int> RunMsiWithRetryAsync(string arguments, string actionName, int[] acceptedExitCodes)
+        {
+            const int maxAttempts = 3;
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                if (attempt > 1)
+                {
+                    Logger.Warning($"Повтор MSI: {actionName}, попытка {attempt}/{maxAttempts}", nameof(LmModuleInstaller));
+                }
+
+                await WaitForMsiSystemIdleAsync($"перед MSI: {actionName}", 120);
+
+                int exitCode = await RunMsiOnceAsync(arguments, actionName, attempt);
+
+                if (acceptedExitCodes.Contains(exitCode))
+                    return exitCode;
+
+                if (exitCode == MsiAnotherInstallInProgress)
+                {
+                    Logger.Warning("MSI вернул 1618: уже выполняется другая установка. Ждём освобождения Windows Installer.", nameof(LmModuleInstaller));
+                    await WaitForMsiSystemIdleAsync("после 1618", 180);
+                    await Task.Delay(5000);
+                    continue;
+                }
+
+                throw new Exception($"Ошибка MSI: {actionName}, код: {exitCode}");
+            }
+
+            throw new Exception($"Ошибка MSI: {actionName}, код 1618 не исчез после {maxAttempts} попыток");
+        }
+
+        private static async Task<int> RunMsiOnceAsync(string arguments, string actionName, int attempt)
+        {
+            Logger.Info($"Запуск msiexec: {actionName}, попытка {attempt}. Аргументы: {arguments}", nameof(LmModuleInstaller));
 
             var psi = new ProcessStartInfo
             {
                 FileName = "msiexec.exe",
-                Arguments = $"/i \"{_installerPath}\" /qn /norestart",
+                Arguments = arguments,
                 UseShellExecute = true,
                 Verb = "runas",
                 CreateNoWindow = true
             };
 
             using var process = Process.Start(psi);
-            await Task.Run(() => process.WaitForExit());
-            int exitCode = process.ExitCode;
-            Logger.LogToFile($"msiexec install exit code: {exitCode}");
+            if (process == null)
+                throw new Exception($"Не удалось запустить msiexec: {actionName}");
 
-            if (exitCode != 0 && exitCode != 3010)
-                throw new Exception($"Ошибка установки (код: {exitCode})");
+            await Task.Run(() => process.WaitForExit());
+
+            Logger.Info($"msiexec завершён: {actionName}, ExitCode={process.ExitCode}", nameof(LmModuleInstaller));
+            return process.ExitCode;
         }
 
-        /// <summary>
-        /// Ожидание удаления с прогрессивным интервалом (меньше нагрузки)
-        /// </summary>
-        private static async Task WaitForFullUninstall(string guid, int timeoutSeconds = 30)
+        private static async Task WaitForFullUninstall(string guid, int timeoutSeconds = 180)
         {
             var startTime = DateTime.Now;
             var timeout = TimeSpan.FromSeconds(timeoutSeconds);
+            int attempt = 0;
 
-            string[] registryPaths = new[]
+            Logger.Info($"Ожидание полного удаления ЛМ ЧЗ, таймаут {timeoutSeconds} сек", nameof(LmModuleInstaller));
+
+            while (DateTime.Now - startTime < timeout)
+            {
+                attempt++;
+
+                bool guidExists = IsGuidInstalled(guid);
+                string regimeServiceStatus = await WindowsServiceManager.GetServiceStatus();
+                bool updateServiceExists = IsUpdateLmServiceInstalled();
+                bool msiBusy = IsAnyProcessRunning(MsiBlockingProcessNames);
+                bool runtimeRunning = IsAnyProcessRunning(LmRuntimeProcessNames);
+
+                bool regimeServiceAbsent = IsServiceAbsent(regimeServiceStatus);
+
+                if (!guidExists && regimeServiceAbsent && !updateServiceExists && !msiBusy && !runtimeRunning)
+                {
+                    Logger.Success($"Полное удаление ЛМ ЧЗ подтверждено за {(DateTime.Now - startTime).TotalSeconds:F1} сек: GUID отсутствует, Regime отсутствует, UpdateLM отсутствует, дочерние установщики завершены", nameof(LmModuleInstaller));
+                    return;
+                }
+
+                if (attempt == 1 || attempt % 5 == 0)
+                {
+                    Logger.DebugLog($"ЛМ ещё удаляется: guidExists={guidExists}, regimeService={regimeServiceStatus}, updateServiceExists={updateServiceExists}, msiBusy={msiBusy}, runtimeRunning={runtimeRunning}", nameof(LmModuleInstaller));
+                }
+
+                await Task.Delay(2000);
+            }
+
+            Logger.Warning($"Таймаут ожидания полного удаления ЛМ ЧЗ ({timeoutSeconds} сек). Продолжаем осторожно.", nameof(LmModuleInstaller));
+        }
+
+        private static async Task WaitForInstalledState(int timeoutSeconds = 180)
+        {
+            var startTime = DateTime.Now;
+            var timeout = TimeSpan.FromSeconds(timeoutSeconds);
+            int attempt = 0;
+
+            Logger.Info($"Ожидание установленного состояния ЛМ ЧЗ, таймаут {timeoutSeconds} сек", nameof(LmModuleInstaller));
+
+            while (DateTime.Now - startTime < timeout)
+            {
+                attempt++;
+
+                string guid = FindLmModuleGuid();
+                string regimeServiceStatus = await WindowsServiceManager.GetServiceStatus();
+                bool updateServiceExists = IsUpdateLmServiceInstalled();
+                bool childInstallerRunning = IsAnyProcessRunning(MsiBlockingProcessNames);
+
+                if (!string.IsNullOrWhiteSpace(guid) && IsServicePresent(regimeServiceStatus) && updateServiceExists)
+                {
+                    Logger.Success($"Установка ЛМ ЧЗ подтверждена за {(DateTime.Now - startTime).TotalSeconds:F1} сек: guid={guid}, Regime={regimeServiceStatus}, UpdateLM=true", nameof(LmModuleInstaller));
+                    return;
+                }
+
+                if (attempt == 1 || attempt % 5 == 0)
+                {
+                    Logger.DebugLog($"Ожидание установленного состояния: guid={(string.IsNullOrWhiteSpace(guid) ? "нет" : guid)}, Regime={regimeServiceStatus}, UpdateLM={updateServiceExists}, childInstallerRunning={childInstallerRunning}", nameof(LmModuleInstaller));
+                }
+
+                await Task.Delay(2000);
+            }
+
+            throw new TimeoutException($"ЛМ ЧЗ не перешёл в установленное состояние за {timeoutSeconds} сек");
+        }
+
+        private static bool IsServiceAbsent(string serviceStatus)
+        {
+            if (string.IsNullOrWhiteSpace(serviceStatus))
+                return true;
+
+            return serviceStatus.Equals("notfound", StringComparison.OrdinalIgnoreCase) ||
+                   serviceStatus.Equals("not found", StringComparison.OrdinalIgnoreCase) ||
+                   serviceStatus.Equals("unknown", StringComparison.OrdinalIgnoreCase) ||
+                   serviceStatus.Equals("absent", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsServicePresent(string serviceStatus) => !IsServiceAbsent(serviceStatus);
+
+        private static async Task WaitForMsiSystemIdleAsync(string reason, int timeoutSeconds)
+        {
+            // Оставляем метод для мест, где логически ждём MSI, но не блокируемся на фоновый msiexec.exe.
+            // Реальное состояние Windows Installer достовернее проверяется через код 1618 после запуска msiexec.
+            await WaitForLmChildInstallersIdleAsync(reason, timeoutSeconds);
+        }
+
+        private static async Task WaitForLmChildInstallersIdleAsync(string reason, int timeoutSeconds)
+        {
+            var startTime = DateTime.Now;
+            var timeout = TimeSpan.FromSeconds(timeoutSeconds);
+            var quietStart = (DateTime?)null;
+            int attempt = 0;
+
+            while (DateTime.Now - startTime < timeout)
+            {
+                attempt++;
+                var running = GetRunningProcesses(MsiBlockingProcessNames);
+
+                if (running.Length == 0)
+                {
+                    quietStart ??= DateTime.Now;
+
+                    if ((DateTime.Now - quietStart.Value).TotalSeconds >= 3)
+                    {
+                        if (attempt > 1)
+                            Logger.Success($"Дочерние установщики ЛМ завершены: {reason}", nameof(LmModuleInstaller));
+                        return;
+                    }
+                }
+                else
+                {
+                    quietStart = null;
+
+                    if (attempt == 1 || attempt % 5 == 0)
+                    {
+                        Logger.Info($"Ожидание дочерних установщиков ЛМ: {reason}. Активны: {string.Join(", ", running)}", nameof(LmModuleInstaller));
+                    }
+                }
+
+                await Task.Delay(1000);
+            }
+
+            Logger.Warning($"Таймаут ожидания дочерних установщиков ЛМ: {reason}. Продолжаем: состояние ЛМ будет проверено по GUID/службам/API.", nameof(LmModuleInstaller));
+        }
+
+        private static string MaskInn(string inn)
+        {
+            if (string.IsNullOrWhiteSpace(inn) || inn.Length < 6)
+                return inn ?? string.Empty;
+
+            return inn.Substring(0, 4) + new string('*', Math.Max(0, inn.Length - 6)) + inn.Substring(inn.Length - 2);
+        }
+
+        private static bool RegistryKeyExists(string regPath)
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(regPath);
+                return key != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsGuidInstalled(string guid)
+        {
+            if (string.IsNullOrWhiteSpace(guid))
+                return false;
+
+            string[] registryPaths =
             {
                 $@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{guid}",
                 $@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{guid}"
             };
 
-            int delayMs = 500;
-            int maxDelayMs = 5000;
+            return registryPaths.Any(RegistryKeyExists);
+        }
 
-            while (DateTime.Now - startTime < timeout)
-            {
-                bool guidExists = false;
+        private static bool IsAnyProcessRunning(string[] processNames) => GetRunningProcesses(processNames).Length > 0;
 
-                foreach (var regPath in registryPaths)
+        private static string[] GetRunningProcesses(string[] processNames)
+        {
+            return processNames
+                .SelectMany(name =>
                 {
-                    using var key = Registry.LocalMachine.OpenSubKey(regPath);
-                    if (key != null)
+                    try
                     {
-                        guidExists = true;
-                        break;
+                        return Process.GetProcessesByName(name)
+                            .Select(p => $"{name}.exe:{p.Id}")
+                            .ToArray();
                     }
-                }
-
-                string serviceStatus = await WindowsServiceManager.GetServiceStatus();
-
-                if (!guidExists && serviceStatus == "notfound")
-                {
-                    Logger.LogToFile("✅ Полное удаление подтверждено");
-                    return;
-                }
-
-                // Увеличиваем интервал постепенно (меньше нагрузки на CPU)
-                await Task.Delay(delayMs);
-                delayMs = Math.Min(delayMs + 500, maxDelayMs);
-            }
-
-            Logger.LogToFile("⚠️ Таймаут ожидания полного удаления");
+                    catch
+                    {
+                        return Array.Empty<string>();
+                    }
+                })
+                .ToArray();
         }
 
         private static void KillProcess(string processName)
@@ -144,56 +404,87 @@ namespace HonestFlow.Infrastructure.Installers
                 var processes = Process.GetProcessesByName(processName);
                 foreach (var p in processes)
                 {
-                    Logger.LogToFile($"Завершаем {processName}.exe (PID: {p.Id})");
+                    Logger.Warning($"Завершаем {processName}.exe (PID: {p.Id})", nameof(LmModuleInstaller));
                     p.Kill();
-                    p.WaitForExit(2000);
+                    p.WaitForExit(3000);
                 }
             }
             catch (Exception ex)
             {
-                Logger.LogToFile($"Ошибка завершения процесса: {ex.Message}");
+                Logger.Warning($"Ошибка завершения процесса {processName}: {ex.Message}", nameof(LmModuleInstaller));
             }
+        }
+
+        private static bool IsUpdateLmServiceInstalled()
+        {
+            try
+            {
+                using var servicesRoot = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services");
+                if (servicesRoot == null)
+                    return false;
+
+                foreach (string serviceName in servicesRoot.GetSubKeyNames())
+                {
+                    if (serviceName.Contains("UpdateLM", StringComparison.OrdinalIgnoreCase) ||
+                        serviceName.Contains("AutoUpdateLM", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+
+                    using var serviceKey = servicesRoot.OpenSubKey(serviceName);
+                    string imagePath = serviceKey?.GetValue("ImagePath")?.ToString() ?? string.Empty;
+                    string displayName = serviceKey?.GetValue("DisplayName")?.ToString() ?? string.Empty;
+
+                    if (imagePath.Contains("UpdateLM", StringComparison.OrdinalIgnoreCase) ||
+                        imagePath.Contains("AutoUpdateLM", StringComparison.OrdinalIgnoreCase) ||
+                        displayName.Contains("UpdateLM", StringComparison.OrdinalIgnoreCase) ||
+                        displayName.Contains("AutoUpdateLM", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.DebugLog($"Не удалось проверить службу UpdateLM: {ex.Message}", nameof(LmModuleInstaller));
+            }
+
+            return false;
         }
 
         private static string FindLmModuleGuid()
         {
             try
             {
-                using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"))
-                {
-                    if (key != null)
-                    {
-                        foreach (string subKeyName in key.GetSubKeyNames())
-                        {
-                            using var subKey = key.OpenSubKey(subKeyName);
-                            string displayName = subKey?.GetValue("DisplayName")?.ToString() ?? "";
-                            if (displayName.Contains("Локальный модуль") || displayName.Contains("Regime"))
-                            {
-                                return subKeyName;
-                            }
-                        }
-                    }
-                }
+                string guid = FindLmModuleGuidInRegistry(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                if (!string.IsNullOrEmpty(guid))
+                    return guid;
 
-                using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"))
-                {
-                    if (key != null)
-                    {
-                        foreach (string subKeyName in key.GetSubKeyNames())
-                        {
-                            using var subKey = key.OpenSubKey(subKeyName);
-                            string displayName = subKey?.GetValue("DisplayName")?.ToString() ?? "";
-                            if (displayName.Contains("Локальный модуль") || displayName.Contains("Regime"))
-                            {
-                                return subKeyName;
-                            }
-                        }
-                    }
-                }
+                return FindLmModuleGuidInRegistry(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall");
             }
             catch (Exception ex)
             {
-                Logger.LogToFile($"Ошибка поиска GUID: {ex.Message}");
+                Logger.Warning($"Ошибка поиска GUID ЛМ ЧЗ: {ex.Message}", nameof(LmModuleInstaller));
+                return null;
+            }
+        }
+
+        private static string FindLmModuleGuidInRegistry(string uninstallRoot)
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(uninstallRoot);
+            if (key == null)
+                return null;
+
+            foreach (string subKeyName in key.GetSubKeyNames())
+            {
+                using var subKey = key.OpenSubKey(subKeyName);
+                string displayName = subKey?.GetValue("DisplayName")?.ToString() ?? string.Empty;
+
+                if (displayName.Contains("Локальный модуль", StringComparison.OrdinalIgnoreCase) ||
+                    displayName.Contains("Regime", StringComparison.OrdinalIgnoreCase))
+                {
+                    return subKeyName;
+                }
             }
 
             return null;
@@ -207,8 +498,13 @@ namespace HonestFlow.Infrastructure.Installers
                 @"C:\Program Files (x86)\Regime\bin\regime.cmd",
                 @"F:\Program Files\Regime\bin\regime.cmd"
             };
+
             foreach (var p in paths)
-                if (File.Exists(p)) return p;
+            {
+                if (File.Exists(p))
+                    return p;
+            }
+
             return null;
         }
     }

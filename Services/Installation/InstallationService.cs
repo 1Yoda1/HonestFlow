@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -37,8 +37,6 @@ namespace HonestFlow.Services.Installation
 
         public async Task<bool> CheckLmAndInstall(IPData selectedIP)
         {
-            using var operation = Logger.BeginOperation("Полный сценарий установки", nameof(InstallationService));
-            Logger.Info($"Выбранная ИП: ИНН={selectedIP?.Inn ?? "<не задан>"}, архитектура={selectedIP?.Architecture ?? "<не задана>"}", nameof(InstallationService));
             _progress.SetProgress(5, "Проверка локального модуля...");
 
             try
@@ -52,25 +50,29 @@ namespace HonestFlow.Services.Installation
                 {
                     _log.LogUser("ЛМ ЧЗ: не установлен", true);
                     _log.LogDebug("ЛМ ЧЗ не установлен или не отвечает");
-                    return await PerformInstallation(selectedIP, versions);
+                    return await PerformInstallation(selectedIP, versions, null, false, null);
                 }
 
                 _log.LogUser($"ЛМ ЧЗ: версия {status.Version}, статус: {status.Status}");
                 _log.LogDebug($"ЛМ активен: версия={status.Version}, статус={status.Status}, inn={status.Inn ?? "не задан"}");
 
+                bool forceLmInstall = false;
+                string lmPlanReason = null;
+
                 if (!string.IsNullOrEmpty(selectedIP.Inn) && !string.IsNullOrEmpty(status.Inn) && status.Inn != selectedIP.Inn)
                 {
-                    if (!await HandleInnMismatch(selectedIP, status.Inn, expectedLmVersion))
-                        return false;
+                    forceLmInstall = true;
+                    lmPlanReason = $"INN mismatch: в ЛМ {MaskInnForLog(status.Inn)}, ожидается {MaskInnForLog(selectedIP.Inn)}";
+                    _log.LogUser($"ИНН ЛМ ЧЗ не совпадает: в ЛМ {MaskInnForLog(status.Inn)}, нужно {MaskInnForLog(selectedIP.Inn)}", true);
+                    _log.LogDebug($"ЛМ ЧЗ будет передан в ветку forced reinstall из-за INN mismatch. {lmPlanReason}");
                 }
 
-                return await PerformInstallation(selectedIP, versions);
+                return await PerformInstallation(selectedIP, versions, status, forceLmInstall, lmPlanReason);
             }
             catch (Exception ex)
             {
                 _log.LogUser($"Ошибка: {ex.Message}", true);
                 _log.LogDebug($"Ошибка при проверке ЛМ: {ex.Message}\n{ex.StackTrace}");
-                Logger.LogException(ex, "Ошибка в сценарии CheckLmAndInstall", nameof(InstallationService));
                 MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
@@ -81,6 +83,15 @@ namespace HonestFlow.Services.Installation
             return _useGitHubMode ? ConfigManager.LoadVersionsFromGitHub() : ConfigManager.LoadVersions();
         }
 
+        private static string MaskInnForLog(string inn)
+        {
+            if (string.IsNullOrWhiteSpace(inn) || inn.Length < 6)
+                return inn ?? string.Empty;
+
+            return inn.Substring(0, 4) + new string('*', Math.Max(0, inn.Length - 6)) + inn.Substring(inn.Length - 2);
+        }
+
+        [Obsolete("INN mismatch теперь обрабатывается в LmModule через GUID/службы, без ручного ожидания по HTTP.")]
         private async Task<bool> HandleInnMismatch(IPData selectedIP, string currentInn, string expectedVersion)
         {
             _log.LogUser($"ИНН не совпадает! (ЛМ: {currentInn}, нужно: {selectedIP.Inn})", true);
@@ -143,12 +154,11 @@ namespace HonestFlow.Services.Installation
             return false;
         }
 
-        private async Task<bool> PerformInstallation(IPData selectedIP, VersionsData versions)
+        private async Task<bool> PerformInstallation(IPData selectedIP, VersionsData versions, LmStatus precheckedLmStatus, bool forceLmInstall, string lmPlanReason)
         {
-            using var operation = Logger.BeginOperation("Проверка и установка компонентов", nameof(InstallationService));
             _progress.SetProgress(10, "Проверка версий...");
 
-            var plan = await BuildInstallationPlan(selectedIP, versions);
+            var plan = await BuildInstallationPlan(selectedIP, versions, precheckedLmStatus, forceLmInstall, lmPlanReason);
             LogPlan(plan);
 
             if (!plan.HasWork)
@@ -178,11 +188,34 @@ namespace HonestFlow.Services.Installation
             return success;
         }
 
-        private async Task<InstallationPlan> BuildInstallationPlan(IPData selectedIP, VersionsData versions)
+        private async Task<InstallationPlan> BuildInstallationPlan(IPData selectedIP, VersionsData versions, LmStatus precheckedLmStatus, bool forceLmInstall, string lmPlanReason)
         {
             var plan = new InstallationPlan();
 
-            var (needLmInstall, lmStatusText) = await _lmValidator.GetLmStatusInfo(versions?.LmModule);
+            bool needLmInstall;
+            string lmStatusText;
+
+            if (forceLmInstall)
+            {
+                needLmInstall = true;
+                lmStatusText = lmPlanReason ?? "требуется переустановка ЛМ ЧЗ";
+                _log.LogDebug($"План ЛМ ЧЗ: принудительная установка. Причина: {lmStatusText}");
+            }
+            else if (precheckedLmStatus != null)
+            {
+                needLmInstall = precheckedLmStatus.Version != versions?.LmModule;
+                lmStatusText = needLmInstall
+                    ? $"версия {precheckedLmStatus.Version}, требуется {versions?.LmModule}"
+                    : $"OK, версия {precheckedLmStatus.Version}";
+                _log.LogDebug("План ЛМ ЧЗ построен по предварительной проверке, без повторного HTTP-запроса");
+            }
+            else
+            {
+                var lmInfo = await _lmValidator.GetLmStatusInfo(versions?.LmModule);
+                needLmInstall = lmInfo.Item1;
+                lmStatusText = lmInfo.Item2;
+            }
+
             plan.Items.Add(new ComponentPlanItem
             {
                 Component = InstallationComponent.LmModule,
@@ -236,7 +269,6 @@ namespace HonestFlow.Services.Installation
                 _log.LogUser($"{item.DisplayName}: {marker} {item.StatusText}");
             }
             _log.LogUser("======================");
-            Logger.Info($"План установки: всего={plan.Items.Count}, требуется={plan.RequiredCount}", nameof(InstallationService));
         }
 
         private async Task<bool> ResolveInstallerPaths(InstallationPlan plan, IPData selectedIP, VersionsData versions)
@@ -327,8 +359,6 @@ namespace HonestFlow.Services.Installation
 
         private async Task<bool> InstallComponent(ComponentPlanItem item, IPData selectedIP, VersionsData versions)
         {
-            using var operation = Logger.BeginOperation($"Установка компонента: {item.DisplayName}", nameof(InstallationService));
-            Logger.Info($"Компонент={item.Component}, файл={item.InstallerPath}, ожидаемая версия={item.ExpectedVersion ?? "<не задана>"}", nameof(InstallationService));
             _log.LogUser($"Установка: {item.DisplayName}...");
             _log.LogDebug($"Запуск: {item.InstallerPath}");
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -114,7 +114,6 @@ namespace HonestFlow.Infrastructure
                 catch (Exception ex)
                 {
                     Utils.Log($"⚠️ Попытка {attempt}: {ex.Message}");
-                    Logger.LogException(ex, $"Ошибка ожидания условия: {conditionName}, попытка {attempt}", nameof(LmModule));
                 }
 
                 // Прогрессивное увеличение интервала (1, 2, 3, 5, 5... сек)
@@ -137,7 +136,6 @@ namespace HonestFlow.Infrastructure
         /// </summary>
         private async Task<bool> StartServiceAndWaitForApi()
         {
-            using var operation = Logger.BeginOperation("Запуск службы Regime и ожидание API", nameof(LmModule));
             Utils.Log("🚀 Запуск службы Regime...");
             await WindowsServiceManager.StartService();
 
@@ -161,138 +159,147 @@ namespace HonestFlow.Infrastructure
         }
 
         /// <summary>
-        /// Главный метод: проверяет состояние ЛМ, при необходимости устанавливает/обновляет/инициализирует
+        /// Главный метод: проверяет состояние ЛМ по GUID, при необходимости устанавливает/обновляет/переинициализирует.
+        /// HTTP используется только после того, как понятно физическое состояние продукта в системе.
         /// </summary>
         public async Task<bool> EnsureInstalledAndInitialized(string token, string expectedInn)
         {
-            using var operation = Logger.BeginOperation("Проверка/установка/инициализация ЛМ ЧЗ", nameof(LmModule));
-            Logger.Info($"Ожидаемая версия ЛМ: {_expectedVersion}, ожидаемый ИНН: {expectedInn ?? "<не задан>"}", nameof(LmModule));
+            using var operation = Logger.BeginOperation("EnsureInstalledAndInitialized ЛМ ЧЗ", nameof(LmModule));
+
             Utils.Log("📦 Проверка ЛМ ЧЗ...");
 
-            // Получаем статус с повторными попытками
+            string installedGuid = _installer.GetInstalledGuid();
+            bool installedByGuid = !string.IsNullOrWhiteSpace(installedGuid);
+
+            if (!installedByGuid)
+            {
+                Utils.Log("❌ ЛМ ЧЗ не найден по GUID, запускаем чистую установку.");
+                await _installer.CleanInstall();
+                return await StartApiAndInitialize(token, "после чистой установки");
+            }
+
+            Utils.Log($"✓ ЛМ ЧЗ найден по GUID: {installedGuid}");
+
+            // Если продукт установлен, но API не отвечает — сначала пробуем поднять службу.
             var statusReady = await WaitForConditionAsync(
                 condition: IsStatusAvailable,
                 conditionName: "получение статуса ЛМ",
-                timeoutSeconds: 30,
+                timeoutSeconds: 20,
                 initialIntervalMs: 1000,
                 maxIntervalMs: 3000
             );
 
             if (!statusReady)
             {
-                Utils.Log("⚠️ Не удалось получить статус ЛМ, продолжаем с установкой...");
-            }
-
-            var actualStatus = await GetStatus();
-
-            if (actualStatus != null)
-            {
-                DetectApiVersion(actualStatus.Version);
-                Utils.Log($"✓ Активен: {actualStatus.Version}, статус: {actualStatus.Status}");
-
-                // Версия не совпадает → обновление
-                if (actualStatus.Version != _expectedVersion)
-                {
-                    Utils.Log($"⚠️ Версия {actualStatus.Version} != {_expectedVersion}, обновление...");
-                    Logger.Warning($"Версия ЛМ отличается: факт={actualStatus.Version}, ожидается={_expectedVersion}. Запуск переустановки.", nameof(LmModule));
-                    await _installer.ForceReinstall();
-
-                    if (!await StartServiceAndWaitForApi())
-                    {
-                        throw new Exception("API не доступен после обновления");
-                    }
-
-                    var initResult = await InitializeFull(token);
-                    if (!initResult.IsSuccess)
-                    {
-                        Utils.Log($"❌ Ошибка инициализации: {initResult.StatusCode} - {initResult.ErrorMessage}");
-                        return false;
-                    }
-                    return true;
-                }
-
-                // Уже инициализирован или готов
-                if (actualStatus.Status == "initialization" || actualStatus.Status == "ready")
-                {
-                    if (!string.IsNullOrEmpty(expectedInn) && !string.IsNullOrEmpty(actualStatus.Inn) && actualStatus.Inn != expectedInn)
-                    {
-                        MessageBox.Show(
-                            $"ЛМ ЧЗ инициализирован на ИНН {actualStatus.Inn}\nОжидался {expectedInn}\nУдалите вручную и запустите снова.",
-                            "Конфликт ИНН", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    }
-                    else
-                    {
-                        Utils.Log("✅ ЛМ ЧЗ готов");
-                    }
-                    return true;
-                }
-
-                // Не инициализирован → инициализация
-                if (actualStatus.Status == "not_configured")
-                {
-                    Utils.Log("⚠️ Не инициализирован, инициализируем...");
-                    var initResult = await InitializeFull(token);
-                    if (!initResult.IsSuccess)
-                    {
-                        Utils.Log($"❌ Ошибка инициализации: {initResult.StatusCode} - {initResult.ErrorMessage}");
-
-                        string userMessage = initResult.ErrorMessage;
-                        if (initResult.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                            userMessage = "Ошибка авторизации API. Проверьте учётные данные.";
-                        else if (initResult.StatusCode == System.Net.HttpStatusCode.BadRequest)
-                            userMessage = "Неверный токен. Проверьте правильность токена ЧЗ.";
-
-                        MessageBox.Show($"Не удалось инициализировать ЛМ ЧЗ:\n{userMessage}",
-                            "Ошибка инициализации", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return false;
-                    }
-                    return true;
-                }
-            }
-
-            // API не отвечает → проверяем, установлен ли ЛМ
-            string path = LmModuleInstaller.FindModulePath();
-            if (path != null && File.Exists(path))
-            {
-                Utils.Log($"✓ Найден по пути {path}, запускаем службу...");
+                Utils.Log("⚠️ ЛМ установлен, но API не отвечает. Пробуем запустить службу Regime...");
 
                 if (!await StartServiceAndWaitForApi())
                 {
-                    Utils.Log("❌ Не удалось запустить службу Regime");
+                    Utils.Log("❌ ЛМ установлен по GUID, но API не поднялся после запуска службы.");
                     return false;
                 }
-
-                actualStatus = await GetStatus();
-                if (actualStatus != null && actualStatus.Status == "not_configured")
-                {
-                    var initResult = await InitializeFull(token);
-                    if (!initResult.IsSuccess)
-                    {
-                        Utils.Log($"❌ Ошибка инициализации: {initResult.StatusCode} - {initResult.ErrorMessage}");
-                        return false;
-                    }
-                }
-                return true;
             }
 
-            // ЛМ не найден → чистая установка
-            Utils.Log("❌ ЛМ ЧЗ не найден, чистая установка.");
-            Logger.Warning("ЛМ ЧЗ не найден. Запуск чистой установки.", nameof(LmModule));
-            await _installer.ForceReinstall();
-
-            if (!await StartServiceAndWaitForApi())
+            var actualStatus = await GetStatus();
+            if (actualStatus == null)
             {
-                throw new Exception("API не доступен после установки");
-            }
-
-            var finalInit = await InitializeFull(token);
-            if (!finalInit.IsSuccess)
-            {
-                Utils.Log($"❌ Ошибка инициализации после установки: {finalInit.StatusCode} - {finalInit.ErrorMessage}");
+                Utils.Log("❌ Не удалось получить статус ЛМ после подтверждения установки.");
                 return false;
             }
 
-            return true;
+            DetectApiVersion(actualStatus.Version);
+            Utils.Log($"✓ Активен: {actualStatus.Version}, статус: {actualStatus.Status}, ИНН: {MaskInnForUi(actualStatus.Inn)}");
+
+            if (actualStatus.Version != _expectedVersion)
+            {
+                Utils.Log($"⚠️ Версия ЛМ {actualStatus.Version} != {_expectedVersion}. Запускаем переустановку старой версии.");
+                await _installer.ReinstallExisting($"старая версия {actualStatus.Version}, ожидается {_expectedVersion}");
+                return await StartApiAndInitialize(token, "после обновления версии ЛМ");
+            }
+
+            if ((actualStatus.Status == "initialization" || actualStatus.Status == "ready") &&
+                !string.IsNullOrWhiteSpace(expectedInn) &&
+                !string.IsNullOrWhiteSpace(actualStatus.Inn) &&
+                actualStatus.Inn != expectedInn)
+            {
+                Utils.Log($"⚠️ INN mismatch: в ЛМ {MaskInnForUi(actualStatus.Inn)}, ожидается {MaskInnForUi(expectedInn)}");
+
+                var answer = MessageBox.Show(
+                    $"ЛМ ЧЗ уже инициализирован на другой ИНН.\n\n" +
+                    $"В ЛМ: {actualStatus.Inn}\n" +
+                    $"Ожидается: {expectedInn}\n\n" +
+                    "Удалить текущий ЛМ ЧЗ и установить заново?",
+                    "Конфликт ИНН ЛМ ЧЗ",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (answer != DialogResult.Yes)
+                {
+                    Utils.Log("⚠️ Пользователь отменил переустановку ЛМ ЧЗ из-за конфликта ИНН.");
+                    return false;
+                }
+
+                await _installer.ReinstallBecauseInnMismatch(actualStatus.Inn, expectedInn);
+                return await StartApiAndInitialize(token, "после forced reinstall из-за INN mismatch");
+            }
+
+            if (actualStatus.Status == "initialization" || actualStatus.Status == "ready")
+            {
+                Utils.Log("✅ ЛМ ЧЗ готов");
+                return true;
+            }
+
+            if (actualStatus.Status == "not_configured")
+            {
+                Utils.Log("⚠️ ЛМ ЧЗ установлен, но не инициализирован. Запускаем init...");
+                return await InitializeAndReport(token, "инициализация установленного ЛМ");
+            }
+
+            Utils.Log($"⚠️ Неожиданный статус ЛМ ЧЗ: {actualStatus.Status}. Пробуем инициализацию.");
+            return await InitializeAndReport(token, $"инициализация при статусе {actualStatus.Status}");
+        }
+
+        private async Task<bool> StartApiAndInitialize(string token, string context)
+        {
+            Utils.Log($"🚀 Запуск API ЛМ ЧЗ {context}...");
+
+            if (!await StartServiceAndWaitForApi())
+            {
+                throw new Exception($"API ЛМ ЧЗ не доступен {context}");
+            }
+
+            return await InitializeAndReport(token, context);
+        }
+
+        private async Task<bool> InitializeAndReport(string token, string context)
+        {
+            var initResult = await InitializeFull(token);
+            if (initResult.IsSuccess)
+            {
+                Utils.Log($"✅ Инициализация ЛМ ЧЗ успешна: {context}");
+                return true;
+            }
+
+            Utils.Log($"❌ Ошибка инициализации ЛМ ЧЗ ({context}): {initResult.StatusCode} - {initResult.ErrorMessage}");
+
+            string userMessage = initResult.ErrorMessage;
+            if (initResult.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                userMessage = "Ошибка авторизации API. Проверьте учётные данные.";
+            else if (initResult.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                userMessage = "Неверный токен. Проверьте правильность токена ЧЗ.";
+
+            MessageBox.Show($"Не удалось инициализировать ЛМ ЧЗ:\n{userMessage}",
+                "Ошибка инициализации", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+            return false;
+        }
+
+        private static string MaskInnForUi(string inn)
+        {
+            if (string.IsNullOrWhiteSpace(inn) || inn.Length < 6)
+                return inn ?? string.Empty;
+
+            return inn.Substring(0, 4) + new string('*', Math.Max(0, inn.Length - 6)) + inn.Substring(inn.Length - 2);
         }
     }
 }

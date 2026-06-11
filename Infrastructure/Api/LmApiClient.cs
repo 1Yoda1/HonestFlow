@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
@@ -11,6 +12,8 @@ namespace HonestFlow.Infrastructure.Api
 {
     public class LmApiClient : IDisposable
     {
+        private const string ModuleName = nameof(LmApiClient);
+
         private HttpClient _client;
         private string _apiVersion = "v2";
         private readonly bool _enableDetailedLogging;
@@ -29,57 +32,43 @@ namespace HonestFlow.Infrastructure.Api
             {
                 if (_client == null || _isDisposed)
                 {
-                    _client = new HttpClient
-                    {
-                        Timeout = TimeSpan.FromSeconds(10)
-                    };
+                    _client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
                     _isDisposed = false;
 
                     if (_enableDetailedLogging)
-                        Logger.LogToFile("[DEBUG] HttpClient создан", false);
+                        Logger.DebugLog("HttpClient создан", ModuleName);
                 }
             }
         }
 
         private string GetApiUrl(string endpoint) => $"http://127.0.0.1:5995/api/{_apiVersion}/{endpoint}";
+
         private static string GetAuthHeader() => Convert.ToBase64String(Encoding.UTF8.GetBytes("admin:admin"));
 
         private void LogRequest(string method, string url, string requestBody = null)
         {
-            if (!_enableDetailedLogging) return;
+            if (!_enableDetailedLogging)
+                return;
 
-            Logger.LogToFile($"┌───────────── HTTP ЗАПРОС ─────────────", false);
-            Logger.LogToFile($"│ {method} {url}", false);
-            if (!string.IsNullOrEmpty(requestBody))
-            {
-                var truncated = requestBody.Length > 500 ? string.Concat(requestBody.AsSpan(0, 500), "...") : requestBody;
-                Logger.LogToFile($"│ Body: {truncated}", false);
-            }
+            Logger.DebugLog($"HTTP {method} {url}" + (string.IsNullOrWhiteSpace(requestBody) ? string.Empty : $" | Body: {requestBody}"), "HTTP");
         }
 
-        private void LogResponse(HttpStatusCode statusCode, string responseBody, double durationMs, bool isError = false)
+        private void LogResponse(string method, string url, HttpStatusCode statusCode, string responseBody, double durationMs, bool isError = false)
         {
-            if (!_enableDetailedLogging) return;
+            if (!_enableDetailedLogging)
+                return;
 
-            var statusIcon = isError ? "❌" : (int)statusCode < 400 ? "✅" : "⚠️";
-            Logger.LogToFile($"│ {statusIcon} Ответ: {(int)statusCode} {statusCode} ({durationMs:F0} мс)", false);
-
-            if (!string.IsNullOrEmpty(responseBody) && _enableDetailedLogging)
-            {
-                var truncated = responseBody.Length > 500 ? string.Concat(responseBody.AsSpan(0, 500), "...") : responseBody;
-                Logger.LogToFile($"│ Body: {truncated}", false);
-            }
-            Logger.LogToFile($"└─────────────────────────────────────────", false);
+            Logger.LogHttp(method, url, (int)statusCode, statusCode.ToString(), durationMs, isError, responseBody);
         }
 
-        private async Task<ApiResponse<T>> GetAsync<T>(string endpoint)
+        private async Task<ApiResponse<T>> GetAsync<T>(string endpoint, bool detailedRequestLogging = true)
         {
             EnsureClientCreated();
-
             var url = GetApiUrl(endpoint);
             var stopwatch = Stopwatch.StartNew();
 
-            LogRequest("GET", url);
+            if (detailedRequestLogging)
+                LogRequest("GET", url);
 
             try
             {
@@ -90,7 +79,8 @@ namespace HonestFlow.Infrastructure.Api
                 var durationMs = stopwatch.Elapsed.TotalMilliseconds;
                 var responseBody = await resp.Content.ReadAsStringAsync();
 
-                LogResponse(resp.StatusCode, responseBody, durationMs, !resp.IsSuccessStatusCode);
+                if (detailedRequestLogging)
+                    LogResponse("GET", url, resp.StatusCode, responseBody, durationMs, !resp.IsSuccessStatusCode);
 
                 if (resp.IsSuccessStatusCode)
                 {
@@ -101,10 +91,7 @@ namespace HonestFlow.Infrastructure.Api
                     }
                     catch (JsonException jsonEx)
                     {
-                        // ❌ Повреждённый JSON
-                        Logger.LogToFile($"❌ JSON повреждён: {jsonEx.Message}", true);
-                        Logger.LogToFile($"   Получено: {responseBody?.Substring(0, Math.Min(500, responseBody?.Length ?? 0))}", true);
-
+                        Logger.Error($"JSON повреждён: {jsonEx.Message} | Получено: {Truncate(responseBody, 500)}", ModuleName);
                         return ApiResponse<T>.Failure(
                             HttpStatusCode.InternalServerError,
                             $"Ошибка парсинга JSON: {jsonEx.Message}",
@@ -117,27 +104,23 @@ namespace HonestFlow.Infrastructure.Api
             }
             catch (JsonException jsonEx)
             {
-                // Глобальный перехват на всякий случай
                 var durationMs = stopwatch.Elapsed.TotalMilliseconds;
-                Logger.LogToFile($"❌ JSON исключение: {jsonEx.Message}", true);
+                Logger.Error($"JSON исключение: {jsonEx.Message}", ModuleName);
                 return ApiResponse<T>.Failure(HttpStatusCode.InternalServerError, $"JSON ошибка: {jsonEx.Message}", null, durationMs);
             }
             catch (ObjectDisposedException)
             {
-                var durationMs = stopwatch.Elapsed.TotalMilliseconds;
-                Logger.LogToFile($"│ ❌ HttpClient уничтожен, пересоздаём...", true);
-                Logger.LogToFile($"└─────────────────────────────────────────", true);
-
                 _isDisposed = true;
                 EnsureClientCreated();
-
-                return await GetAsync<T>(endpoint);
+                Logger.Warning("HttpClient был уничтожен, пересоздан. Повторяем GET", ModuleName);
+                return await GetAsync<T>(endpoint, detailedRequestLogging);
             }
             catch (Exception ex)
             {
                 var durationMs = stopwatch.Elapsed.TotalMilliseconds;
-                Logger.LogToFile($"│ ❌ ИСКЛЮЧЕНИЕ: {ex.Message}", true);
-                Logger.LogToFile($"└─────────────────────────────────────────", true);
+
+                if (detailedRequestLogging)
+                    Logger.Error($"HTTP GET {url} -> исключение за {durationMs:F0} мс: {ex.Message}", "HTTP");
 
                 return ApiResponse<T>.Failure(HttpStatusCode.ServiceUnavailable, ex.Message, null, durationMs);
             }
@@ -146,10 +129,9 @@ namespace HonestFlow.Infrastructure.Api
         private async Task<ApiSimpleResponse> PostAsync(string endpoint, object data)
         {
             EnsureClientCreated();
-
             var url = GetApiUrl(endpoint);
             var json = JsonConvert.SerializeObject(data);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
             var stopwatch = Stopwatch.StartNew();
 
             LogRequest("POST", url, json);
@@ -164,41 +146,36 @@ namespace HonestFlow.Infrastructure.Api
                 var durationMs = stopwatch.Elapsed.TotalMilliseconds;
                 var responseBody = await resp.Content.ReadAsStringAsync();
 
-                LogResponse(resp.StatusCode, responseBody, durationMs, !resp.IsSuccessStatusCode);
+                LogResponse("POST", url, resp.StatusCode, responseBody, durationMs, !resp.IsSuccessStatusCode);
 
                 if (resp.IsSuccessStatusCode)
-                {
                     return ApiSimpleResponse.Success(resp.StatusCode, responseBody, durationMs);
-                }
 
                 string errorMessage = $"HTTP {(int)resp.StatusCode}";
                 try
                 {
-                    var errorObj = JsonConvert.DeserializeObject<dynamic>(responseBody);
+                    dynamic errorObj = JsonConvert.DeserializeObject(responseBody);
                     if (errorObj?.message != null)
                         errorMessage = errorObj.message.ToString();
                 }
-                catch { }
+                catch
+                {
+                    // Не смогли разобрать тело ошибки — оставляем HTTP-код.
+                }
 
                 return ApiSimpleResponse.Failure(resp.StatusCode, errorMessage, responseBody, durationMs);
             }
             catch (ObjectDisposedException)
             {
-                var durationMs = stopwatch.Elapsed.TotalMilliseconds;
-                Logger.LogToFile($"│ ❌ HttpClient уничтожен, пересоздаём...", true);
-                Logger.LogToFile($"└─────────────────────────────────────────", true);
-
                 _isDisposed = true;
                 EnsureClientCreated();
-
+                Logger.Warning("HttpClient был уничтожен, пересоздан. Повторяем POST", ModuleName);
                 return await PostAsync(endpoint, data);
             }
             catch (Exception ex)
             {
                 var durationMs = stopwatch.Elapsed.TotalMilliseconds;
-                Logger.LogToFile($"│ ❌ ИСКЛЮЧЕНИЕ: {ex.Message}", true);
-                Logger.LogToFile($"└─────────────────────────────────────────", true);
-
+                Logger.Error($"HTTP POST {url} -> исключение за {durationMs:F0} мс: {ex.Message}", "HTTP");
                 return ApiSimpleResponse.Failure(HttpStatusCode.ServiceUnavailable, ex.Message, null, durationMs);
             }
         }
@@ -206,11 +183,13 @@ namespace HonestFlow.Infrastructure.Api
         public async Task<bool> IsApiAvailable()
         {
             EnsureClientCreated();
-
             string[] versions = { "v2", "v1" };
-            foreach (var v in versions)
+            var failedVersions = new List<string>();
+            var stopwatch = Stopwatch.StartNew();
+
+            foreach (var version in versions)
             {
-                var url = $"http://127.0.0.1:5995/api/{v}/status";
+                var url = $"http://127.0.0.1:5995/api/{version}/status";
 
                 try
                 {
@@ -220,41 +199,48 @@ namespace HonestFlow.Infrastructure.Api
                     using var resp = await _client.SendAsync(req);
                     if (resp.IsSuccessStatusCode)
                     {
-                        _apiVersion = v;
+                        _apiVersion = version;
+                        Logger.DebugLog($"API ЛМ доступен: {version} ({stopwatch.Elapsed.TotalMilliseconds:F0} мс)", ModuleName);
                         return true;
                     }
+
+                    failedVersions.Add($"{version}: HTTP {(int)resp.StatusCode}");
                 }
                 catch (ObjectDisposedException)
                 {
                     _isDisposed = true;
                     EnsureClientCreated();
+                    Logger.Warning("HttpClient был уничтожен, пересоздан. Повторяем проверку API", ModuleName);
                     return await IsApiAvailable();
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogToFile($"IsApiAvailable ошибка для версии {v}: {ex.Message}", true);
+                    failedVersions.Add($"{version}: {ex.Message}");
                 }
             }
+
+            Logger.LogHttpPolling($"API ЛМ пока недоступен ({string.Join("; ", failedVersions)})", ModuleName);
             return false;
         }
 
         public async Task<ApiResponse<LmStatus>> GetStatus()
         {
             EnsureClientCreated();
-
             string[] versions = { _apiVersion, "v2", "v1" };
-            var triedVersions = new System.Collections.Generic.HashSet<string>();
+            var triedVersions = new HashSet<string>();
+            var failures = new List<string>();
 
-            foreach (var v in versions)
+            foreach (var version in versions)
             {
-                if (triedVersions.Contains(v)) continue;
-                triedVersions.Add(v);
+                if (triedVersions.Contains(version))
+                    continue;
 
+                triedVersions.Add(version);
                 var originalVersion = _apiVersion;
-                _apiVersion = v;
+                _apiVersion = version;
 
-                var result = await GetAsync<LmStatus>("status");
-
+                bool detailed = failures.Count == 0;
+                var result = await GetAsync<LmStatus>("status", detailedRequestLogging: detailed);
                 if (result.IsSuccess && result.Data != null)
                 {
                     if (result.Data.Version != null && result.Data.Version.StartsWith("1."))
@@ -263,9 +249,11 @@ namespace HonestFlow.Infrastructure.Api
                     return result;
                 }
 
+                failures.Add($"{version}: {result.ErrorMessage}");
                 _apiVersion = originalVersion;
             }
 
+            Logger.DebugLog($"Статус ЛМ не получен ({string.Join("; ", failures)})", ModuleName);
             return ApiResponse<LmStatus>.Failure(HttpStatusCode.ServiceUnavailable, "API не доступен", null, 0);
         }
 
@@ -278,7 +266,6 @@ namespace HonestFlow.Infrastructure.Api
         public async Task<ApiSimpleResponse> InitializeFull(string token)
         {
             EnsureClientCreated();
-
             var data = new { token };
             return await PostAsync("init", data);
         }
@@ -300,9 +287,17 @@ namespace HonestFlow.Infrastructure.Api
                     _isDisposed = true;
 
                     if (_enableDetailedLogging)
-                        Logger.LogToFile("[DEBUG] HttpClient уничтожен", false);
+                        Logger.DebugLog("HttpClient уничтожен", ModuleName);
                 }
             }
+        }
+
+        private static string Truncate(string text, int maxLength)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+                return text;
+
+            return text.Substring(0, maxLength) + "...";
         }
     }
 }
