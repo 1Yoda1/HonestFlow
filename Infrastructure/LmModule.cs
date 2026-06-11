@@ -114,6 +114,7 @@ namespace HonestFlow.Infrastructure
                 catch (Exception ex)
                 {
                     Utils.Log($"⚠️ Попытка {attempt}: {ex.Message}");
+                    Logger.LogException(ex, $"Ошибка ожидания условия: {conditionName}, попытка {attempt}", nameof(LmModule));
                 }
 
                 // Прогрессивное увеличение интервала (1, 2, 3, 5, 5... сек)
@@ -136,6 +137,7 @@ namespace HonestFlow.Infrastructure
         /// </summary>
         private async Task<bool> StartServiceAndWaitForApi()
         {
+            using var operation = Logger.BeginOperation("Запуск службы Regime и ожидание API", nameof(LmModule));
             Utils.Log("🚀 Запуск службы Regime...");
             await WindowsServiceManager.StartService();
 
@@ -163,6 +165,8 @@ namespace HonestFlow.Infrastructure
         /// </summary>
         public async Task<bool> EnsureInstalledAndInitialized(string token, string expectedInn)
         {
+            using var operation = Logger.BeginOperation("Проверка/установка/инициализация ЛМ ЧЗ", nameof(LmModule));
+            Logger.Info($"Ожидаемая версия ЛМ: {_expectedVersion}, ожидаемый ИНН: {expectedInn ?? "<не задан>"}", nameof(LmModule));
             Utils.Log("📦 Проверка ЛМ ЧЗ...");
 
             // Получаем статус с повторными попытками
@@ -190,6 +194,7 @@ namespace HonestFlow.Infrastructure
                 if (actualStatus.Version != _expectedVersion)
                 {
                     Utils.Log($"⚠️ Версия {actualStatus.Version} != {_expectedVersion}, обновление...");
+                    Logger.Warning($"Версия ЛМ отличается: факт={actualStatus.Version}, ожидается={_expectedVersion}. Запуск переустановки.", nameof(LmModule));
                     await _installer.ForceReinstall();
 
                     if (!await StartServiceAndWaitForApi())
@@ -272,6 +277,7 @@ namespace HonestFlow.Infrastructure
 
             // ЛМ не найден → чистая установка
             Utils.Log("❌ ЛМ ЧЗ не найден, чистая установка.");
+            Logger.Warning("ЛМ ЧЗ не найден. Запуск чистой установки.", nameof(LmModule));
             await _installer.ForceReinstall();
 
             if (!await StartServiceAndWaitForApi())

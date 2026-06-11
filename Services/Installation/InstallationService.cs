@@ -37,6 +37,8 @@ namespace HonestFlow.Services.Installation
 
         public async Task<bool> CheckLmAndInstall(IPData selectedIP)
         {
+            using var operation = Logger.BeginOperation("Полный сценарий установки", nameof(InstallationService));
+            Logger.Info($"Выбранная ИП: ИНН={selectedIP?.Inn ?? "<не задан>"}, архитектура={selectedIP?.Architecture ?? "<не задана>"}", nameof(InstallationService));
             _progress.SetProgress(5, "Проверка локального модуля...");
 
             try
@@ -68,6 +70,7 @@ namespace HonestFlow.Services.Installation
             {
                 _log.LogUser($"Ошибка: {ex.Message}", true);
                 _log.LogDebug($"Ошибка при проверке ЛМ: {ex.Message}\n{ex.StackTrace}");
+                Logger.LogException(ex, "Ошибка в сценарии CheckLmAndInstall", nameof(InstallationService));
                 MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
@@ -142,6 +145,7 @@ namespace HonestFlow.Services.Installation
 
         private async Task<bool> PerformInstallation(IPData selectedIP, VersionsData versions)
         {
+            using var operation = Logger.BeginOperation("Проверка и установка компонентов", nameof(InstallationService));
             _progress.SetProgress(10, "Проверка версий...");
 
             var plan = await BuildInstallationPlan(selectedIP, versions);
@@ -232,6 +236,7 @@ namespace HonestFlow.Services.Installation
                 _log.LogUser($"{item.DisplayName}: {marker} {item.StatusText}");
             }
             _log.LogUser("======================");
+            Logger.Info($"План установки: всего={plan.Items.Count}, требуется={plan.RequiredCount}", nameof(InstallationService));
         }
 
         private async Task<bool> ResolveInstallerPaths(InstallationPlan plan, IPData selectedIP, VersionsData versions)
@@ -322,6 +327,8 @@ namespace HonestFlow.Services.Installation
 
         private async Task<bool> InstallComponent(ComponentPlanItem item, IPData selectedIP, VersionsData versions)
         {
+            using var operation = Logger.BeginOperation($"Установка компонента: {item.DisplayName}", nameof(InstallationService));
+            Logger.Info($"Компонент={item.Component}, файл={item.InstallerPath}, ожидаемая версия={item.ExpectedVersion ?? "<не задана>"}", nameof(InstallationService));
             _log.LogUser($"Установка: {item.DisplayName}...");
             _log.LogDebug($"Запуск: {item.InstallerPath}");
 

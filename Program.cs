@@ -9,12 +9,22 @@ namespace HonestFlow
         [STAThread]
         static void Main()
         {
+            try
             {
                 Logger.Initialize();
-                // Настройка приложения (для .NET 6+)
+                Logger.Info("Запуск приложения", nameof(Program));
+
                 System.Windows.Forms.Application.EnableVisualStyles();
                 System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
                 System.Windows.Forms.Application.Run(new MainForm());
+
+                Logger.Info("Приложение закрыто", nameof(Program));
+            }
+            catch (Exception ex)
+            {
+                Logger.LogException(ex, "Критическая ошибка при запуске приложения", nameof(Program));
+                MessageBox.Show($"Критическая ошибка:\n{ex.Message}\n\nЛог: {Logger.GetLogPath()}",
+                    "HonestFlow", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

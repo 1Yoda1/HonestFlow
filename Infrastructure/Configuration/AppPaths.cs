@@ -16,5 +16,13 @@ namespace HonestFlow.Infrastructure
         public static string GitHubCacheFolder => Path.Combine(BaseFolder, "GitHubCache");
         public static string ProgramDataFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "HonestFlow");
         public static string LogsFolder => Path.Combine(ProgramDataFolder, "logs");
+        public static string DiagnosticsFolder => Path.Combine(ProgramDataFolder, "diagnostics");
+
+        public static void EnsureRuntimeFolders()
+        {
+            Directory.CreateDirectory(ProgramDataFolder);
+            Directory.CreateDirectory(LogsFolder);
+            Directory.CreateDirectory(DiagnosticsFolder);
+        }
     }
 }
