@@ -17,14 +17,17 @@ namespace HonestFlow.Infrastructure.Installers
             _controllerPath = controllerPath;
         }
 
-        /// <summary>
-        /// Установка ЕСМ
-        /// </summary>
         public async Task<bool> InstallEsm()
         {
+            if (string.IsNullOrEmpty(_esmPath))
+            {
+                Utils.Log("⚠️ Путь к ЕСМ не указан", true);
+                return false;
+            }
+
             if (!File.Exists(_esmPath))
             {
-                Utils.Log("⚠️ Файл ЕСМ не найден", true);
+                Utils.Log($"⚠️ Файл ЕСМ не найден: {_esmPath}", true);
                 return false;
             }
 
@@ -32,14 +35,17 @@ namespace HonestFlow.Infrastructure.Installers
             return code == 0;
         }
 
-        /// <summary>
-        /// Установка Контроллера
-        /// </summary>
         public async Task<bool> InstallController()
         {
+            if (string.IsNullOrEmpty(_controllerPath))
+            {
+                Utils.Log("⚠️ Путь к Контроллеру не указан", true);
+                return false;
+            }
+
             if (!File.Exists(_controllerPath))
             {
-                Utils.Log("⚠️ Файл Контроллера не найден", true);
+                Utils.Log($"⚠️ Файл Контроллера не найден: {_controllerPath}", true);
                 return false;
             }
 

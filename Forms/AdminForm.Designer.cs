@@ -14,21 +14,6 @@ namespace HonestFlow
         private void InitializeComponent()
         {
             this.tabControl1 = new System.Windows.Forms.TabControl();
-            this.tabIps = new System.Windows.Forms.TabPage();
-            this.dataGridViewIps = new System.Windows.Forms.DataGridView();
-            this.btnAddIp = new System.Windows.Forms.Button();
-            this.btnEditIp = new System.Windows.Forms.Button();
-            this.btnDeleteIp = new System.Windows.Forms.Button();
-            this.tabVersions = new System.Windows.Forms.TabPage();
-            this.txtLmVersion = new System.Windows.Forms.TextBox();
-            this.label1 = new System.Windows.Forms.Label();
-            this.txtAtolVersion = new System.Windows.Forms.TextBox();
-            this.label2 = new System.Windows.Forms.Label();
-            this.txtEsmVersion = new System.Windows.Forms.TextBox();
-            this.label3 = new System.Windows.Forms.Label();
-            this.txtControllerVersion = new System.Windows.Forms.TextBox();
-            this.label4 = new System.Windows.Forms.Label();
-            this.btnSaveVersions = new System.Windows.Forms.Button();
             this.tabService = new System.Windows.Forms.TabPage();
             this.groupBoxService = new System.Windows.Forms.GroupBox();
             this.btnStopService = new System.Windows.Forms.Button();
@@ -43,17 +28,12 @@ namespace HonestFlow
             this.btnCopySystemInfo = new System.Windows.Forms.Button();
 
             this.tabControl1.SuspendLayout();
-            this.tabIps.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.dataGridViewIps)).BeginInit();
-            this.tabVersions.SuspendLayout();
             this.tabService.SuspendLayout();
             this.groupBoxService.SuspendLayout();
             this.tabSystemInfo.SuspendLayout();
             this.SuspendLayout();
 
             // tabControl1
-            this.tabControl1.Controls.Add(this.tabIps);
-            this.tabControl1.Controls.Add(this.tabVersions);
             this.tabControl1.Controls.Add(this.tabService);
             this.tabControl1.Controls.Add(this.tabSystemInfo);
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -62,102 +42,6 @@ namespace HonestFlow
             this.tabControl1.SelectedIndex = 0;
             this.tabControl1.Size = new System.Drawing.Size(750, 550);
             this.tabControl1.TabIndex = 0;
-
-            // ========== ВКЛАДКА "ИП" ==========
-            this.tabIps.Controls.Add(this.dataGridViewIps);
-            this.tabIps.Controls.Add(this.btnAddIp);
-            this.tabIps.Controls.Add(this.btnEditIp);
-            this.tabIps.Controls.Add(this.btnDeleteIp);
-            this.tabIps.Location = new System.Drawing.Point(4, 24);
-            this.tabIps.Name = "tabIps";
-            this.tabIps.Size = new System.Drawing.Size(742, 522);
-            this.tabIps.Text = "📋 ИП";
-            this.tabIps.UseVisualStyleBackColor = true;
-
-            this.dataGridViewIps.Dock = System.Windows.Forms.DockStyle.Top;
-            this.dataGridViewIps.Location = new System.Drawing.Point(0, 0);
-            this.dataGridViewIps.Size = new System.Drawing.Size(742, 350);
-            this.dataGridViewIps.TabIndex = 0;
-            this.dataGridViewIps.AllowUserToAddRows = false;
-            this.dataGridViewIps.AllowUserToDeleteRows = false;
-            this.dataGridViewIps.AllowUserToOrderColumns = true;
-            this.dataGridViewIps.AutoSizeColumnsMode = System.Windows.Forms.DataGridViewAutoSizeColumnsMode.Fill;
-
-            this.btnAddIp.Location = new System.Drawing.Point(12, 370);
-            this.btnAddIp.Size = new System.Drawing.Size(100, 35);
-            this.btnAddIp.Text = "➕ Добавить";
-            this.btnAddIp.UseVisualStyleBackColor = true;
-            this.btnAddIp.Click += new System.EventHandler(this.BtnAddIp_Click);
-
-            this.btnEditIp.Location = new System.Drawing.Point(120, 370);
-            this.btnEditIp.Size = new System.Drawing.Size(100, 35);
-            this.btnEditIp.Text = "✏️ Редактировать";
-            this.btnEditIp.UseVisualStyleBackColor = true;
-            this.btnEditIp.Click += new System.EventHandler(this.BtnEditIp_Click);
-
-            this.btnDeleteIp.Location = new System.Drawing.Point(230, 370);
-            this.btnDeleteIp.Size = new System.Drawing.Size(100, 35);
-            this.btnDeleteIp.Text = "🗑️ Удалить";
-            this.btnDeleteIp.UseVisualStyleBackColor = true;
-            this.btnDeleteIp.Click += new System.EventHandler(this.BtnDeleteIp_Click);
-
-            // ========== ВКЛАДКА "ВЕРСИИ" ==========
-            this.tabVersions.Controls.Add(this.txtLmVersion);
-            this.tabVersions.Controls.Add(this.label1);
-            this.tabVersions.Controls.Add(this.txtAtolVersion);
-            this.tabVersions.Controls.Add(this.label2);
-            this.tabVersions.Controls.Add(this.txtEsmVersion);
-            this.tabVersions.Controls.Add(this.label3);
-            this.tabVersions.Controls.Add(this.txtControllerVersion);
-            this.tabVersions.Controls.Add(this.label4);
-            this.tabVersions.Controls.Add(this.btnSaveVersions);
-            this.tabVersions.Location = new System.Drawing.Point(4, 24);
-            this.tabVersions.Name = "tabVersions";
-            this.tabVersions.Size = new System.Drawing.Size(742, 522);
-            this.tabVersions.Text = "📦 Версии";
-            this.tabVersions.UseVisualStyleBackColor = true;
-
-            this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(30, 35);
-            this.label1.Size = new System.Drawing.Size(110, 15);
-            this.label1.Text = "Локальный модуль ЧЗ:";
-
-            this.txtLmVersion.Location = new System.Drawing.Point(170, 32);
-            this.txtLmVersion.Size = new System.Drawing.Size(300, 23);
-            this.txtLmVersion.Font = new System.Drawing.Font("Consolas", 9F);
-
-            this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(30, 75);
-            this.label2.Size = new System.Drawing.Size(90, 15);
-            this.label2.Text = "Драйвер АТОЛ:";
-
-            this.txtAtolVersion.Location = new System.Drawing.Point(170, 72);
-            this.txtAtolVersion.Size = new System.Drawing.Size(300, 23);
-            this.txtAtolVersion.Font = new System.Drawing.Font("Consolas", 9F);
-
-            this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(30, 115);
-            this.label3.Size = new System.Drawing.Size(35, 15);
-            this.label3.Text = "ЕСМ:";
-
-            this.txtEsmVersion.Location = new System.Drawing.Point(170, 112);
-            this.txtEsmVersion.Size = new System.Drawing.Size(300, 23);
-            this.txtEsmVersion.Font = new System.Drawing.Font("Consolas", 9F);
-
-            this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(30, 155);
-            this.label4.Size = new System.Drawing.Size(75, 15);
-            this.label4.Text = "Контроллер:";
-
-            this.txtControllerVersion.Location = new System.Drawing.Point(170, 152);
-            this.txtControllerVersion.Size = new System.Drawing.Size(300, 23);
-            this.txtControllerVersion.Font = new System.Drawing.Font("Consolas", 9F);
-
-            this.btnSaveVersions.Location = new System.Drawing.Point(170, 200);
-            this.btnSaveVersions.Size = new System.Drawing.Size(120, 35);
-            this.btnSaveVersions.Text = "💾 Сохранить";
-            this.btnSaveVersions.UseVisualStyleBackColor = true;
-            this.btnSaveVersions.Click += new System.EventHandler(this.BtnSaveVersions_Click);
 
             // ========== ВКЛАДКА "СЕРВИС" ==========
             this.tabService.Controls.Add(this.groupBoxService);
@@ -275,14 +159,10 @@ namespace HonestFlow
             this.MaximizeBox = false;
             this.Name = "AdminForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "🔧 Админ-панель HonestFlow";
+            this.Text = "🔧 Диагностика HonestFlow";
             this.Icon = null;
 
             this.tabControl1.ResumeLayout(false);
-            this.tabIps.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.dataGridViewIps)).EndInit();
-            this.tabVersions.ResumeLayout(false);
-            this.tabVersions.PerformLayout();
             this.tabService.ResumeLayout(false);
             this.groupBoxService.ResumeLayout(false);
             this.groupBoxService.PerformLayout();
@@ -290,23 +170,7 @@ namespace HonestFlow
             this.ResumeLayout(false);
         }
 
-        // ========== ОБЪЯВЛЕНИЯ КОМПОНЕНТОВ ==========
         private System.Windows.Forms.TabControl tabControl1;
-        private System.Windows.Forms.TabPage tabIps;
-        private System.Windows.Forms.DataGridView dataGridViewIps;
-        private System.Windows.Forms.Button btnAddIp;
-        private System.Windows.Forms.Button btnEditIp;
-        private System.Windows.Forms.Button btnDeleteIp;
-        private System.Windows.Forms.TabPage tabVersions;
-        private System.Windows.Forms.TextBox txtLmVersion;
-        private System.Windows.Forms.Label label1;
-        private System.Windows.Forms.TextBox txtAtolVersion;
-        private System.Windows.Forms.Label label2;
-        private System.Windows.Forms.TextBox txtEsmVersion;
-        private System.Windows.Forms.Label label3;
-        private System.Windows.Forms.TextBox txtControllerVersion;
-        private System.Windows.Forms.Label label4;
-        private System.Windows.Forms.Button btnSaveVersions;
         private System.Windows.Forms.TabPage tabService;
         private System.Windows.Forms.GroupBox groupBoxService;
         private System.Windows.Forms.Button btnStopService;

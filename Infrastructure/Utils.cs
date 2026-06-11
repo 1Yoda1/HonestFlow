@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -26,7 +26,6 @@ namespace HonestFlow.Infrastructure
             LogBox.SelectionColor = isError ? Color.Red : Color.LightGreen;
             LogBox.Select(LogBox.TextLength, 0);
             LogBox.ScrollToCaret();
-            Application.DoEvents();
             Logger.LogToFile(message, isError);
         }
 

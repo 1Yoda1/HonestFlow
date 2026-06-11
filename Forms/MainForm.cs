@@ -1,13 +1,14 @@
+using HonestFlow.Application.Bootstrap;
 using HonestFlow.Infrastructure;
+using HonestFlow.Models;
 using HonestFlow.Services.Auth;
 using HonestFlow.Services.Core;
 using HonestFlow.Services.Installation;
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
-
-
 
 namespace HonestFlow
 {
@@ -15,8 +16,11 @@ namespace HonestFlow
     {
         private readonly ILogService _logService;
         private readonly IProgressService _progressService;
-        private readonly IAuthService _authService;
-        private readonly IInstallationService _installationService;
+        private IAuthService _authService;
+        private IInstallationService _installationService;
+        private bool _useGitHubMode = false;
+        private List<IPData> _gitHubIps;
+        private VersionsData _gitHubVersions;
 
         private Form _logForm;
 
@@ -24,27 +28,27 @@ namespace HonestFlow
         {
             InitializeComponent();
 
-            // Инициализация сервисов
             _logService = new LogService();
             _progressService = new ProgressService(progressBar, lblStatus);
-            _authService = new AuthService(_logService);
-            _installationService = new InstallationService(_logService, _progressService);
 
-            // Загрузка данных
-            _authService.LoadIpList();
+            var startup = new ApplicationStartupService(_logService, _progressService).Start();
+            _useGitHubMode = startup.UseGitHubMode;
+            _gitHubIps = startup.GitHubIps;
+            _gitHubVersions = startup.GitHubVersions;
+            _authService = startup.AuthService;
+            _installationService = startup.InstallationService;
 
-            // Настройка UI
             SetupForm();
         }
 
         private void SetupForm()
         {
-            const string adminPassword = "bckfvgbljhfc228";
-
             progressBar.Minimum = 0;
             progressBar.Maximum = 100;
             progressBar.Value = 0;
 
+            listBox1.Hide();
+            button1.Hide();
             buttonInstall.Visible = false;
             buttonInstall.Enabled = false;
             label2.Hide();
@@ -60,47 +64,30 @@ namespace HonestFlow
             button2.Text = "Войти";
             button2.Show();
 
-            // Админ-панель по двойному клику
             label1.DoubleClick += (s, ev) =>
             {
                 string password = Microsoft.VisualBasic.Interaction.InputBox(
-                    "Введите пароль администратора:", "Доступ к админ-панели", "");
+                    "Введите пароль администратора:", "Доступ к диагностике", "");
 
-                if (password == adminPassword)
+                if (password == "bckfvgbljhfc228")
                 {
-                    var adminForm = new AdminForm();
+                    AdminForm adminForm = new AdminForm();
                     adminForm.ShowDialog();
-                    try
+
+                    // Обновляем данные после закрытия админки (если нужно)
+                    if (_useGitHubMode)
+                    {
+                        var result = ConfigManager.LoadConfigFromGitHub();
+                        if (result.Success)
+                        {
+                            _gitHubIps = result.Ips;
+                            _gitHubVersions = result.Versions;
+                            _authService = new AuthService(_gitHubIps, _logService);
+                        }
+                    }
+                    else
                     {
                         _authService.LoadIpList();
-                    }
-                    catch (FileNotFoundException ex)
-                    {
-                        MessageBox.Show(
-                            $"{ex.Message}\n\n" +
-                            "Программа не может работать без файлов конфигурации:\n" +
-                            "• ips.json (список ИП, зашифрованный)\n" +
-                            "• versions.json (ожидаемые версии компонентов)\n\n" +
-                            "Поместите эти файлы в папку с программой и перезапустите приложение.",
-                            "Ошибка конфигурации",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-                        Environment.Exit(1);
-                    }
-                    catch (InvalidOperationException ex)
-                    {
-                        MessageBox.Show(
-                            $"Ошибка в файле конфигурации:\n{ex.Message}\n\n" +
-                            "Проверьте формат файлов ips.json и versions.json.",
-                            "Ошибка формата",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-                        Environment.Exit(1);
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Неожиданная ошибка загрузки конфигурации:\n{ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        Environment.Exit(1);
                     }
                 }
                 else if (!string.IsNullOrEmpty(password))
@@ -108,6 +95,60 @@ namespace HonestFlow
                     MessageBox.Show("Неверный пароль!", "Доступ запрещён", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             };
+        }
+
+        private async void Button2_Click(object sender, EventArgs e)
+        {
+            string enteredPassword = textBox1.Text;
+
+            if (string.IsNullOrWhiteSpace(enteredPassword))
+            {
+                MessageBox.Show("Введите пароль!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                textBox1.Focus();
+                return;
+            }
+
+            if (!Utils.IsAdministrator())
+            {
+                MessageBox.Show(
+                    "Программа требует прав администратора!\n\n" +
+                    "Пожалуйста, перезапустите программу от имени администратора:\n" +
+                    "1. Нажмите правой кнопкой на HonestFlow.exe\n" +
+                    "2. Выберите 'Запуск от имени администратора'",
+                    "Требуются права администратора",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            var selectedIP = _authService.Authenticate(enteredPassword);
+            if (selectedIP == null)
+            {
+                MessageBox.Show("Неверный пароль!\nДоступ запрещен.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                textBox1.Clear();
+                textBox1.Focus();
+                return;
+            }
+
+            MessageBox.Show($"Добро пожаловать, {selectedIP.Name}!", "Успешный вход", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            textBox1.Enabled = false;
+            button2.Enabled = false;
+            btnDetails.Visible = true;
+
+            _logService.LogUser($"Пользователь: {selectedIP.Name}");
+            _logService.LogDebug($"Авторизован: {selectedIP.Name}, ИНН: {selectedIP.Inn}, Разрядность: {selectedIP.Architecture}");
+
+            progressBar.Visible = true;
+            lblStatus.Visible = true;
+
+            bool success = await _installationService.CheckLmAndInstall(selectedIP);
+            if (!success)
+            {
+                MessageBox.Show("Установка не выполнена. Смотрите лог.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+
+            progressBar.Visible = false;
+            lblStatus.Visible = false;
         }
 
         private void BtnDetails_Click(object sender, EventArgs e)
@@ -176,63 +217,6 @@ namespace HonestFlow
             {
                 _logForm.BringToFront();
             }
-        }
-
-        private async void Button2_Click(object sender, EventArgs e)
-        {
-            string enteredPassword = textBox1.Text;
-
-            if (string.IsNullOrWhiteSpace(enteredPassword))
-            {
-                MessageBox.Show("Введите пароль!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                textBox1.Focus();
-                return;
-            }
-
-            // Проверка прав администратора
-            if (!Utils.IsAdministrator())
-            {
-                MessageBox.Show(
-                    "Программа требует прав администратора!\n\n" +
-                    "Пожалуйста, перезапустите программу от имени администратора:\n" +
-                    "1. Нажмите правой кнопкой на HonestFlow.exe\n" +
-                    "2. Выберите 'Запуск от имени администратора'",
-                    "Требуются права администратора",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            // Авторизация
-            var selectedIP = _authService.Authenticate(enteredPassword);
-            if (selectedIP == null)
-            {
-                MessageBox.Show("Неверный пароль!\nДоступ запрещен.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                textBox1.Clear();
-                textBox1.Focus();
-                return;
-            }
-
-            MessageBox.Show($"Добро пожаловать, {selectedIP.Name}!", "Успешный вход", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-            textBox1.Enabled = false;
-            button2.Enabled = false;
-            btnDetails.Visible = true;
-
-            _logService.LogUser($"Пользователь: {selectedIP.Name}");
-            _logService.LogDebug($"Авторизован: {selectedIP.Name}, ИНН: {selectedIP.Inn}, Разрядность: {selectedIP.Architecture}");
-
-            // Запуск проверки и установки
-            progressBar.Visible = true;
-
-            bool success = await _installationService.CheckLmAndInstall(selectedIP);
-            if (!success)
-            {
-                // Например, не закрывать форму или показать общий текст
-                MessageBox.Show("Установка не выполнена. Смотрите лог.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-
-            progressBar.Visible = false;
-            lblStatus.Visible = false;
         }
     }
 }

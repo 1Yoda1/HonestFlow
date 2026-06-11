@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace HonestFlow.Services.System
+namespace HonestFlow.Services.Machine
 {
     public class SystemService : ISystemService
     {
@@ -166,8 +166,8 @@ namespace HonestFlow.Services.System
             sb.AppendLine();
 
             sb.AppendLine("【ПРИЛОЖЕНИЕ】");
-            sb.AppendLine($"  Путь: {Application.StartupPath}");
-            sb.AppendLine($"  Версия: {Application.ProductVersion}");
+            sb.AppendLine($"  Путь: {System.Windows.Forms.Application.StartupPath}");
+            sb.AppendLine($"  Версия: {System.Windows.Forms.Application.ProductVersion}");
             sb.AppendLine();
 
             sb.AppendLine("【ОЖИДАЕМЫЕ ВЕРСИИ (versions.json)】");

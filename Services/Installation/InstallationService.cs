@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -8,13 +8,15 @@ using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Installers;
 using HonestFlow.Models;
 using HonestFlow.Services.Core;
+using HonestFlow.Services.Installation.Planning;
 using HonestFlow.Services.Lm;
-
 
 namespace HonestFlow.Services.Installation
 {
     /// <summary>
-    /// Реализация сервиса установки
+    /// Главный сценарий установки.
+    /// Здесь только оркестрация: проверка, план, скачивание, запуск установщиков.
+    /// Детали конфигов, GitHub, путей, ЛМ и версий вынесены в отдельные классы.
     /// </summary>
     public class InstallationService : IInstallationService
     {
@@ -22,11 +24,13 @@ namespace HonestFlow.Services.Installation
         private readonly IProgressService _progress;
         private readonly LmValidationService _lmValidator;
         private readonly VersionCheckService _versionChecker;
+        private readonly bool _useGitHubMode;
 
-        public InstallationService(ILogService logService, IProgressService progressService)
+        public InstallationService(ILogService logService, IProgressService progressService, bool useGitHubMode = false)
         {
             _log = logService;
             _progress = progressService;
+            _useGitHubMode = useGitHubMode;
             _lmValidator = new LmValidationService(_log);
             _versionChecker = new VersionCheckService(_log);
         }
@@ -37,32 +41,28 @@ namespace HonestFlow.Services.Installation
 
             try
             {
-                var versions = ConfigManager.LoadVersions();
-                string expectedVersion = versions?.LmModule ?? "2.5.1-2";
-                _log.LogDebug($"Ожидаемая версия ЛМ ЧЗ: {expectedVersion}");
+                var versions = LoadVersions();
+                string expectedLmVersion = versions?.LmModule ?? "2.5.1-2";
+                _log.LogDebug($"Ожидаемая версия ЛМ ЧЗ: {expectedLmVersion}");
 
-                var status = await _lmValidator.GetLmStatus(expectedVersion);
-
+                var status = await _lmValidator.GetLmStatus(expectedLmVersion);
                 if (status == null)
                 {
                     _log.LogUser("ЛМ ЧЗ: не установлен", true);
                     _log.LogDebug("ЛМ ЧЗ не установлен или не отвечает");
-                    await PerformInstallation(selectedIP);
-                    return true;
+                    return await PerformInstallation(selectedIP, versions);
                 }
 
                 _log.LogUser($"ЛМ ЧЗ: версия {status.Version}, статус: {status.Status}");
                 _log.LogDebug($"ЛМ активен: версия={status.Version}, статус={status.Status}, inn={status.Inn ?? "не задан"}");
 
-                // Проверка ИНН
                 if (!string.IsNullOrEmpty(selectedIP.Inn) && !string.IsNullOrEmpty(status.Inn) && status.Inn != selectedIP.Inn)
                 {
-                    var result = await HandleInnMismatch(selectedIP, status.Inn);
-                    if (!result) return false;
+                    if (!await HandleInnMismatch(selectedIP, status.Inn, expectedLmVersion))
+                        return false;
                 }
 
-                await PerformInstallation(selectedIP);
-                return true;
+                return await PerformInstallation(selectedIP, versions);
             }
             catch (Exception ex)
             {
@@ -73,35 +73,54 @@ namespace HonestFlow.Services.Installation
             }
         }
 
-        private async Task<bool> HandleInnMismatch(IPData selectedIP, string currentInn)
+        private VersionsData LoadVersions()
+        {
+            return _useGitHubMode ? ConfigManager.LoadVersionsFromGitHub() : ConfigManager.LoadVersions();
+        }
+
+        private async Task<bool> HandleInnMismatch(IPData selectedIP, string currentInn, string expectedVersion)
         {
             _log.LogUser($"ИНН не совпадает! (ЛМ: {currentInn}, нужно: {selectedIP.Inn})", true);
             _log.LogDebug("КРИТИЧЕСКАЯ ОШИБКА: ИНН не совпадает!");
 
-            var result = MessageBox.Show(
-                $"ЛМ ЧЗ инициализирован на ИНН: {currentInn}\n\nОжидался ИНН: {selectedIP.Inn}\n\n" +
-                $"Установка НЕ МОЖЕТ быть продолжена!\n\nНажмите 'OK' чтобы открыть окно удаления программ.\n" +
-                $"Найдите в списке 'Локальный модуль ЧЗ' и удалите его.\n\nПосле удаления нажмите 'OK' для повторной проверки.",
-                "Конфликт ИНН", MessageBoxButtons.OKCancel, MessageBoxIcon.Error);
-
-            if (result == DialogResult.Cancel)
+            while (true)
             {
-                _log.LogUser("Операция отменена пользователем");
-                return false;
+                var result = MessageBox.Show(
+                    $"ЛМ ЧЗ инициализирован на ИНН: {currentInn}\n\nОжидался ИНН: {selectedIP.Inn}\n\n" +
+                    "Установка НЕ МОЖЕТ быть продолжена!\n\nНажмите 'OK' чтобы открыть окно удаления программ.\n" +
+                    "Найдите в списке 'Локальный модуль ЧЗ' и удалите его.\n\nПосле удаления нажмите 'OK' для повторной проверки.",
+                    "Конфликт ИНН", MessageBoxButtons.OKCancel, MessageBoxIcon.Error);
+
+                if (result == DialogResult.Cancel)
+                {
+                    _log.LogUser("Операция отменена пользователем");
+                    return false;
+                }
+
+                ProcessRunner.OpenUninstallPrograms();
+                _log.LogUser("Ожидание удаления ЛМ ЧЗ...");
+
+                if (await WaitForLmDeletion(expectedVersion))
+                {
+                    _log.LogUser("ЛМ ЧЗ удалён");
+                    return true;
+                }
+
+                var retry = MessageBox.Show(
+                    "ЛМ ЧЗ всё ещё обнаружен.\n\nУдалите его вручную через 'Установку и удаление программ'.\n\n" +
+                    "Нажмите 'OK' для повторной проверки или 'Отмена' для выхода.",
+                    "Повторить?", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
+
+                if (retry != DialogResult.OK)
+                    return false;
             }
+        }
 
-            ProcessRunner.OpenUninstallPrograms();
-            _log.LogUser("Ожидание удаления ЛМ ЧЗ...");
-
-            // Активное ожидание удаления
-            var maxWaitSeconds = 120;
-            var checkIntervalSeconds = 5;
-            var elapsedSeconds = 0;
-            bool wasDeleted = false;
-
-            // Получаем ожидаемую версию (можно захардкодить или взять из ConfigManager)
-            var versions = ConfigManager.LoadVersions();
-            string expectedVersion = versions?.LmModule ?? "2.5.1-2";
+        private async Task<bool> WaitForLmDeletion(string expectedVersion)
+        {
+            const int maxWaitSeconds = 120;
+            const int checkIntervalSeconds = 5;
+            int elapsedSeconds = 0;
 
             while (elapsedSeconds < maxWaitSeconds)
             {
@@ -114,139 +133,225 @@ namespace HonestFlow.Services.Installation
                 if (checkAgain == null)
                 {
                     _log.LogUser($"✅ ЛМ ЧЗ удалён (через {elapsedSeconds} сек)");
-                    wasDeleted = true;
-                    break;
+                    return true;
                 }
             }
 
-            if (!wasDeleted)
-            {
-                var retry = MessageBox.Show(
-                    $"ЛМ ЧЗ всё ещё обнаружен (ожидание {maxWaitSeconds} сек).\n\n" +
-                    "Удалите его вручную через 'Установку и удаление программ'.\n\n" +
-                    "Нажмите 'OK' для повторной проверки или 'Отмена' для выхода.",
-                    "Повторить?", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
-
-                if (retry == DialogResult.OK)
-                    return await HandleInnMismatch(selectedIP, currentInn);
-
-                return false;
-            }
-
-            _log.LogUser("ЛМ ЧЗ удалён");
-            return true;
+            return false;
         }
 
-        private async Task PerformInstallation(IPData selectedIP)
+        private async Task<bool> PerformInstallation(IPData selectedIP, VersionsData versions)
         {
-            _progress.SetProgress(0, "Начало проверки...");
+            _progress.SetProgress(10, "Проверка версий...");
 
-            string installersFolder = ConfigManager.GetInstallersFolder();
-            _log.LogDebug($"Папка с установщиками: {installersFolder}");
+            var plan = await BuildInstallationPlan(selectedIP, versions);
+            LogPlan(plan);
 
-            var versions = ConfigManager.LoadVersions();
-
-            string FindFile(string mask) => Directory.GetFiles(installersFolder, mask).FirstOrDefault();
-
-            string lmPath = FindFile("regime-*.msi");
-            string atolPath = FileHelper.GetAtolInstallerByArchitecture(installersFolder, selectedIP.Architecture, _log);
-            string esmPath = FindFile("esm_*.exe");
-            string controllerPath = FindFile("esm-lm-controller_*.exe");
-
-            _log.LogDebug($"Разрядность ИП: {selectedIP.Architecture}");
-            _log.LogDebug($"Найдены: ЛМ={Path.GetFileName(lmPath) ?? "нет"}, АТОЛ={Path.GetFileName(atolPath) ?? "нет"}, " +
-                    $"ЕСМ={Path.GetFileName(esmPath) ?? "нет"}, Контроллер={Path.GetFileName(controllerPath) ?? "нет"}");
-
-            _progress.SetProgress(20, "Проверка версий...");
-
-            var (NeedInstall, DisplayStatus) = await _lmValidator.GetLmStatusInfo(versions?.LmModule);
-            bool needLmInstall = NeedInstall;
-            bool needAtolInstall = _versionChecker.NeedAtolInstall(selectedIP, versions?.AtolDriver);
-            bool needEsmInstall = _versionChecker.NeedEsmInstall(versions?.ESM);
-            bool needControllerInstall = _versionChecker.NeedControllerInstall(versions?.Controller);
-
-            _log.LogUser("");
-            _log.LogUser("=== РЕЗУЛЬТАТ ===");
-            _log.LogUser($"ЛМ ЧЗ: {DisplayStatus}");
-            _log.LogUser($"Драйвер АТОЛ: {(needAtolInstall ? "❌ требуется установка" : "✅ OK")}");
-            _log.LogUser($"ЕСМ: {(needEsmInstall ? "❌ требуется установка" : "✅ OK")}");
-            _log.LogUser($"Контроллер: {(needControllerInstall ? "❌ требуется установка" : "✅ OK")}");
-            _log.LogUser("=================");
-
-            if (!needLmInstall && !needAtolInstall && !needEsmInstall && !needControllerInstall)
+            if (!plan.HasWork)
             {
                 _progress.SetProgress(100, "Готово");
                 _log.LogUser("✅ Все компоненты уже установлены!");
                 MessageBox.Show("Все компоненты уже установлены и соответствуют требованиям!", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
+                return true;
             }
 
-            int totalSteps = (needLmInstall ? 1 : 0) + (needAtolInstall ? 1 : 0) + (needEsmInstall ? 1 : 0) + (needControllerInstall ? 1 : 0);
-            int currentStep = 0;
-            int stepPercent = 70 / totalSteps;
+            if (!await ResolveInstallerPaths(plan, selectedIP, versions))
+                return false;
+
+            bool success = await ExecuteInstallationPlan(plan, selectedIP, versions);
+            _progress.SetProgress(100, success ? "Установка завершена!" : "Установка завершена с ошибками");
+
+            if (success)
+            {
+                _log.LogUser("✅ Установка завершена!");
+                MessageBox.Show("Установка завершена!", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                _log.LogUser("❌ Установка завершена с ошибками", true);
+            }
+
+            return success;
+        }
+
+        private async Task<InstallationPlan> BuildInstallationPlan(IPData selectedIP, VersionsData versions)
+        {
+            var plan = new InstallationPlan();
+
+            var (needLmInstall, lmStatusText) = await _lmValidator.GetLmStatusInfo(versions?.LmModule);
+            plan.Items.Add(new ComponentPlanItem
+            {
+                Component = InstallationComponent.LmModule,
+                DisplayName = "ЛМ ЧЗ",
+                NeedInstall = needLmInstall,
+                StatusText = lmStatusText,
+                ExpectedVersion = versions?.LmModule
+            });
+
+            bool needAtolInstall = _versionChecker.NeedAtolInstall(selectedIP, versions?.AtolDriver);
+            plan.Items.Add(new ComponentPlanItem
+            {
+                Component = InstallationComponent.AtolDriver,
+                DisplayName = "Драйвер АТОЛ",
+                NeedInstall = needAtolInstall,
+                StatusText = needAtolInstall ? "требуется установка" : "OK",
+                ExpectedVersion = versions?.AtolDriver
+            });
+
+            bool needEsmInstall = _versionChecker.NeedEsmInstall(versions?.ESM);
+            plan.Items.Add(new ComponentPlanItem
+            {
+                Component = InstallationComponent.Esm,
+                DisplayName = "ЕСМ",
+                NeedInstall = needEsmInstall,
+                StatusText = needEsmInstall ? "требуется установка" : "OK",
+                ExpectedVersion = versions?.ESM
+            });
+
+            bool needControllerInstall = _versionChecker.NeedControllerInstall(versions?.Controller);
+            plan.Items.Add(new ComponentPlanItem
+            {
+                Component = InstallationComponent.Controller,
+                DisplayName = "Контроллер",
+                NeedInstall = needControllerInstall,
+                StatusText = needControllerInstall ? "требуется установка" : "OK",
+                ExpectedVersion = versions?.Controller
+            });
+
+            InstallerFileNameBuilder.FillFileNames(plan, selectedIP, versions);
+            return plan;
+        }
+
+        private void LogPlan(InstallationPlan plan)
+        {
+            _log.LogUser("");
+            _log.LogUser("=== ПЛАН УСТАНОВКИ ===");
+            foreach (var item in plan.Items)
+            {
+                string marker = item.NeedInstall ? "❌" : "✅";
+                _log.LogUser($"{item.DisplayName}: {marker} {item.StatusText}");
+            }
+            _log.LogUser("======================");
+        }
+
+        private async Task<bool> ResolveInstallerPaths(InstallationPlan plan, IPData selectedIP, VersionsData versions)
+        {
+            if (_useGitHubMode)
+                return await DownloadAndResolveGitHubInstallers(plan);
+
+            ResolveLocalInstallerPaths(plan, selectedIP);
+            return ValidateRequiredInstallerPaths(plan);
+        }
+
+        private async Task<bool> DownloadAndResolveGitHubInstallers(InstallationPlan plan)
+        {
+            int total = plan.RequiredCount;
+            int completed = 0;
+
+            foreach (var item in plan.RequiredItems)
+            {
+                completed++;
+                _progress.SetProgress(completed * 70 / total, $"Скачивание: {item.DisplayName}...");
+
+                bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(item.FileName, null);
+                if (!downloaded)
+                {
+                    _log.LogUser($"❌ Не удалось скачать {item.DisplayName}: {item.FileName}", true);
+                    return false;
+                }
+
+                item.InstallerPath = Path.Combine(AppPaths.GitHubCacheFolder, item.FileName);
+            }
+
+            return ValidateRequiredInstallerPaths(plan);
+        }
+
+        private void ResolveLocalInstallerPaths(InstallationPlan plan, IPData selectedIP)
+        {
+            string installersFolder = ConfigManager.GetInstallersFolder();
+            _log.LogDebug($"Разрядность ИП: {selectedIP.Architecture}");
+            _log.LogDebug($"Папка установщиков: {installersFolder}");
+
+            foreach (var item in plan.RequiredItems)
+            {
+                item.InstallerPath = item.Component switch
+                {
+                    InstallationComponent.LmModule => Directory.GetFiles(installersFolder, "regime-*.msi").FirstOrDefault(),
+                    InstallationComponent.AtolDriver => FileHelper.GetAtolInstallerByArchitecture(installersFolder, selectedIP.Architecture, _log),
+                    InstallationComponent.Esm => Directory.GetFiles(installersFolder, "esm_*.exe").FirstOrDefault(),
+                    InstallationComponent.Controller => Directory.GetFiles(installersFolder, "esm-lm-controller_*.exe").FirstOrDefault(),
+                    _ => null
+                };
+            }
+        }
+
+        private bool ValidateRequiredInstallerPaths(InstallationPlan plan)
+        {
+            foreach (var item in plan.RequiredItems)
+            {
+                if (string.IsNullOrWhiteSpace(item.InstallerPath) || !File.Exists(item.InstallerPath))
+                {
+                    _log.LogUser($"❌ Не найден установщик: {item.DisplayName} ({item.FileName ?? "локальный поиск"})", true);
+                    return false;
+                }
+
+                _log.LogDebug($"Установщик {item.DisplayName}: {item.InstallerPath}");
+            }
+
+            return true;
+        }
+
+        private async Task<bool> ExecuteInstallationPlan(InstallationPlan plan, IPData selectedIP, VersionsData versions)
+        {
+            int total = plan.RequiredCount;
+            int completed = 0;
+            bool allSuccess = true;
 
             _log.LogUser("=== НАЧАЛО УСТАНОВКИ ===");
 
-            if (needLmInstall)
+            foreach (var item in plan.RequiredItems)
             {
-                currentStep++;
-                _progress.SetProgress(25 + (currentStep * stepPercent), "Установка ЛМ ЧЗ...");
-                if (lmPath == null) throw new Exception("Не найден установщик ЛМ ЧЗ");
-                _log.LogUser("Установка ЛМ ЧЗ...");
-                _log.LogDebug($"Запуск: {lmPath}");
-                var lm = new LmModule(lmPath, versions?.LmModule ?? "2.5.1-2");
-                await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
-                _log.LogUser("✅ ЛМ ЧЗ установлен");
+                completed++;
+                _progress.SetProgress(70 + completed * 25 / total, $"Установка: {item.DisplayName}...");
+                bool success = await InstallComponent(item, selectedIP, versions);
+                allSuccess &= success;
             }
 
-            if (needAtolInstall)
-            {
-                currentStep++;
-                _progress.SetProgress(25 + (currentStep * stepPercent), "Установка драйвера АТОЛ...");
-                if (atolPath != null)
-                {
-                    _log.LogUser("Установка драйвера АТОЛ...");
-                    _log.LogDebug($"Запуск: {atolPath}");
-                    await new AtolInstaller(atolPath).Install();
-                    _log.LogUser("✅ Драйвер АТОЛ установлен");
-                }
-                else
-                {
-                    _log.LogUser("⚠️ Драйвер АТОЛ не найден", true);
-                }
-            }
+            return allSuccess;
+        }
 
-            if (needEsmInstall || needControllerInstall)
-            {
-                currentStep++;
-                _progress.SetProgress(25 + (currentStep * stepPercent), "Установка ЕСМ и Контроллера...");
-                if (esmPath != null && controllerPath != null)
-                {
-                    var esm = new EsmInstaller(esmPath, controllerPath);
-                    if (needEsmInstall)
-                    {
-                        _log.LogUser("Установка ЕСМ...");
-                        _log.LogDebug($"Запуск: {esmPath}");
-                        await esm.InstallEsm();
-                        _log.LogUser("✅ ЕСМ установлен");
-                    }
-                    if (needControllerInstall)
-                    {
-                        _log.LogUser("Установка Контроллера...");
-                        _log.LogDebug($"Запуск: {controllerPath}");
-                        await esm.InstallController();
-                        _log.LogUser("✅ Контроллер установлен");
-                    }
-                }
-                else
-                {
-                    _log.LogUser("⚠️ ЕСМ или Контроллер не найдены", true);
-                }
-            }
+        private async Task<bool> InstallComponent(ComponentPlanItem item, IPData selectedIP, VersionsData versions)
+        {
+            _log.LogUser($"Установка: {item.DisplayName}...");
+            _log.LogDebug($"Запуск: {item.InstallerPath}");
 
-            _progress.SetProgress(100, "Установка завершена!");
-            _log.LogUser("✅ Установка завершена!");
-            MessageBox.Show("Установка завершена!", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            switch (item.Component)
+            {
+                case InstallationComponent.LmModule:
+                    var lm = new LmModule(item.InstallerPath, versions?.LmModule ?? "2.5.1-2");
+                    bool lmSuccess = await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
+                    _log.LogUser(lmSuccess ? "✅ ЛМ ЧЗ установлен" : "❌ ЛМ ЧЗ не установлен", !lmSuccess);
+                    return lmSuccess;
+
+                case InstallationComponent.AtolDriver:
+                    bool atolSuccess = await new AtolInstaller(item.InstallerPath).Install();
+                    _log.LogUser(atolSuccess ? "✅ Драйвер АТОЛ установлен" : "❌ Драйвер АТОЛ не установлен", !atolSuccess);
+                    return atolSuccess;
+
+                case InstallationComponent.Esm:
+                    bool esmSuccess = await new EsmInstaller(item.InstallerPath, null).InstallEsm();
+                    _log.LogUser(esmSuccess ? "✅ ЕСМ установлен" : "❌ ЕСМ не установлен", !esmSuccess);
+                    return esmSuccess;
+
+                case InstallationComponent.Controller:
+                    bool controllerSuccess = await new EsmInstaller(null, item.InstallerPath).InstallController();
+                    _log.LogUser(controllerSuccess ? "✅ Контроллер установлен" : "❌ Контроллер не установлен", !controllerSuccess);
+                    return controllerSuccess;
+
+                default:
+                    _log.LogUser($"❌ Неизвестный компонент: {item.Component}", true);
+                    return false;
+            }
         }
     }
 }

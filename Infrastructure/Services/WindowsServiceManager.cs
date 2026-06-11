@@ -9,9 +9,6 @@ namespace HonestFlow.Infrastructure.Services
     /// </summary>
     public static class WindowsServiceManager
     {
-        /// <summary>
-        /// Остановка службы Regime
-        /// </summary>
         public static async Task StopService()
         {
             try
@@ -24,9 +21,6 @@ namespace HonestFlow.Infrastructure.Services
             }
         }
 
-        /// <summary>
-        /// Запуск службы Regime
-        /// </summary>
         public static async Task StartService()
         {
             try
@@ -39,9 +33,6 @@ namespace HonestFlow.Infrastructure.Services
             }
         }
 
-        /// <summary>
-        /// Удаление службы Regime из системы
-        /// </summary>
         public static async Task DeleteService()
         {
             try
@@ -54,9 +45,6 @@ namespace HonestFlow.Infrastructure.Services
             }
         }
 
-        /// <summary>
-        /// Получить статус службы Regime (running, stopped, notfound)
-        /// </summary>
         public static async Task<string> GetServiceStatus()
         {
             try

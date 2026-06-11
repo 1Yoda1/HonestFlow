@@ -1,7 +1,7 @@
 ﻿using HonestFlow.Models;
 using System.Threading.Tasks;
 
-namespace HonestFlow.Services.System
+namespace HonestFlow.Services.Machine
 {
     /// <summary>
     /// Интерфейс системного сервиса

@@ -161,9 +161,6 @@ namespace HonestFlow.Infrastructure
         /// <summary>
         /// Главный метод: проверяет состояние ЛМ, при необходимости устанавливает/обновляет/инициализирует
         /// </summary>
-        /// <summary>
-        /// Главный метод: проверяет состояние ЛМ, при необходимости устанавливает/обновляет/инициализирует
-        /// </summary>
         public async Task<bool> EnsureInstalledAndInitialized(string token, string expectedInn)
         {
             Utils.Log("📦 Проверка ЛМ ЧЗ...");

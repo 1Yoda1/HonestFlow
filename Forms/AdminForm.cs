@@ -1,12 +1,10 @@
-using HonestFlow.Models;
 using HonestFlow.Infrastructure;
+using HonestFlow.Models;
 using HonestFlow.Services.Core;
-using HonestFlow.Services.System;
+using HonestFlow.Services.Machine;
 using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -14,12 +12,6 @@ namespace HonestFlow
 {
     public partial class AdminForm : Form
     {
-        private List<IPData> _ips;
-        private VersionsData _versions;
-
-        private TextBox txtSearchIp;
-        private Button btnSearchClear;
-
         private readonly ISystemService _systemService;
         private readonly ILogService _logService;
 
@@ -30,11 +22,7 @@ namespace HonestFlow
             _logService = new LogService();
             _systemService = new SystemService(_logService);
 
-            LoadData();
-            SetupSearchBox();
             LoadSystemInfo();
-
-            // Загружаем статус службы
             Task.Run(async () => await UpdateServiceStatus());
         }
 
@@ -129,8 +117,8 @@ namespace HonestFlow
 
         private static void OpenLogsFolder()
         {
-            string logFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
-            if (System.IO.Directory.Exists(logFolder))
+            string logFolder = Logger.GetLogsFolder();
+            if (Directory.Exists(logFolder))
                 System.Diagnostics.Process.Start("explorer.exe", logFolder);
             else
                 MessageBox.Show("Папка с логами не найдена", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -139,228 +127,6 @@ namespace HonestFlow
         private void LoadSystemInfo()
         {
             txtSystemInfo.Text = _systemService.GetSystemInfo();
-        }
-
-        // ========== РАБОТА С ИП, ВЕРСИЯМИ, КОНФИГАМИ ==========
-
-        private void DataGridViewIps_CellEndEdit(object sender, DataGridViewCellEventArgs e)
-        {
-            ConfigManager.SaveIps(_ips);
-            dataGridViewIps.Rows[e.RowIndex].DefaultCellStyle.BackColor = Color.LightGreen;
-
-            var row = dataGridViewIps.Rows[e.RowIndex];
-            var timer = new Timer
-            {
-                Interval = 1000
-            };
-            timer.Tick += (s, args) =>
-            {
-                row.DefaultCellStyle.BackColor = Color.White;
-                timer.Stop();
-            };
-            timer.Start();
-        }
-
-        private void LoadData()
-        {
-            try
-            {
-                _ips = ConfigManager.LoadIps();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogToFile($"Ошибка загрузки ips.json: {ex.Message}", true);
-                _ips = new List<IPData>();
-                MessageBox.Show(
-                    $"Не удалось загрузить ips.json:\n{ex.Message}\n\n" +
-                    "Список ИП будет пустым. Сохраните данные через админ-панель, чтобы создать файл.",
-                    "Предупреждение",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-            }
-
-            try
-            {
-                _versions = ConfigManager.LoadVersions();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogToFile($"Ошибка загрузки versions.json: {ex.Message}", true);
-                _versions = new VersionsData();
-                MessageBox.Show(
-                    $"Не удалось загрузить versions.json:\n{ex.Message}\n\n" +
-                    "Версии будут пустыми. Сохраните версии через админ-панель, чтобы создать файл.",
-                    "Предупреждение",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-            }
-
-            // Настройка DataGridView
-            dataGridViewIps.AutoGenerateColumns = true;
-            dataGridViewIps.DataSource = null;
-            dataGridViewIps.DataSource = _ips;
-            dataGridViewIps.ReadOnly = false;
-            dataGridViewIps.EditMode = DataGridViewEditMode.EditOnEnter;
-            dataGridViewIps.CellEndEdit += DataGridViewIps_CellEndEdit;
-
-            if (dataGridViewIps.Columns["Name"] != null)
-                dataGridViewIps.Columns["Name"].HeaderText = "Имя ИП";
-            if (dataGridViewIps.Columns["Password"] != null)
-                dataGridViewIps.Columns["Password"].HeaderText = "Пароль";
-            if (dataGridViewIps.Columns["Token"] != null)
-                dataGridViewIps.Columns["Token"].HeaderText = "Токен";
-            if (dataGridViewIps.Columns["Inn"] != null)
-                dataGridViewIps.Columns["Inn"].HeaderText = "ИНН";
-            if (dataGridViewIps.Columns["Architecture"] != null)
-                dataGridViewIps.Columns["Architecture"].HeaderText = "Разрядность";
-
-            // Заполняем поля версий (даже если _versions пустой)
-            txtLmVersion.Text = _versions?.LmModule ?? "";
-            txtAtolVersion.Text = _versions?.AtolDriver ?? "";
-            txtEsmVersion.Text = _versions?.ESM ?? "";
-            txtControllerVersion.Text = _versions?.Controller ?? "";
-        }
-
-        private void SetupSearchBox()
-        {
-            var searchPanel = new Panel
-            {
-                Location = new Point(0, 360),
-                Size = new Size(742, 35)
-            };
-
-            var lblSearch = new Label
-            {
-                Text = "🔍 Поиск:",
-                Location = new Point(12, 8),
-                Size = new Size(50, 25)
-            };
-
-            txtSearchIp = new TextBox
-            {
-                Location = new Point(65, 6),
-                Size = new Size(250, 23)
-            };
-            txtSearchIp.TextChanged += TxtSearchIp_TextChanged;
-
-            btnSearchClear = new Button
-            {
-                Text = "Очистить",
-                Location = new Point(325, 5),
-                Size = new Size(80, 25)
-            };
-            btnSearchClear.Click += (s, e) => { txtSearchIp.Text = ""; };
-
-            searchPanel.Controls.Add(lblSearch);
-            searchPanel.Controls.Add(txtSearchIp);
-            searchPanel.Controls.Add(btnSearchClear);
-
-            btnAddIp.Location = new Point(12, 410);
-            btnEditIp.Location = new Point(120, 410);
-            btnDeleteIp.Location = new Point(230, 410);
-
-            tabIps.Controls.Add(searchPanel);
-        }
-
-        private void TxtSearchIp_TextChanged(object sender, EventArgs e)
-        {
-            string searchText = txtSearchIp.Text.ToLower();
-
-            if (string.IsNullOrWhiteSpace(searchText))
-            {
-                dataGridViewIps.DataSource = null;
-                dataGridViewIps.DataSource = _ips;
-            }
-            else
-            {
-                var filtered = _ips.Where(ip =>
-                    ip.Name.ToLower().Contains(searchText) ||
-                    ip.Inn.ToLower().Contains(searchText) ||
-                    ip.Token.ToLower().Contains(searchText)
-                ).ToList();
-
-                dataGridViewIps.DataSource = null;
-                dataGridViewIps.DataSource = filtered;
-            }
-        }
-
-        private void BtnAddIp_Click(object sender, EventArgs e)
-        {
-            var form = new IpEditForm(null);
-            if (form.ShowDialog() == DialogResult.OK)
-            {
-                _ips.Add(form.IpData);
-                SaveIps();
-                RefreshIpGrid();
-            }
-        }
-
-        private void BtnEditIp_Click(object sender, EventArgs e)
-        {
-            if (dataGridViewIps.CurrentRow?.DataBoundItem is IPData selected)
-            {
-                var form = new IpEditForm(selected);
-                if (form.ShowDialog() == DialogResult.OK)
-                {
-                    SaveIps();
-                    RefreshIpGrid();
-                }
-            }
-        }
-
-        private void BtnDeleteIp_Click(object sender, EventArgs e)
-        {
-            if (dataGridViewIps.CurrentRow?.DataBoundItem is IPData selected)
-            {
-                if (MessageBox.Show($"Удалить {selected.Name}?", "Подтверждение", MessageBoxButtons.YesNo) == DialogResult.Yes)
-                {
-                    _ips.Remove(selected);
-                    SaveIps();
-                    RefreshIpGrid();
-                }
-            }
-        }
-
-        private void RefreshIpGrid()
-        {
-            string searchText = txtSearchIp.Text.ToLower();  // берем текст из поля поиска
-
-            if (string.IsNullOrWhiteSpace(searchText))
-            {
-                // Если поиск пустой — показываем всех
-                dataGridViewIps.DataSource = null;
-                dataGridViewIps.DataSource = _ips;
-            }
-            else
-            {
-                // Если поиск НЕ пустой — фильтруем снова
-                var filtered = _ips.Where(ip =>
-                    ip.Name.ToLower().Contains(searchText) ||
-                    ip.Inn.ToLower().Contains(searchText) ||
-                    ip.Token.ToLower().Contains(searchText)
-                ).ToList();
-
-                dataGridViewIps.DataSource = null;
-                dataGridViewIps.DataSource = filtered;
-            }
-        }
-
-        private void SaveIps()
-        {
-            ConfigManager.SaveIps(_ips);
-        }
-
-        private void BtnSaveVersions_Click(object sender, EventArgs e)
-        {
-            _versions = new VersionsData
-            {
-                LmModule = txtLmVersion.Text.Trim(),
-                AtolDriver = txtAtolVersion.Text.Trim(),
-                ESM = txtEsmVersion.Text.Trim(),
-                Controller = txtControllerVersion.Text.Trim()
-            };
-            ConfigManager.SaveVersions(_versions);
-            MessageBox.Show("Версии сохранены", "Успех", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

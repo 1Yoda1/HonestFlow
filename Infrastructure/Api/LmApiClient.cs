@@ -7,12 +7,8 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using HonestFlow.Models;
 
-
 namespace HonestFlow.Infrastructure.Api
 {
-    /// <summary>
-    /// Клиент для работы с API Локального модуля ЧЗ (порт 5995)
-    /// </summary>
     public class LmApiClient : IDisposable
     {
         private HttpClient _client;
@@ -21,19 +17,12 @@ namespace HonestFlow.Infrastructure.Api
         private bool _isDisposed = false;
         private readonly object _lockObject = new();
 
-        /// <summary>
-        /// Создаёт экземпляр клиента
-        /// </summary>
-        /// <param name="enableDetailedLogging">Включить детальное логирование всех запросов</param>
         public LmApiClient(bool enableDetailedLogging = true)
         {
             _enableDetailedLogging = enableDetailedLogging;
             EnsureClientCreated();
         }
 
-        /// <summary>
-        /// Гарантирует, что HttpClient создан и не уничтожен
-        /// </summary>
         private void EnsureClientCreated()
         {
             lock (_lockObject)
@@ -47,7 +36,7 @@ namespace HonestFlow.Infrastructure.Api
                     _isDisposed = false;
 
                     if (_enableDetailedLogging)
-                        Logger.LogToFile("[DEBUG] HttpClient создан", true);
+                        Logger.LogToFile("[DEBUG] HttpClient создан", false);
                 }
             }
         }
@@ -55,43 +44,34 @@ namespace HonestFlow.Infrastructure.Api
         private string GetApiUrl(string endpoint) => $"http://127.0.0.1:5995/api/{_apiVersion}/{endpoint}";
         private static string GetAuthHeader() => Convert.ToBase64String(Encoding.UTF8.GetBytes("admin:admin"));
 
-        /// <summary>
-        /// Логирование запроса с деталями
-        /// </summary>
         private void LogRequest(string method, string url, string requestBody = null)
         {
             if (!_enableDetailedLogging) return;
 
-            Logger.LogToFile($"┌───────────── HTTP ЗАПРОС ─────────────", true);
-            Logger.LogToFile($"│ {method} {url}", true);
+            Logger.LogToFile($"┌───────────── HTTP ЗАПРОС ─────────────", false);
+            Logger.LogToFile($"│ {method} {url}", false);
             if (!string.IsNullOrEmpty(requestBody))
             {
                 var truncated = requestBody.Length > 500 ? string.Concat(requestBody.AsSpan(0, 500), "...") : requestBody;
-                Logger.LogToFile($"│ Body: {truncated}", true);
+                Logger.LogToFile($"│ Body: {truncated}", false);
             }
         }
 
-        /// <summary>
-        /// Логирование ответа с деталями
-        /// </summary>
         private void LogResponse(HttpStatusCode statusCode, string responseBody, double durationMs, bool isError = false)
         {
             if (!_enableDetailedLogging) return;
 
             var statusIcon = isError ? "❌" : (int)statusCode < 400 ? "✅" : "⚠️";
-            Logger.LogToFile($"│ {statusIcon} Ответ: {(int)statusCode} {statusCode} ({durationMs:F0} мс)", true);
+            Logger.LogToFile($"│ {statusIcon} Ответ: {(int)statusCode} {statusCode} ({durationMs:F0} мс)", false);
 
             if (!string.IsNullOrEmpty(responseBody) && _enableDetailedLogging)
             {
                 var truncated = responseBody.Length > 500 ? string.Concat(responseBody.AsSpan(0, 500), "...") : responseBody;
-                Logger.LogToFile($"│ Body: {truncated}", true);
+                Logger.LogToFile($"│ Body: {truncated}", false);
             }
-            Logger.LogToFile($"└─────────────────────────────────────────", true);
+            Logger.LogToFile($"└─────────────────────────────────────────", false);
         }
 
-        /// <summary>
-        /// Выполнить GET-запрос с обработкой ответа
-        /// </summary>
         private async Task<ApiResponse<T>> GetAsync<T>(string endpoint)
         {
             EnsureClientCreated();
@@ -114,11 +94,33 @@ namespace HonestFlow.Infrastructure.Api
 
                 if (resp.IsSuccessStatusCode)
                 {
-                    var data = JsonConvert.DeserializeObject<T>(responseBody);
-                    return ApiResponse<T>.Success(data, resp.StatusCode, responseBody, durationMs);
+                    try
+                    {
+                        var data = JsonConvert.DeserializeObject<T>(responseBody);
+                        return ApiResponse<T>.Success(data, resp.StatusCode, responseBody, durationMs);
+                    }
+                    catch (JsonException jsonEx)
+                    {
+                        // ❌ Повреждённый JSON
+                        Logger.LogToFile($"❌ JSON повреждён: {jsonEx.Message}", true);
+                        Logger.LogToFile($"   Получено: {responseBody?.Substring(0, Math.Min(500, responseBody?.Length ?? 0))}", true);
+
+                        return ApiResponse<T>.Failure(
+                            HttpStatusCode.InternalServerError,
+                            $"Ошибка парсинга JSON: {jsonEx.Message}",
+                            responseBody,
+                            durationMs);
+                    }
                 }
 
                 return ApiResponse<T>.Failure(resp.StatusCode, $"HTTP {(int)resp.StatusCode}", responseBody, durationMs);
+            }
+            catch (JsonException jsonEx)
+            {
+                // Глобальный перехват на всякий случай
+                var durationMs = stopwatch.Elapsed.TotalMilliseconds;
+                Logger.LogToFile($"❌ JSON исключение: {jsonEx.Message}", true);
+                return ApiResponse<T>.Failure(HttpStatusCode.InternalServerError, $"JSON ошибка: {jsonEx.Message}", null, durationMs);
             }
             catch (ObjectDisposedException)
             {
@@ -141,9 +143,6 @@ namespace HonestFlow.Infrastructure.Api
             }
         }
 
-        /// <summary>
-        /// Выполнить POST-запрос с обработкой ответа
-        /// </summary>
         private async Task<ApiSimpleResponse> PostAsync(string endpoint, object data)
         {
             EnsureClientCreated();
@@ -204,9 +203,6 @@ namespace HonestFlow.Infrastructure.Api
             }
         }
 
-        /// <summary>
-        /// Проверить доступность API (перебором v2 и v1)
-        /// </summary>
         public async Task<bool> IsApiAvailable()
         {
             EnsureClientCreated();
@@ -242,9 +238,6 @@ namespace HonestFlow.Infrastructure.Api
             return false;
         }
 
-        /// <summary>
-        /// Получить статус ЛМ ЧЗ (версия, статус, ИНН)
-        /// </summary>
         public async Task<ApiResponse<LmStatus>> GetStatus()
         {
             EnsureClientCreated();
@@ -276,70 +269,26 @@ namespace HonestFlow.Infrastructure.Api
             return ApiResponse<LmStatus>.Failure(HttpStatusCode.ServiceUnavailable, "API не доступен", null, 0);
         }
 
-        /// <summary>
-        /// Получить статус (упрощённо, без ApiResponse)
-        /// </summary>
         public async Task<LmStatus> GetStatusSimple()
         {
             var response = await GetStatus();
             return response.IsSuccess ? response.Data : null;
         }
 
-        /// <summary>
-        /// Ожидание доступности API с таймаутом
-        /// </summary>
-        private async Task<bool> WaitForApiAvailable(int timeoutSeconds = 30)
-        {
-            var startTime = DateTime.Now;
-            var timeout = TimeSpan.FromSeconds(timeoutSeconds);
-
-            while (DateTime.Now - startTime < timeout)
-            {
-                if (await IsApiAvailable())
-                    return true;
-
-                await Task.Delay(1000);
-            }
-
-            Logger.LogToFile($"WaitForApiAvailable: таймаут {timeoutSeconds} сек", true);
-            return false;
-        }
-
-        /// <summary>
-        /// Инициализация ЛМ ЧЗ с переданным токеном (с полной информацией об ошибке)
-        /// </summary>
         public async Task<ApiSimpleResponse> InitializeFull(string token)
         {
             EnsureClientCreated();
-
-            if (!await WaitForApiAvailable(30))
-            {
-                Logger.LogToFile("InitializeFull: API не доступен после ожидания", true);
-                return ApiSimpleResponse.Failure(HttpStatusCode.ServiceUnavailable, "API не доступен", null, 0);
-            }
 
             var data = new { token };
             return await PostAsync("init", data);
         }
 
-        /// <summary>
-        /// Инициализация (простая, для обратной совместимости)
-        /// </summary>
         public async Task<bool> Initialize(string token)
         {
             var response = await InitializeFull(token);
-
-            if (!response.IsSuccess)
-            {
-                Logger.LogToFile($"Initialize ошибка: {response.StatusCode} - {response.ErrorMessage}", true);
-            }
-
             return response.IsSuccess;
         }
 
-        /// <summary>
-        /// Освобождение ресурсов
-        /// </summary>
         public void Dispose()
         {
             lock (_lockObject)
@@ -351,12 +300,9 @@ namespace HonestFlow.Infrastructure.Api
                     _isDisposed = true;
 
                     if (_enableDetailedLogging)
-                        Logger.LogToFile("[DEBUG] HttpClient уничтожен", true);
+                        Logger.LogToFile("[DEBUG] HttpClient уничтожен", false);
                 }
             }
-
-            // Подавляем финализацию, так как все ресурсы уже освобождены
-            GC.SuppressFinalize(this);
         }
     }
 }

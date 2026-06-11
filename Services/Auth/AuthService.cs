@@ -1,14 +1,10 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using HonestFlow.Infrastructure;
 using HonestFlow.Models;
 using HonestFlow.Services.Core;
 
-
 namespace HonestFlow.Services.Auth
 {
-    /// <summary>
-    /// Реализация сервиса авторизации
-    /// </summary>
     public class AuthService : IAuthService
     {
         private List<IPData> _ipList;
@@ -18,6 +14,13 @@ namespace HonestFlow.Services.Auth
         {
             _logService = logService;
             LoadIpList();
+        }
+
+        public AuthService(List<IPData> ips, ILogService logService)
+        {
+            _ipList = ips;
+            _logService = logService;
+            _logService.LogDebug($"Загружено {_ipList.Count} ИП из GitHub");
         }
 
         public void LoadIpList()
@@ -39,7 +42,7 @@ namespace HonestFlow.Services.Auth
             }
             else
             {
-                _logService.LogDebug($"Неудачная попытка авторизации с паролем: {password}");
+                _logService.LogDebug("Неудачная попытка авторизации");
             }
             return ip;
         }
