@@ -37,7 +37,7 @@ namespace HonestFlow.Infrastructure.Installers
             }
 
             _log.LogDebug($"Запуск установки АТОЛ: {_installerPath}");
-            int code = await ProcessRunner.RunAsync(_installerPath, "/S /AcceptLicense", true);
+            int code = await ProcessRunner.RunAsync(_installerPath, "/S /AcceptLicense /WithEOU", true);
             _log.LogDebug($"Установка АТОЛ завершена с кодом: {code}");
 
             return code == 0;
