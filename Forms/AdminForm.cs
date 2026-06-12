@@ -76,19 +76,21 @@ namespace HonestFlow
         {
             string status = await _systemService.GetServiceStatus();
 
-            if (lblServiceStatus.InvokeRequired)
+            void Apply()
             {
-                lblServiceStatus.Invoke(new Action(() =>
+                lblServiceStatus.Text = status switch
                 {
-                    lblServiceStatus.Text = status switch
-                    {
-                        "running" => "Статус: ✅ РАБОТАЕТ",
-                        "stopped" => "Статус: ⏹️ ОСТАНОВЛЕНА",
-                        "notfound" => "Статус: ❌ СЛУЖБА НЕ НАЙДЕНА",
-                        _ => "Статус: ❓ НЕИЗВЕСТНО"
-                    };
-                }));
+                    "running" => "Статус: ✅ РАБОТАЕТ",
+                    "stopped" => "Статус: ⏹️ ОСТАНОВЛЕНА",
+                    "notfound" => "Статус: ❌ СЛУЖБА НЕ НАЙДЕНА",
+                    _ => "Статус: ❓ НЕИЗВЕСТНО"
+                };
             }
+
+            if (lblServiceStatus.InvokeRequired)
+                lblServiceStatus.Invoke((Action)Apply);
+            else
+                Apply();
         }
 
         private async Task CheckApi()

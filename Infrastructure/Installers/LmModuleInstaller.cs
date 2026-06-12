@@ -489,23 +489,5 @@ namespace HonestFlow.Infrastructure.Installers
 
             return null;
         }
-
-        public static string FindModulePath()
-        {
-            string[] paths =
-            {
-                @"C:\Program Files\Regime\bin\regime.cmd",
-                @"C:\Program Files (x86)\Regime\bin\regime.cmd",
-                @"F:\Program Files\Regime\bin\regime.cmd"
-            };
-
-            foreach (var p in paths)
-            {
-                if (File.Exists(p))
-                    return p;
-            }
-
-            return null;
-        }
     }
 }

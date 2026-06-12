@@ -22,16 +22,12 @@ namespace HonestFlow.Services.Lm
         private string _apiVersion = "v2";
         private readonly ILogService _log;
 
-        public LmModuleService(ILogService log)
-        {
-            _log = log;
-        }
-
         public LmModuleService(string installerPath, string expectedVersion)
     : this(installerPath, expectedVersion, null)
         {
         }
 
+        /*
         private void LogUser(string message, bool isError = false)
         {
             if (_log != null)
@@ -47,16 +43,17 @@ namespace HonestFlow.Services.Lm
             else
                 Logger.DebugLog(message, nameof(LmModuleService));
         }
+        */
 
         public LmModuleService(string installerPath, string expectedVersion, ILogService log)
         {
             if (string.IsNullOrWhiteSpace(expectedVersion))
-                throw new ArgumentException("Версия ЛМ ЧЗ не задана. Нельзя запускать install/update-сценарий без expectedVersion.", nameof(expectedVersion));
+                throw new ArgumentException("Версия ЛМ ЧЗ не задана.", nameof(expectedVersion));
 
             _apiClient = new LmApiClient(true);
             _installer = new LmModuleInstaller(installerPath);
             _expectedVersion = expectedVersion;
-            _log = log;
+            _log = log ?? new LogService();
         }
 
         public async Task<bool> IsApiAvailable()

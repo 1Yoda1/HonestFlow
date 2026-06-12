@@ -14,7 +14,8 @@ namespace HonestFlow.Infrastructure.Configuration
     {
         private const string GitHubOwner = "1Yoda1";
         private const string GitHubRepo = "HonestFlow";
-        private const string UserAgent = "HonestFlow/1.3";
+        private static string UserAgent =>
+            $"HonestFlow/{typeof(RemoteConfigRepository).Assembly.GetName().Version}";
 
         private List<IPData> _cachedIps;
         private VersionsData _cachedVersions;

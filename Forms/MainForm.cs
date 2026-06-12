@@ -41,7 +41,15 @@ namespace HonestFlow
 
             SetupForm();
         }
+        private static bool IsAdminPasswordValid(string password)
+        {
+            string configured = Environment.GetEnvironmentVariable("HONESTFLOW_ADMIN_PASSWORD");
 
+            if (!string.IsNullOrWhiteSpace(configured))
+                return password == configured;
+
+            return password == "bckfvgbljhfc228"; // TODO удалить после перехода
+        }
         private void SetupForm()
         {
             progressBar.Minimum = 0;
@@ -70,7 +78,7 @@ namespace HonestFlow
                 string password = Microsoft.VisualBasic.Interaction.InputBox(
                     "Введите пароль администратора:", "Доступ к диагностике", "");
 
-                if (password == "bckfvgbljhfc228")
+                if (IsAdminPasswordValid(password))
                 {
                     AdminForm adminForm = new AdminForm();
                     adminForm.ShowDialog();
