@@ -101,7 +101,8 @@ namespace HonestFlow.Services.Installation
             if (string.IsNullOrWhiteSpace(lmVersion))
             {
                 const string message = "Версия ЛМ ЧЗ не задана в конфигурации. Проверьте versions.json / GitHub versions.";
-                _log.LogDebug($"❌ {message}");
+                _log.LogUser($"❌ {message}", true);
+                _log.LogDebug($"Ошибка конфигурации: {message}");
                 throw new InvalidOperationException(message);
             }
 
@@ -345,13 +346,13 @@ namespace HonestFlow.Services.Installation
             {
                 case InstallationComponent.LmModule:
                     string lmVersion = EnsureLmVersionConfigured(versions);
-                    var lm = new LmModuleService(item.InstallerPath, lmVersion);
+                    var lm = new LmModuleService(item.InstallerPath, lmVersion, _log);
                     bool lmSuccess = await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
                     _log.LogUser(lmSuccess ? "✅ ЛМ ЧЗ установлен" : "❌ ЛМ ЧЗ не установлен", !lmSuccess);
                     return lmSuccess;
 
                 case InstallationComponent.AtolDriver:
-                    bool atolSuccess = await new AtolInstaller(item.InstallerPath).Install();
+                    bool atolSuccess = await new AtolInstaller(item.InstallerPath, _log).Install();
                     _log.LogUser(atolSuccess ? "✅ Драйвер АТОЛ установлен" : "❌ Драйвер АТОЛ не установлен", !atolSuccess);
                     return atolSuccess;
 

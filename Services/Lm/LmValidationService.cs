@@ -30,7 +30,7 @@ namespace HonestFlow.Services.Lm
             {
                 if (_cachedLmModule == null || _cachedExpectedVersion != expectedVersion)
                 {
-                    _cachedLmModule = new LmModuleService(string.Empty, expectedVersion);
+                    _cachedLmModule = new LmModuleService(string.Empty, expectedVersion, _log);
                     _cachedExpectedVersion = expectedVersion;
                     _log.LogDebug($"LmModuleService создан и закэширован для версии {expectedVersion}");
                 }
