@@ -3,7 +3,7 @@ using System.IO;
 using HonestFlow.Models;
 using Newtonsoft.Json;
 
-namespace HonestFlow.Infrastructure
+namespace HonestFlow.Infrastructure.Configuration
 {
     /// <summary>
     /// Локальные конфиги рядом с exe: ips.json и versions.json.

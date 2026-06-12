@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using HonestFlow.Helpers;
-using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Installers;
 using HonestFlow.Models;
 using HonestFlow.Services.Core;

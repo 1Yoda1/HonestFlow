@@ -4,7 +4,7 @@ using System.Net.Http;
 using HonestFlow.Models;
 using Newtonsoft.Json;
 
-namespace HonestFlow.Infrastructure
+namespace HonestFlow.Infrastructure.Configuration
 {
     /// <summary>
     /// Чтение конфигов из latest GitHub Release.
@@ -76,7 +76,7 @@ namespace HonestFlow.Infrastructure
 
         private static dynamic LoadLatestRelease(HttpClient client)
         {
-            string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases/tag/installers";
+            string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases/tags/installers";
             var releaseJson = client.GetStringAsync(apiUrl).GetAwaiter().GetResult();
             return JsonConvert.DeserializeObject(releaseJson);
         }

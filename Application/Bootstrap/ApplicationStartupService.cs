@@ -1,5 +1,6 @@
 using System;
 using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Services.Auth;
 using HonestFlow.Services.Core;
 using HonestFlow.Services.Installation;

@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace HonestFlow.Infrastructure
+namespace HonestFlow.Infrastructure.Configuration
 {
     /// <summary>
     /// Единая карта папок приложения.

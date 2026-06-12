@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
+using HonestFlow.Infrastructure.Configuration;
 using Newtonsoft.Json;
 
-namespace HonestFlow.Infrastructure
+namespace HonestFlow.Infrastructure.Downloads
 {
     public class GitHubDownloader
     {
@@ -71,9 +72,9 @@ namespace HonestFlow.Infrastructure
                 long totalRead = 0;
                 int bytesRead;
 
-                while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                while ((bytesRead = await contentStream.ReadAsync(buffer)) > 0)
                 {
-                    await fileStream.WriteAsync(buffer, 0, bytesRead);
+                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead));
                     totalRead += bytesRead;
 
                     if (totalBytes > 0 && progress != null)

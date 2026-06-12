@@ -1,5 +1,6 @@
 using HonestFlow.Application.Bootstrap;
 using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Models;
 using HonestFlow.Services.Auth;
 using HonestFlow.Services.Core;

@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using HonestFlow.Infrastructure.Downloads;
 using HonestFlow.Models;
 
-namespace HonestFlow.Infrastructure
+namespace HonestFlow.Infrastructure.Configuration
 {
     /// <summary>
     /// Фасад совместимости для старого кода.

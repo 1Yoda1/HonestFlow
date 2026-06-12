@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using HonestFlow.Infrastructure.Configuration;
+using Newtonsoft.Json;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -117,9 +118,9 @@ namespace HonestFlow.Infrastructure.Updates
 
         private void CreateAndRunUpdateScript(string newExePath, string backupPath)
         {
-            string currentExe = Process.GetCurrentProcess().MainModule.FileName;
+            string currentExe = Environment.ProcessPath;
             string appDir = AppPaths.BaseFolder.TrimEnd('\\');
-            int currentPid = Process.GetCurrentProcess().Id;
+            int currentPid = Environment.ProcessId;
 
             string scriptPath = Path.Combine(AppPaths.ProgramDataFolder, "update", "apply_update.cmd");
             string backupExe = Path.Combine(backupPath, "HonestFlow.backup.exe");

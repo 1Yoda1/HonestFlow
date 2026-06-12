@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Models;
 using HonestFlow.Services.Core;
 
