@@ -150,8 +150,8 @@ namespace HonestFlow.Services.Lm
 
                 if (answer != DialogResult.Yes)
                 {
-                    _log.LogUser("⚠️ Пользователь отменил переустановку ЛМ ЧЗ из-за конфликта ИНН.");
-                    return false;
+                    _log.LogUser("ℹ️ Пользователь отказался от переустановки ЛМ ЧЗ");
+                    return true;
                 }
 
                 await _installer.ReinstallBecauseInnMismatch(actualStatus.Inn, expectedInn);

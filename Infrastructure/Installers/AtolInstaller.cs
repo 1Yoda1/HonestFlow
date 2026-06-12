@@ -5,23 +5,19 @@ using System.Threading.Tasks;
 
 namespace HonestFlow.Infrastructure.Installers
 {
-    /// <summary>
-    /// Установщик драйвера АТОЛ.
-    /// </summary>
     public class AtolInstaller
     {
         private readonly string _installerPath;
         private readonly ILogService _log;
+        private readonly bool _with1C;
 
-        public AtolInstaller(string installerPath, ILogService logService)
+        public AtolInstaller(string installerPath, ILogService logService, bool with1C = false)
         {
             _installerPath = installerPath;
             _log = logService ?? throw new ArgumentNullException(nameof(logService));
+            _with1C = with1C;
         }
 
-        /// <summary>
-        /// Запуск установки драйвера АТОЛ в тихом режиме.
-        /// </summary>
         public async Task<bool> Install()
         {
             if (string.IsNullOrWhiteSpace(_installerPath))
@@ -36,8 +32,16 @@ namespace HonestFlow.Infrastructure.Installers
                 return false;
             }
 
+            string arguments = "/S /AcceptLicense /WithEOU";
+
+            if (_with1C)
+                arguments += " /With1C";
+
             _log.LogDebug($"Запуск установки АТОЛ: {_installerPath}");
-            int code = await ProcessRunner.RunAsync(_installerPath, "/S /AcceptLicense /WithEOU", true);
+            _log.LogDebug($"Аргументы АТОЛ: {arguments}");
+
+            int code = await ProcessRunner.RunAsync(_installerPath, arguments, true);
+
             _log.LogDebug($"Установка АТОЛ завершена с кодом: {code}");
 
             return code == 0;

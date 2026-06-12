@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace HonestFlow.Models
 {
     public class IPData
@@ -7,5 +9,14 @@ namespace HonestFlow.Models
         public string Token { get; set; }
         public string Inn { get; set; }
         public string Architecture { get; set; } = "x64";
+
+        public List<string> Tags { get; set; } = new();
+        public VersionsData Versions { get; set; } = new();
+
+        public bool HasTag(string tag)
+        {
+            return Tags != null && Tags.Exists(x =>
+                string.Equals(x, tag, System.StringComparison.OrdinalIgnoreCase));
+        }
     }
 }

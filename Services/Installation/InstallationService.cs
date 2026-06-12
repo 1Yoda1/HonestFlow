@@ -124,9 +124,10 @@ namespace HonestFlow.Services.Installation
             bool forceLmInstall,
             string lmPlanReason)
         {
+            var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
+            var plan = await BuildInstallationPlan(selectedIP, effectiveVersions, precheckedLmStatus, forceLmInstall, lmPlanReason);
             _progress.SetProgress(10, "Проверка версий...");
 
-            var plan = await BuildInstallationPlan(selectedIP, versions, precheckedLmStatus, forceLmInstall, lmPlanReason);
             LogPlan(plan);
 
             if (!plan.HasWork)
@@ -137,10 +138,9 @@ namespace HonestFlow.Services.Installation
                 return true;
             }
 
-            if (!await ResolveInstallerPaths(plan, selectedIP, versions))
-                return false;
+            if (!await ResolveInstallerPaths(plan, selectedIP, effectiveVersions)) return false;
 
-            bool success = await ExecuteInstallationPlan(plan, selectedIP, versions);
+            bool success = await ExecuteInstallationPlan(plan, selectedIP, effectiveVersions);
 
             _progress.SetProgress(100, success ? "Установка завершена!" : "Установка завершена с ошибками");
 
@@ -158,6 +158,7 @@ namespace HonestFlow.Services.Installation
         }
 
         private async Task<InstallationPlan> BuildInstallationPlan(
+
             IPData selectedIP,
             VersionsData versions,
             LmStatus precheckedLmStatus,
@@ -165,7 +166,8 @@ namespace HonestFlow.Services.Installation
             string lmPlanReason)
         {
             var plan = new InstallationPlan();
-            string expectedLmVersion = EnsureLmVersionConfigured(versions);
+            var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
+            string expectedLmVersion = EnsureLmVersionConfigured(effectiveVersions);
 
             bool needLmInstall;
             string lmStatusText;
@@ -201,38 +203,65 @@ namespace HonestFlow.Services.Installation
                 ExpectedVersion = expectedLmVersion
             });
 
-            bool needAtolInstall = _versionChecker.NeedAtolInstall(selectedIP, versions?.AtolDriver);
+            bool needAtolInstall = _versionChecker.NeedAtolInstall(selectedIP, effectiveVersions?.AtolDriver);
             plan.Items.Add(new ComponentPlanItem
             {
                 Component = InstallationComponent.AtolDriver,
                 DisplayName = "Драйвер АТОЛ",
                 NeedInstall = needAtolInstall,
                 StatusText = needAtolInstall ? "требуется установка" : "OK",
-                ExpectedVersion = versions?.AtolDriver
+                ExpectedVersion = effectiveVersions?.AtolDriver
             });
 
-            bool needEsmInstall = _versionChecker.NeedEsmInstall(versions?.ESM);
+            bool needEsmInstall = _versionChecker.NeedEsmInstall(effectiveVersions?.ESM);
             plan.Items.Add(new ComponentPlanItem
             {
                 Component = InstallationComponent.Esm,
                 DisplayName = "ЕСМ",
                 NeedInstall = needEsmInstall,
                 StatusText = needEsmInstall ? "требуется установка" : "OK",
-                ExpectedVersion = versions?.ESM
+                ExpectedVersion = effectiveVersions?.ESM
             });
 
-            bool needControllerInstall = _versionChecker.NeedControllerInstall(versions?.Controller);
+            bool needControllerInstall = _versionChecker.NeedControllerInstall(effectiveVersions?.Controller);
             plan.Items.Add(new ComponentPlanItem
             {
                 Component = InstallationComponent.Controller,
                 DisplayName = "Контроллер",
                 NeedInstall = needControllerInstall,
                 StatusText = needControllerInstall ? "требуется установка" : "OK",
-                ExpectedVersion = versions?.Controller
+                ExpectedVersion = effectiveVersions?.Controller
             });
 
-            InstallerFileNameBuilder.FillFileNames(plan, selectedIP, versions);
+            InstallerFileNameBuilder.FillFileNames(plan, selectedIP, effectiveVersions);
             return plan;
+        }
+        private VersionsData ApplyClientVersionOverrides(IPData selectedIP, VersionsData globalVersions)
+        {
+            var result = new VersionsData
+            {
+                LmModule = globalVersions?.LmModule,
+                AtolDriver = globalVersions?.AtolDriver,
+                ESM = globalVersions?.ESM,
+                Controller = globalVersions?.Controller
+            };
+
+            if (selectedIP?.Versions == null)
+                return result;
+
+            if (!string.IsNullOrWhiteSpace(selectedIP.Versions.LmModule))
+                result.LmModule = selectedIP.Versions.LmModule;
+
+            if (!string.IsNullOrWhiteSpace(selectedIP.Versions.AtolDriver))
+                result.AtolDriver = selectedIP.Versions.AtolDriver;
+
+            if (!string.IsNullOrWhiteSpace(selectedIP.Versions.ESM))
+                result.ESM = selectedIP.Versions.ESM;
+
+            if (!string.IsNullOrWhiteSpace(selectedIP.Versions.Controller))
+                result.Controller = selectedIP.Versions.Controller;
+
+            return result;
         }
 
         private void LogPlan(InstallationPlan plan)
@@ -352,7 +381,13 @@ namespace HonestFlow.Services.Installation
                     return lmSuccess;
 
                 case InstallationComponent.AtolDriver:
-                    bool atolSuccess = await new AtolInstaller(item.InstallerPath, _log).Install();
+                    bool with1C = selectedIP.HasTag("With1C");
+
+                    if (with1C)
+                        _log.LogUser("Тег With1C найден: драйвер АТОЛ будет установлен с параметром /With1C");
+
+                    bool atolSuccess = await new AtolInstaller(item.InstallerPath, _log, with1C).Install();
+
                     _log.LogUser(atolSuccess ? "✅ Драйвер АТОЛ установлен" : "❌ Драйвер АТОЛ не установлен", !atolSuccess);
                     return atolSuccess;
 
