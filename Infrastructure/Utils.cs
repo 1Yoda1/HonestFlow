@@ -8,32 +8,26 @@ namespace HonestFlow.Infrastructure
     {
         public static RichTextBox LogBox { get; set; }
 
-        public static void Log(string message, bool isError = false)
-        {
-            WriteToUi(message, isError ? Color.Red : Color.LightGreen);
-            Logger.LogToFile(message, isError);
-        }
+        //private static void WriteToUi(string message, Color color)
+        //{
+        //    if (LogBox == null) return;
 
-        private static void WriteToUi(string message, Color color)
-        {
-            if (LogBox == null) return;
+        //    if (LogBox.InvokeRequired)
+        //    {
+        //        LogBox.Invoke(new Action(() => WriteToUi(message, color)));
+        //        return;
+        //    }
 
-            if (LogBox.InvokeRequired)
-            {
-                LogBox.Invoke(new Action(() => WriteToUi(message, color)));
-                return;
-            }
+        //    string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+        //    string formatted = $"[{timestamp}] {message}";
+        //    LogBox.AppendText(formatted + Environment.NewLine);
 
-            string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
-            string formatted = $"[{timestamp}] {message}";
-            LogBox.AppendText(formatted + Environment.NewLine);
-
-            int start = Math.Max(0, LogBox.TextLength - formatted.Length - Environment.NewLine.Length);
-            LogBox.Select(start, formatted.Length);
-            LogBox.SelectionColor = color;
-            LogBox.Select(LogBox.TextLength, 0);
-            LogBox.ScrollToCaret();
-        }
+        //    int start = Math.Max(0, LogBox.TextLength - formatted.Length - Environment.NewLine.Length);
+        //    LogBox.Select(start, formatted.Length);
+        //    LogBox.SelectionColor = color;
+        //    LogBox.Select(LogBox.TextLength, 0);
+        //    LogBox.ScrollToCaret();
+        //}
 
         public static bool IsAdministrator()
         {

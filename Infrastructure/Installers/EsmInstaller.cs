@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using HonestFlow.Services.Core;
+using System.IO;
 using System.Threading.Tasks;
 
 namespace HonestFlow.Infrastructure.Installers
@@ -10,24 +11,26 @@ namespace HonestFlow.Infrastructure.Installers
     {
         private readonly string _esmPath;
         private readonly string _controllerPath;
+        private readonly ILogService _log;
 
-        public EsmInstaller(string esmPath, string controllerPath)
+        public EsmInstaller(string esmPath, string controllerPath, ILogService log)
         {
             _esmPath = esmPath;
             _controllerPath = controllerPath;
+            _log = log;
         }
 
         public async Task<bool> InstallEsm()
         {
             if (string.IsNullOrEmpty(_esmPath))
             {
-                Utils.Log("⚠️ Путь к ЕСМ не указан", true);
+                _log.LogUser("⚠️ Путь к ЕСМ не указан", true);
                 return false;
             }
 
             if (!File.Exists(_esmPath))
             {
-                Utils.Log($"⚠️ Файл ЕСМ не найден: {_esmPath}", true);
+                _log.LogUser($"⚠️ Файл ЕСМ не найден: {_esmPath}", true);
                 return false;
             }
 
@@ -39,13 +42,13 @@ namespace HonestFlow.Infrastructure.Installers
         {
             if (string.IsNullOrEmpty(_controllerPath))
             {
-                Utils.Log("⚠️ Путь к Контроллеру не указан", true);
+                _log.LogUser("⚠️ Путь к Контроллеру не указан", true);
                 return false;
             }
 
             if (!File.Exists(_controllerPath))
             {
-                Utils.Log($"⚠️ Файл Контроллера не найден: {_controllerPath}", true);
+                _log.LogUser($"⚠️ Файл Контроллера не найден: {_controllerPath}", true);
                 return false;
             }
 

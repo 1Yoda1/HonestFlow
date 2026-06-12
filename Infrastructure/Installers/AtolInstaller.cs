@@ -1,13 +1,23 @@
-﻿using System.IO;
+﻿using HonestFlow.Services.Core;
+using System.IO;
 using System.Threading.Tasks;
+
 
 namespace HonestFlow.Infrastructure.Installers
 {
     /// <summary>
     /// Установщик драйвера АТОЛ
     /// </summary>
+
     public class AtolInstaller
     {
+        private readonly ILogService _log;
+
+        public AtolInstaller(ILogService log)
+        {
+            _log = log;
+        }
+
         private readonly string _installerPath;
 
         public AtolInstaller(string installerPath) => _installerPath = installerPath;
@@ -19,7 +29,7 @@ namespace HonestFlow.Infrastructure.Installers
         {
             if (!File.Exists(_installerPath))
             {
-                Utils.Log("⚠️ Файл драйвера АТОЛ не найден", true);
+                _log.LogUser("⚠️ Файл драйвера АТОЛ не найден", true);
                 return false;
             }
 

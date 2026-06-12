@@ -1,22 +1,15 @@
-﻿using HonestFlow.Models;
+using HonestFlow.Models;
 
 namespace HonestFlow.Services.Installation
 {
-    /// <summary>
-    /// Интерфейс сервиса проверки версий компонентов
-    /// </summary>
     public interface IVersionCheckService
     {
+        bool NeedAtolInstall(IPData selectedIP, string expectedVersion);
+        bool NeedEsmInstall(string expectedVersion);
+        bool NeedControllerInstall(string expectedVersion);
+
         string GetAtolDriverInfo();
         string GetEsmVersion();
         string GetControllerVersion();
-        /// <summary>Проверить нужна ли установка драйвера АТОЛ</summary>
-        bool NeedAtolInstall(IPData selectedIP, string expectedVersion);
-
-        /// <summary>Проверить нужна ли установка ЕСМ</summary>
-        bool NeedEsmInstall(string expectedVersion);
-
-        /// <summary>Проверить нужна ли установка Контроллера</summary>
-        bool NeedControllerInstall(string expectedVersion);
     }
 }

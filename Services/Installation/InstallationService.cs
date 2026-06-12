@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -42,10 +42,12 @@ namespace HonestFlow.Services.Installation
             try
             {
                 var versions = LoadVersions();
-                string expectedLmVersion = versions?.LmModule ?? "2.5.1-2";
+                string expectedLmVersion = EnsureLmVersionConfigured(versions);
+
                 _log.LogDebug($"Ожидаемая версия ЛМ ЧЗ: {expectedLmVersion}");
 
                 var status = await _lmValidator.GetLmStatus(expectedLmVersion);
+
                 if (status == null)
                 {
                     _log.LogUser("ЛМ ЧЗ: не установлен", true);
@@ -59,10 +61,13 @@ namespace HonestFlow.Services.Installation
                 bool forceLmInstall = false;
                 string lmPlanReason = null;
 
-                if (!string.IsNullOrEmpty(selectedIP.Inn) && !string.IsNullOrEmpty(status.Inn) && status.Inn != selectedIP.Inn)
+                if (!string.IsNullOrEmpty(selectedIP.Inn) &&
+                    !string.IsNullOrEmpty(status.Inn) &&
+                    status.Inn != selectedIP.Inn)
                 {
                     forceLmInstall = true;
                     lmPlanReason = $"INN mismatch: в ЛМ {MaskInnForLog(status.Inn)}, ожидается {MaskInnForLog(selectedIP.Inn)}";
+
                     _log.LogUser($"ИНН ЛМ ЧЗ не совпадает: в ЛМ {MaskInnForLog(status.Inn)}, нужно {MaskInnForLog(selectedIP.Inn)}", true);
                     _log.LogDebug($"ЛМ ЧЗ будет передан в ветку forced reinstall из-за INN mismatch. {lmPlanReason}");
                 }
@@ -80,7 +85,27 @@ namespace HonestFlow.Services.Installation
 
         private VersionsData LoadVersions()
         {
-            return _useGitHubMode ? ConfigManager.LoadVersionsFromGitHub() : ConfigManager.LoadVersions();
+            return _useGitHubMode
+                ? ConfigManager.LoadVersionsFromGitHub()
+                : ConfigManager.LoadVersions();
+        }
+
+        /// <summary>
+        /// Версия ЛМ ЧЗ больше не имеет fallback в коде.
+        /// Если версия не задана в конфигурации, установка должна остановиться с понятной ошибкой.
+        /// </summary>
+        private string EnsureLmVersionConfigured(VersionsData versions)
+        {
+            string lmVersion = versions?.LmModule;
+
+            if (string.IsNullOrWhiteSpace(lmVersion))
+            {
+                const string message = "Версия ЛМ ЧЗ не задана в конфигурации. Проверьте versions.json / GitHub versions.";
+                _log.LogDebug($"❌ {message}");
+                throw new InvalidOperationException(message);
+            }
+
+            return lmVersion;
         }
 
         private static string MaskInnForLog(string inn)
@@ -91,7 +116,12 @@ namespace HonestFlow.Services.Installation
             return inn.Substring(0, 4) + new string('*', Math.Max(0, inn.Length - 6)) + inn.Substring(inn.Length - 2);
         }
 
-        private async Task<bool> PerformInstallation(IPData selectedIP, VersionsData versions, LmStatus precheckedLmStatus, bool forceLmInstall, string lmPlanReason)
+        private async Task<bool> PerformInstallation(
+            IPData selectedIP,
+            VersionsData versions,
+            LmStatus precheckedLmStatus,
+            bool forceLmInstall,
+            string lmPlanReason)
         {
             _progress.SetProgress(10, "Проверка версий...");
 
@@ -110,6 +140,7 @@ namespace HonestFlow.Services.Installation
                 return false;
 
             bool success = await ExecuteInstallationPlan(plan, selectedIP, versions);
+
             _progress.SetProgress(100, success ? "Установка завершена!" : "Установка завершена с ошибками");
 
             if (success)
@@ -125,9 +156,15 @@ namespace HonestFlow.Services.Installation
             return success;
         }
 
-        private async Task<InstallationPlan> BuildInstallationPlan(IPData selectedIP, VersionsData versions, LmStatus precheckedLmStatus, bool forceLmInstall, string lmPlanReason)
+        private async Task<InstallationPlan> BuildInstallationPlan(
+            IPData selectedIP,
+            VersionsData versions,
+            LmStatus precheckedLmStatus,
+            bool forceLmInstall,
+            string lmPlanReason)
         {
             var plan = new InstallationPlan();
+            string expectedLmVersion = EnsureLmVersionConfigured(versions);
 
             bool needLmInstall;
             string lmStatusText;
@@ -140,15 +177,16 @@ namespace HonestFlow.Services.Installation
             }
             else if (precheckedLmStatus != null)
             {
-                needLmInstall = precheckedLmStatus.Version != versions?.LmModule;
+                needLmInstall = precheckedLmStatus.Version != expectedLmVersion;
                 lmStatusText = needLmInstall
-                    ? $"версия {precheckedLmStatus.Version}, требуется {versions?.LmModule}"
+                    ? $"версия {precheckedLmStatus.Version}, требуется {expectedLmVersion}"
                     : $"OK, версия {precheckedLmStatus.Version}";
+
                 _log.LogDebug("План ЛМ ЧЗ построен по предварительной проверке, без повторного HTTP-запроса");
             }
             else
             {
-                var lmInfo = await _lmValidator.GetLmStatusInfo(versions?.LmModule);
+                var lmInfo = await _lmValidator.GetLmStatusInfo(expectedLmVersion);
                 needLmInstall = lmInfo.Item1;
                 lmStatusText = lmInfo.Item2;
             }
@@ -159,7 +197,7 @@ namespace HonestFlow.Services.Installation
                 DisplayName = "ЛМ ЧЗ",
                 NeedInstall = needLmInstall,
                 StatusText = lmStatusText,
-                ExpectedVersion = versions?.LmModule
+                ExpectedVersion = expectedLmVersion
             });
 
             bool needAtolInstall = _versionChecker.NeedAtolInstall(selectedIP, versions?.AtolDriver);
@@ -200,11 +238,13 @@ namespace HonestFlow.Services.Installation
         {
             _log.LogUser("");
             _log.LogUser("=== ПЛАН УСТАНОВКИ ===");
+
             foreach (var item in plan.Items)
             {
                 string marker = item.NeedInstall ? "❌" : "✅";
                 _log.LogUser($"{item.DisplayName}: {marker} {item.StatusText}");
             }
+
             _log.LogUser("======================");
         }
 
@@ -243,6 +283,7 @@ namespace HonestFlow.Services.Installation
         private void ResolveLocalInstallerPaths(InstallationPlan plan, IPData selectedIP)
         {
             string installersFolder = ConfigManager.GetInstallersFolder();
+
             _log.LogDebug($"Разрядность ИП: {selectedIP.Architecture}");
             _log.LogDebug($"Папка установщиков: {installersFolder}");
 
@@ -287,6 +328,7 @@ namespace HonestFlow.Services.Installation
             {
                 completed++;
                 _progress.SetProgress(70 + completed * 25 / total, $"Установка: {item.DisplayName}...");
+
                 bool success = await InstallComponent(item, selectedIP, versions);
                 allSuccess &= success;
             }
@@ -302,7 +344,8 @@ namespace HonestFlow.Services.Installation
             switch (item.Component)
             {
                 case InstallationComponent.LmModule:
-                    var lm = new LmModuleService(item.InstallerPath, versions?.LmModule ?? "2.5.1-2");
+                    string lmVersion = EnsureLmVersionConfigured(versions);
+                    var lm = new LmModuleService(item.InstallerPath, lmVersion);
                     bool lmSuccess = await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
                     _log.LogUser(lmSuccess ? "✅ ЛМ ЧЗ установлен" : "❌ ЛМ ЧЗ не установлен", !lmSuccess);
                     return lmSuccess;
@@ -313,12 +356,12 @@ namespace HonestFlow.Services.Installation
                     return atolSuccess;
 
                 case InstallationComponent.Esm:
-                    bool esmSuccess = await new EsmInstaller(item.InstallerPath, null).InstallEsm();
+                    bool esmSuccess = await new EsmInstaller(item.InstallerPath, null, _log).InstallEsm();
                     _log.LogUser(esmSuccess ? "✅ ЕСМ установлен" : "❌ ЕСМ не установлен", !esmSuccess);
                     return esmSuccess;
 
                 case InstallationComponent.Controller:
-                    bool controllerSuccess = await new EsmInstaller(null, item.InstallerPath).InstallController();
+                    bool controllerSuccess = await new EsmInstaller(null, item.InstallerPath, _log).InstallController();
                     _log.LogUser(controllerSuccess ? "✅ Контроллер установлен" : "❌ Контроллер не установлен", !controllerSuccess);
                     return controllerSuccess;
 

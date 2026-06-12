@@ -23,6 +23,9 @@ namespace HonestFlow.Services.Lm
 
         private LmModuleService GetLmModule(string expectedVersion)
         {
+            if (string.IsNullOrWhiteSpace(expectedVersion))
+                throw new InvalidOperationException("Версия ЛМ ЧЗ не задана. Проверьте versions.json / конфигурацию источника установщиков.");
+
             lock (_lockObject)
             {
                 if (_cachedLmModule == null || _cachedExpectedVersion != expectedVersion)
@@ -44,8 +47,11 @@ namespace HonestFlow.Services.Lm
 
         public async Task<(bool NeedInstall, string DisplayStatus)> GetLmStatusInfo(string expectedVersion)
         {
-            if (string.IsNullOrEmpty(expectedVersion))
-                return (false, "версия не задана");
+            if (string.IsNullOrWhiteSpace(expectedVersion))
+            {
+                _log.LogDebug("❌ Версия ЛМ ЧЗ не задана. Проверка ЛМ невозможна.");
+                return (true, "ошибка: версия ЛМ не задана");
+            }
 
             try
             {

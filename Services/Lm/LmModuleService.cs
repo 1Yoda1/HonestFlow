@@ -6,6 +6,7 @@ using HonestFlow.Infrastructure.Api;
 using HonestFlow.Infrastructure.Installers;
 using HonestFlow.Infrastructure.Services;
 using HonestFlow.Models;
+using HonestFlow.Services.Core;
 
 namespace HonestFlow.Services.Lm
 {
@@ -19,9 +20,18 @@ namespace HonestFlow.Services.Lm
         private readonly LmModuleInstaller _installer;
         private readonly string _expectedVersion;
         private string _apiVersion = "v2";
+        private readonly ILogService _log;
+
+        public LmModuleService(ILogService log)
+        {
+            _log = log;
+        }
 
         public LmModuleService(string installerPath, string expectedVersion)
         {
+            if (string.IsNullOrWhiteSpace(expectedVersion))
+                throw new ArgumentException("Версия ЛМ ЧЗ не задана. Нельзя запускать install/update-сценарий без expectedVersion.", nameof(expectedVersion));
+
             _apiClient = new LmApiClient(true);
             _installer = new LmModuleInstaller(installerPath);
             _expectedVersion = expectedVersion;
@@ -38,28 +48,33 @@ namespace HonestFlow.Services.Lm
             return response.IsSuccess ? response.Data : null;
         }
 
+        public async Task<ApiResponse<LmStatus>> GetStatusFull()
+        {
+            return await _apiClient.GetStatus();
+        }
+
         public async Task<ApiSimpleResponse> InitializeFull(string token)
         {
-            Utils.Log($" Инициализация (API {_apiVersion})...");
+            _log.LogUser($" Инициализация (API {_apiVersion})...");
             return await _apiClient.InitializeFull(token);
         }
 
         public async Task<bool> EnsureInstalledAndInitialized(string token, string expectedInn)
         {
             using var operation = Logger.BeginOperation("EnsureInstalledAndInitialized ЛМ ЧЗ", nameof(LmModuleService));
-            Utils.Log(" Проверка ЛМ ЧЗ...");
+            _log.LogUser(" Проверка ЛМ ЧЗ...");
 
             string installedGuid = _installer.GetInstalledGuid();
             bool installedByGuid = !string.IsNullOrWhiteSpace(installedGuid);
 
             if (!installedByGuid)
             {
-                Utils.Log("❌ ЛМ ЧЗ не найден по GUID, запускаем чистую установку.");
+                _log.LogUser("❌ ЛМ ЧЗ не найден по GUID, запускаем чистую установку.");
                 await _installer.CleanInstall();
                 return await StartApiAndInitialize(token, "после чистой установки");
             }
 
-            Utils.Log($"✓ ЛМ ЧЗ найден по GUID: {installedGuid}");
+            _log.LogUser($"✓ ЛМ ЧЗ найден по GUID: {installedGuid}");
 
             var statusReady = await WaitForConditionAsync(
                 condition: IsStatusAvailable,
@@ -70,10 +85,10 @@ namespace HonestFlow.Services.Lm
 
             if (!statusReady)
             {
-                Utils.Log("⚠️ ЛМ установлен, но API не отвечает. Пробуем запустить службу Regime...");
+                _log.LogUser("⚠️ ЛМ установлен, но API не отвечает. Пробуем запустить службу Regime...");
                 if (!await StartServiceAndWaitForApi())
                 {
-                    Utils.Log("❌ ЛМ установлен по GUID, но API не поднялся после запуска службы.");
+                    _log.LogUser("❌ ЛМ установлен по GUID, но API не поднялся после запуска службы.");
                     return false;
                 }
             }
@@ -81,16 +96,16 @@ namespace HonestFlow.Services.Lm
             var actualStatus = await GetStatus();
             if (actualStatus == null)
             {
-                Utils.Log("❌ Не удалось получить статус ЛМ после подтверждения установки.");
+                _log.LogUser("❌ Не удалось получить статус ЛМ после подтверждения установки.");
                 return false;
             }
 
             DetectApiVersion(actualStatus.Version);
-            Utils.Log($"✓ Активен: {actualStatus.Version}, статус: {actualStatus.Status}, ИНН: {MaskInnForUi(actualStatus.Inn)}");
+            _log.LogUser($"✓ Активен: {actualStatus.Version}, статус: {actualStatus.Status}, ИНН: {MaskInnForUi(actualStatus.Inn)}");
 
             if (actualStatus.Version != _expectedVersion)
             {
-                Utils.Log($"⚠️ Версия ЛМ {actualStatus.Version} != {_expectedVersion}. Запускаем переустановку старой версии.");
+                _log.LogUser($"⚠️ Версия ЛМ {actualStatus.Version} != {_expectedVersion}. Запускаем переустановку старой версии.");
                 await _installer.ReinstallExisting($"старая версия {actualStatus.Version}, ожидается {_expectedVersion}");
                 return await StartApiAndInitialize(token, "после обновления версии ЛМ");
             }
@@ -100,7 +115,7 @@ namespace HonestFlow.Services.Lm
                 && !string.IsNullOrWhiteSpace(actualStatus.Inn)
                 && actualStatus.Inn != expectedInn)
             {
-                Utils.Log($"⚠️ INN mismatch: в ЛМ {MaskInnForUi(actualStatus.Inn)}, ожидается {MaskInnForUi(expectedInn)}");
+                _log.LogUser($"⚠️ INN mismatch: в ЛМ {MaskInnForUi(actualStatus.Inn)}, ожидается {MaskInnForUi(expectedInn)}");
 
                 var answer = MessageBox.Show(
                     $"ЛМ ЧЗ уже инициализирован на другой ИНН.\n\n" +
@@ -113,7 +128,7 @@ namespace HonestFlow.Services.Lm
 
                 if (answer != DialogResult.Yes)
                 {
-                    Utils.Log("⚠️ Пользователь отменил переустановку ЛМ ЧЗ из-за конфликта ИНН.");
+                    _log.LogUser("⚠️ Пользователь отменил переустановку ЛМ ЧЗ из-за конфликта ИНН.");
                     return false;
                 }
 
@@ -123,17 +138,17 @@ namespace HonestFlow.Services.Lm
 
             if (actualStatus.Status == "initialization" || actualStatus.Status == "ready")
             {
-                Utils.Log("✅ ЛМ ЧЗ готов");
+                _log.LogUser("✅ ЛМ ЧЗ готов");
                 return true;
             }
 
             if (actualStatus.Status == "not_configured")
             {
-                Utils.Log("⚠️ ЛМ ЧЗ установлен, но не инициализирован. Запускаем init...");
+                _log.LogUser("⚠️ ЛМ ЧЗ установлен, но не инициализирован. Запускаем init...");
                 return await InitializeAndReport(token, "инициализация установленного ЛМ");
             }
 
-            Utils.Log($"⚠️ Неожиданный статус ЛМ ЧЗ: {actualStatus.Status}. Пробуем инициализацию.");
+            _log.LogUser($"⚠️ Неожиданный статус ЛМ ЧЗ: {actualStatus.Status}. Пробуем инициализацию.");
             return await InitializeAndReport(token, $"инициализация при статусе {actualStatus.Status}");
         }
 
@@ -143,10 +158,10 @@ namespace HonestFlow.Services.Lm
 
             _apiVersion = lmVersion.StartsWith("1.") ? "v1" : "v2";
             if (_apiVersion == "v1")
-                Utils.Log("ℹ️ Старая версия ЛМ, используем API v1");
+                _log.LogUser("ℹ️ Старая версия ЛМ, используем API v1");
         }
 
-        private static async Task<bool> WaitForConditionAsync(
+        private async Task<bool> WaitForConditionAsync(
             Func<Task<bool>> condition,
             string conditionName,
             int timeoutSeconds = 60,
@@ -158,7 +173,7 @@ namespace HonestFlow.Services.Lm
             var currentInterval = initialIntervalMs;
             var attempt = 0;
 
-            Utils.Log($"⏳ Ожидание: {conditionName} (таймаут {timeoutSeconds} сек)");
+            _log.LogUser($"⏳ Ожидание: {conditionName} (таймаут {timeoutSeconds} сек)");
 
             while (DateTime.Now - startTime < timeout)
             {
@@ -168,13 +183,13 @@ namespace HonestFlow.Services.Lm
                     if (await condition())
                     {
                         var elapsed = (DateTime.Now - startTime).TotalSeconds;
-                        Utils.Log($"✅ {conditionName} готов за {elapsed:F1} сек (попытка {attempt})");
+                        _log.LogUser($"✅ {conditionName} готов за {elapsed:F1} сек (попытка {attempt})");
                         return true;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Utils.Log($"⚠️ Попытка {attempt}: {ex.Message}");
+                    _log.LogUser($"⚠️ Попытка {attempt}: {ex.Message}");
                 }
 
                 if (attempt < 4)
@@ -187,13 +202,13 @@ namespace HonestFlow.Services.Lm
                 await Task.Delay(currentInterval);
             }
 
-            Utils.Log($"❌ Таймаут {timeoutSeconds} сек: {conditionName} не готов");
+            _log.LogUser($"❌ Таймаут {timeoutSeconds} сек: {conditionName} не готов");
             return false;
         }
 
         private async Task<bool> StartServiceAndWaitForApi()
         {
-            Utils.Log(" Запуск службы Regime...");
+            _log.LogUser(" Запуск службы Regime...");
             await WindowsServiceManager.StartService();
 
             return await WaitForConditionAsync(
@@ -212,7 +227,7 @@ namespace HonestFlow.Services.Lm
 
         private async Task<bool> StartApiAndInitialize(string token, string context)
         {
-            Utils.Log($" Запуск API ЛМ ЧЗ {context}...");
+            _log.LogUser($" Запуск API ЛМ ЧЗ {context}...");
             if (!await StartServiceAndWaitForApi())
                 throw new Exception($"API ЛМ ЧЗ не доступен {context}");
 
@@ -224,11 +239,11 @@ namespace HonestFlow.Services.Lm
             var initResult = await InitializeFull(token);
             if (initResult.IsSuccess)
             {
-                Utils.Log($"✅ Инициализация ЛМ ЧЗ успешна: {context}");
+                _log.LogUser($"✅ Инициализация ЛМ ЧЗ успешна: {context}");
                 return true;
             }
 
-            Utils.Log($"❌ Ошибка инициализации ЛМ ЧЗ ({context}): {initResult.StatusCode} - {initResult.ErrorMessage}");
+            _log.LogUser($"❌ Ошибка инициализации ЛМ ЧЗ ({context}): {initResult.StatusCode} - {initResult.ErrorMessage}");
 
             string userMessage = initResult.ErrorMessage;
             if (initResult.StatusCode == System.Net.HttpStatusCode.Unauthorized)

@@ -1,13 +1,14 @@
-﻿using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure;
 using HonestFlow.Models;
 using HonestFlow.Services.Core;
+using HonestFlow.Services.Installation;
+using HonestFlow.Services.Lm;
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using HonestFlow.Services.Installation;
 using System.Windows.Forms;
 
 namespace HonestFlow.Services.Machine
@@ -16,11 +17,13 @@ namespace HonestFlow.Services.Machine
     {
         private readonly ILogService _log;
         private readonly IVersionCheckService _versionCheckService;
+        private readonly ILmStatusService _lmStatusService;
 
         public SystemService(ILogService logService)
         {
             _log = logService;
             _versionCheckService = new VersionCheckService(logService);
+            _lmStatusService = new LmStatusService(logService);
         }
 
         /// <summary>
@@ -102,14 +105,12 @@ namespace HonestFlow.Services.Machine
 
         public async Task<bool> IsApiAvailable()
         {
-            var lm = new LmModule("", "2.5.1-2");
-            return await lm.IsApiAvailable();
+            return await _lmStatusService.IsApiAvailable();
         }
 
         public async Task<LmStatus> GetApiStatus()
         {
-            var lm = new LmModule("", "2.5.1-2");
-            return await lm.GetStatus();
+            return await _lmStatusService.GetStatus();
         }
 
         public string GetSystemInfo()
@@ -148,8 +149,7 @@ namespace HonestFlow.Services.Machine
             sb.AppendLine("【ЛОКАЛЬНЫЙ МОДУЛЬ ЧЗ】");
             try
             {
-                var lm = new LmModule("", "2.5.1-2");
-                var status = Task.Run(async () => await lm.GetStatus()).GetAwaiter().GetResult();
+                var status = Task.Run(async () => await _lmStatusService.GetStatus()).GetAwaiter().GetResult();
                 if (status != null)
                 {
                     sb.AppendLine($"  Версия: {status.Version}");
