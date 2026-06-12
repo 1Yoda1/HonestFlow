@@ -76,7 +76,7 @@ namespace HonestFlow.Infrastructure
 
         private static dynamic LoadLatestRelease(HttpClient client)
         {
-            string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases/latest";
+            string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases/tag/installers";
             var releaseJson = client.GetStringAsync(apiUrl).GetAwaiter().GetResult();
             return JsonConvert.DeserializeObject(releaseJson);
         }

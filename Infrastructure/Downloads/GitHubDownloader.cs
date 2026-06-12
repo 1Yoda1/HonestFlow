@@ -31,7 +31,7 @@ namespace HonestFlow.Infrastructure
             client.DefaultRequestHeaders.Add("User-Agent", "HonestFlow/1.3");
             client.Timeout = TimeSpan.FromSeconds(10);
 
-            string apiUrl = $"https://api.github.com/repos/{OWNER}/{REPO}/releases/latest";
+            string apiUrl = $"https://api.github.com/repos/{OWNER}/{REPO}/releases/tags/installers";
             var releaseJson = await client.GetStringAsync(apiUrl);
             dynamic release = JsonConvert.DeserializeObject(releaseJson);
 
