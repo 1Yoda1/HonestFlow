@@ -13,7 +13,7 @@ namespace HonestFlow.Infrastructure.Downloads
         private const string OWNER = "1Yoda1";
         private const string REPO = "HonestFlow";
         private readonly string _cacheFolder;
-        private Dictionary<string, string> _cachedAssets = null;
+        private Dictionary<string, (string Url, long Size)> _cachedAssets = null;
         private readonly object _cacheLock = new object();
 
         public GitHubDownloader()
@@ -23,7 +23,7 @@ namespace HonestFlow.Infrastructure.Downloads
                 Directory.CreateDirectory(_cacheFolder);
         }
 
-        public async Task<Dictionary<string, string>> GetReleaseAssets(bool forceRefresh = false)
+        public async Task<Dictionary<string, (string Url, long Size)>> GetReleaseAssets(bool forceRefresh = false)
         {
             if (!forceRefresh && _cachedAssets != null)
                 return _cachedAssets;
@@ -36,12 +36,13 @@ namespace HonestFlow.Infrastructure.Downloads
             var releaseJson = await client.GetStringAsync(apiUrl);
             dynamic release = JsonConvert.DeserializeObject(releaseJson);
 
-            var assets = new Dictionary<string, string>();
+            var assets = new Dictionary<string, (string Url, long Size)>();
             foreach (var asset in release.assets)
             {
                 string name = asset.name;
                 string url = asset.browser_download_url;
-                assets[name] = url;
+                long size = asset.size;
+                assets[name] = (url, size);
                 Logger.LogToFile($"📦 Найден asset: {name}");
             }
 
@@ -53,10 +54,19 @@ namespace HonestFlow.Infrastructure.Downloads
             return assets;
         }
 
-        public async Task<bool> DownloadFile(string downloadUrl, string destinationPath, IProgress<int> progress)
+        public async Task<bool> DownloadFile(
+            string downloadUrl,
+            string destinationPath,
+            IProgress<int> progress,
+            long expectedBytes)
         {
+            string temporaryPath = destinationPath + ".download";
+
             try
             {
+                if (File.Exists(temporaryPath))
+                    File.Delete(temporaryPath);
+
                 using var client = new HttpClient();
                 client.DefaultRequestHeaders.Add("User-Agent", "HonestFlow/1.3");
                 client.Timeout = TimeSpan.FromMinutes(10);
@@ -66,7 +76,7 @@ namespace HonestFlow.Infrastructure.Downloads
 
                 var totalBytes = response.Content.Headers.ContentLength ?? -1;
                 using var contentStream = await response.Content.ReadAsStreamAsync();
-                using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
+                await using var fileStream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 8192, true);
 
                 var buffer = new byte[8192];
                 long totalRead = 0;
@@ -84,23 +94,52 @@ namespace HonestFlow.Infrastructure.Downloads
                     }
                 }
 
+                await fileStream.FlushAsync();
+                await fileStream.DisposeAsync();
+
+                long requiredBytes = expectedBytes > 0 ? expectedBytes : totalBytes;
+                if (requiredBytes > 0 && totalRead != requiredBytes)
+                {
+                    throw new InvalidDataException(
+                        $"Размер скачанного файла не совпадает: получено {totalRead} байт, ожидалось {requiredBytes} байт");
+                }
+
+                File.Move(temporaryPath, destinationPath, true);
+
                 Logger.LogToFile($"✅ Скачан: {Path.GetFileName(destinationPath)}");
                 return true;
             }
             catch (Exception ex)
             {
+                try
+                {
+                    if (File.Exists(temporaryPath))
+                        File.Delete(temporaryPath);
+                }
+                catch (Exception cleanupEx)
+                {
+                    Logger.LogToFile(
+                        $"Не удалось удалить временный файл {Path.GetFileName(temporaryPath)}: {cleanupEx.Message}",
+                        true);
+                }
+
                 Logger.LogToFile($"❌ Ошибка скачивания {Path.GetFileName(destinationPath)}: {ex.Message}", true);
                 return false;
             }
         }
 
-        public async Task<bool> DownloadFileWithRetry(string downloadUrl, string destinationPath, IProgress<int> progress, int maxRetries = 3)
+        public async Task<bool> DownloadFileWithRetry(
+            string downloadUrl,
+            string destinationPath,
+            IProgress<int> progress,
+            long expectedBytes,
+            int maxRetries = 3)
         {
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
                 Logger.LogToFile($"⬇ Попытка {attempt}/{maxRetries}: {Path.GetFileName(destinationPath)}");
 
-                bool success = await DownloadFile(downloadUrl, destinationPath, progress);
+                bool success = await DownloadFile(downloadUrl, destinationPath, progress, expectedBytes);
                 if (success)
                     return true;
 
@@ -114,36 +153,14 @@ namespace HonestFlow.Infrastructure.Downloads
             return false;
         }
 
-        public string GetCachedFile(string fileName)
+        public bool IsFileCached(string fileName, long expectedBytes)
         {
             string path = Path.Combine(_cacheFolder, fileName);
-            return File.Exists(path) ? path : null;
-        }
+            if (!File.Exists(path))
+                return false;
 
-        public bool IsFileCached(string fileName)
-        {
-            return File.Exists(Path.Combine(_cacheFolder, fileName));
-        }
-
-        public long GetTotalInstallerSize(List<string> fileNames)
-        {
-            // Можно реализовать получение размеров из GitHub API
-            // Для простоты вернём примерную оценку
-            return 350 * 1024 * 1024; // ~350 MB
-        }
-
-        public long GetFreeSpace()
-        {
-            string rootPath = Path.GetPathRoot(_cacheFolder);
-            var driveInfo = new DriveInfo(rootPath);
-            return driveInfo.AvailableFreeSpace;
-        }
-
-        public bool HasEnoughSpace(long requiredBytes)
-        {
-            long freeSpace = GetFreeSpace();
-            long requiredWithBuffer = requiredBytes + (100 * 1024 * 1024); // +100 MB запас
-            return freeSpace >= requiredWithBuffer;
+            long actualBytes = new FileInfo(path).Length;
+            return expectedBytes <= 0 || actualBytes == expectedBytes;
         }
     }
 }

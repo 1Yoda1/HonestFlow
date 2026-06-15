@@ -164,7 +164,6 @@ namespace HonestFlow.Infrastructure
 
         public static string GetLogPath() => _logFilePath;
         public static string GetLogsFolder() => AppPaths.LogsFolder;
-        public static bool IsInitialized => _initialized;
 
         private static void Write(string level, string message, string module)
         {

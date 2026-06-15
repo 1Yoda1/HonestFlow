@@ -9,8 +9,7 @@ using HonestFlow.Models;
 namespace HonestFlow.Infrastructure.Configuration
 {
     /// <summary>
-    /// Фасад совместимости для старого кода.
-    /// Вся реальная работа разнесена по LocalConfigRepository, RemoteConfigRepository и GitHubDownloader.
+    /// Фасад совместимости для конфигурации и загрузки установщиков.
     /// </summary>
     public static class ConfigManager
     {
@@ -19,13 +18,9 @@ namespace HonestFlow.Infrastructure.Configuration
         private static GitHubDownloader _downloader;
 
         public static List<IPData> LoadIps() => LocalConfig.LoadIps();
-        public static void SaveIps(List<IPData> ips) => LocalConfig.SaveIps(ips);
         public static VersionsData LoadVersions() => LocalConfig.LoadVersions();
-        public static void SaveVersions(VersionsData versions) => LocalConfig.SaveVersions(versions);
-
         public static (bool Success, List<IPData> Ips, VersionsData Versions) LoadConfigFromGitHub() => RemoteConfig.LoadAll();
         public static VersionsData LoadVersionsFromGitHub() => RemoteConfig.LoadVersions();
-        public static List<IPData> LoadIpsFromGitHub() => RemoteConfig.LoadIps();
 
         public static void InitGitHubDownloader()
         {
@@ -36,23 +31,37 @@ namespace HonestFlow.Infrastructure.Configuration
         {
             InitGitHubDownloader();
 
-            if (_downloader.IsFileCached(fileName))
-            {
-                Logger.LogToFile($"✅ Файл уже в кэше: {fileName}");
-                return true;
-            }
-
             var assets = await _downloader.GetReleaseAssets();
-            if (!assets.ContainsKey(fileName))
+            if (!assets.TryGetValue(fileName, out var asset))
             {
-                Logger.LogToFile($"❌ Файл не найден в релизе: {fileName}", true);
+                Logger.LogToFile($"Файл не найден в релизе: {fileName}", true);
                 return false;
             }
 
             string destination = Path.Combine(AppPaths.GitHubCacheFolder, fileName);
-            return await _downloader.DownloadFileWithRetry(assets[fileName], destination, progress);
+
+            if (_downloader.IsFileCached(fileName, asset.Size))
+            {
+                Logger.LogToFile($"Файл уже в кэше: {fileName}, размер: {asset.Size} байт");
+                return true;
+            }
+
+            if (File.Exists(destination))
+            {
+                long actualBytes = new FileInfo(destination).Length;
+                Logger.LogToFile(
+                    $"Повреждённый или неполный файл в кэше: {fileName}, размер {actualBytes} байт, ожидалось {asset.Size} байт. Файл будет скачан заново.",
+                    true);
+                File.Delete(destination);
+            }
+
+            return await _downloader.DownloadFileWithRetry(
+                asset.Url,
+                destination,
+                progress,
+                asset.Size);
         }
-        
+
         public static string GetInstallersFolder()
         {
             if (Directory.Exists(AppPaths.DistrFolder))

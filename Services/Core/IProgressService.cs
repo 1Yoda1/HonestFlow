@@ -7,8 +7,5 @@
     {
         /// <summary>Обновить прогресс и статус</summary>
         void SetProgress(int percent, string stepName);
-
-        /// <summary>Показать/скрыть прогресс-бар</summary>
-        void SetProgressVisible(bool visible);
     }
 }

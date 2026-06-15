@@ -59,15 +59,6 @@ namespace HonestFlow.Infrastructure.Configuration
             return result.Success ? result.Versions : new VersionsData();
         }
 
-        public List<IPData> LoadIps()
-        {
-            if (_cachedIps != null)
-                return _cachedIps;
-
-            var result = LoadAll();
-            return result.Success ? result.Ips : new List<IPData>();
-        }
-
         private static HttpClient CreateClient()
         {
             var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };

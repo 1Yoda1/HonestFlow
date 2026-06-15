@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using Microsoft.Win32;
 using HonestFlow.Infrastructure.Services;
 
@@ -39,7 +40,6 @@ namespace HonestFlow.Infrastructure.Installers
             _installerPath = installerPath;
         }
 
-        public bool IsInstalledByGuid() => !string.IsNullOrWhiteSpace(FindLmModuleGuid());
         public string GetInstalledGuid() => FindLmModuleGuid();
 
         public async Task CleanInstall()
@@ -88,15 +88,6 @@ namespace HonestFlow.Infrastructure.Installers
             await ReinstallExisting(reason);
         }
 
-        public async Task ForceReinstall()
-        {
-            string guid = FindLmModuleGuid();
-            if (string.IsNullOrWhiteSpace(guid))
-                await CleanInstall();
-            else
-                await ReinstallExisting("принудительная переустановка");
-        }
-
         private static async Task Uninstall(string guid, string reason)
         {
             using var operation = Logger.BeginOperation("Удаление ЛМ ЧЗ", nameof(LmModuleInstaller));
@@ -131,6 +122,12 @@ namespace HonestFlow.Infrastructure.Installers
 
         private async Task Install()
         {
+            await InstallCore();
+            await VerifyUpdateLmWithSingleReinstall();
+        }
+
+        private async Task InstallCore()
+        {
             using var operation = Logger.BeginOperation("Установка ЛМ ЧЗ", nameof(LmModuleInstaller));
 
             if (string.IsNullOrWhiteSpace(_installerPath) || !File.Exists(_installerPath))
@@ -154,6 +151,44 @@ namespace HonestFlow.Infrastructure.Installers
 
             await WaitForLmChildInstallersIdleAsync("после установки ЛМ ЧЗ / дочернего MSI", 120);
             await WaitForInstalledState(180);
+        }
+
+        private async Task VerifyUpdateLmWithSingleReinstall()
+        {
+            bool lmInstalled = IsLmInstalled();
+            bool updateLmInstalled = await WaitForUpdateLmInstalled(30);
+
+            LogInstallationState(lmInstalled, updateLmInstalled, false);
+
+            if (!lmInstalled || updateLmInstalled)
+                return;
+
+            Logger.Warning(
+                "ЛМ ЧЗ установлен, но служба UpdateLM отсутствует. Выполняется одна попытка переустановки ЛМ.",
+                nameof(LmModuleInstaller));
+            LogInstallationState(lmInstalled, updateLmInstalled, true);
+
+            string guid = FindLmModuleGuid();
+            await Uninstall(guid, "служба UpdateLM отсутствует после установки ЛМ");
+            await InstallCore();
+
+            lmInstalled = IsLmInstalled();
+            updateLmInstalled = await WaitForUpdateLmInstalled(30);
+            LogInstallationState(lmInstalled, updateLmInstalled, true);
+
+            if (lmInstalled && !updateLmInstalled)
+            {
+                const string warning =
+                    "ЛМ ЧЗ установлен и может продолжить работу, но служба автообновления UpdateLM не установлена. " +
+                    "Автоматическое обновление ЛМ может быть недоступно.";
+
+                Logger.Warning(warning, nameof(LmModuleInstaller));
+                MessageBox.Show(
+                    warning,
+                    "Предупреждение UpdateLM",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
 
         private static async Task<int> RunMsiWithRetryAsync(string arguments, string actionName, int[] acceptedExitCodes)
@@ -261,25 +296,67 @@ namespace HonestFlow.Infrastructure.Installers
                 attempt++;
 
                 string guid = FindLmModuleGuid();
-                string regimeServiceStatus = await WindowsServiceManager.GetServiceStatus();
-                bool updateServiceExists = IsUpdateLmServiceInstalled();
+                bool regimeServiceInstalled = IsRegimeServiceInstalled();
                 bool childInstallerRunning = IsAnyProcessRunning(MsiBlockingProcessNames);
 
-                if (!string.IsNullOrWhiteSpace(guid) && IsServicePresent(regimeServiceStatus) && updateServiceExists)
+                if (!string.IsNullOrWhiteSpace(guid) && regimeServiceInstalled)
                 {
-                    Logger.Success($"Установка ЛМ ЧЗ подтверждена за {(DateTime.Now - startTime).TotalSeconds:F1} сек: guid={guid}, Regime={regimeServiceStatus}, UpdateLM=true", nameof(LmModuleInstaller));
+                    Logger.Success(
+                        $"Установка ЛМ ЧЗ подтверждена за {(DateTime.Now - startTime).TotalSeconds:F1} сек: guid={guid}, Regime Installed=true",
+                        nameof(LmModuleInstaller));
                     return;
                 }
 
                 if (attempt == 1 || attempt % 5 == 0)
                 {
-                    Logger.DebugLog($"Ожидание установленного состояния: guid={(string.IsNullOrWhiteSpace(guid) ? "нет" : guid)}, Regime={regimeServiceStatus}, UpdateLM={updateServiceExists}, childInstallerRunning={childInstallerRunning}", nameof(LmModuleInstaller));
+                    Logger.DebugLog(
+                        $"Ожидание установленного состояния: guid={(string.IsNullOrWhiteSpace(guid) ? "нет" : guid)}, Regime Installed={regimeServiceInstalled}, childInstallerRunning={childInstallerRunning}",
+                        nameof(LmModuleInstaller));
                 }
 
                 await Task.Delay(2000);
             }
 
             throw new TimeoutException($"ЛМ ЧЗ не перешёл в установленное состояние за {timeoutSeconds} сек");
+        }
+
+        private static async Task<bool> WaitForUpdateLmInstalled(int timeoutSeconds)
+        {
+            var startTime = DateTime.Now;
+            var timeout = TimeSpan.FromSeconds(timeoutSeconds);
+
+            while (DateTime.Now - startTime < timeout)
+            {
+                if (IsUpdateLmServiceInstalled())
+                    return true;
+
+                await Task.Delay(2000);
+            }
+
+            return IsUpdateLmServiceInstalled();
+        }
+
+        private static bool IsLmInstalled()
+        {
+            return !string.IsNullOrWhiteSpace(FindLmModuleGuid()) &&
+                   IsRegimeServiceInstalled();
+        }
+
+        private static bool IsRegimeServiceInstalled()
+        {
+            return RegistryKeyExists(@"SYSTEM\CurrentControlSet\Services\Regime");
+        }
+
+        private static void LogInstallationState(
+            bool lmInstalled,
+            bool updateLmInstalled,
+            bool reinstallAttempt)
+        {
+            Logger.Info(
+                $"LM Installed = {lmInstalled.ToString().ToLowerInvariant()}; " +
+                $"UpdateLM Installed = {updateLmInstalled.ToString().ToLowerInvariant()}; " +
+                $"Reinstall Attempt = {reinstallAttempt.ToString().ToLowerInvariant()}",
+                nameof(LmModuleInstaller));
         }
 
         private static bool IsServiceAbsent(string serviceStatus)

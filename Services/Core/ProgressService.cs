@@ -31,17 +31,5 @@ namespace HonestFlow.Services.Core
             _statusLabel.Visible = !string.IsNullOrEmpty(stepName);
             Logger.LogToFile($"Прогресс: {percent}% - {stepName}");
         }
-
-        public void SetProgressVisible(bool visible)
-        {
-            if (_progressBar.InvokeRequired)
-            {
-                _progressBar.Invoke(new Action(() => SetProgressVisible(visible)));
-                return;
-            }
-
-            _progressBar.Visible = visible;
-            _statusLabel.Visible = visible;
-        }
     }
 }

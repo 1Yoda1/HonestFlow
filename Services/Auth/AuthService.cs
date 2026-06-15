@@ -28,11 +28,6 @@ namespace HonestFlow.Services.Auth
             _ipList = ConfigManager.LoadIps();
         }
 
-        public List<IPData> GetIpList()
-        {
-            return _ipList;
-        }
-
         public IPData Authenticate(string password)
         {
             var ip = _ipList.Find(x => x.Password == password);

@@ -77,24 +77,5 @@ namespace HonestFlow.Infrastructure
 
             return result;
         }
-
-        public static void OpenUninstallPrograms()
-        {
-            try
-            {
-                Process.Start("control", "appwiz.cpl");
-            }
-            catch (Exception ex)
-            {
-                Logger.LogToFile($"Не удалось открыть окно программ: {ex.Message}", true);
-            }
-        }
-
-        public static async Task<int> RunWithChildTracking(string fileName, string arguments, bool asAdmin = false)
-        {
-            var result = await RunDetailed(fileName, arguments, asAdmin);
-            await Task.Delay(3000);
-            return result.ExitCode;
-        }
     }
 }
