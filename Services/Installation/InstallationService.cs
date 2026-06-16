@@ -41,11 +41,13 @@ namespace HonestFlow.Services.Installation
 
             try
             {
+                _progress.SetProgress(6, "Загрузка конфигурации версий...");
                 var versions = LoadVersions();
                 string expectedLmVersion = EnsureLmVersionConfigured(versions);
 
                 _log.LogDebug($"Ожидаемая версия ЛМ ЧЗ: {expectedLmVersion}");
 
+                _progress.SetProgress(8, "Проверка статуса ЛМ ЧЗ...");
                 var status = await _lmValidator.GetLmStatus(expectedLmVersion);
 
                 if (status == null)
@@ -125,8 +127,9 @@ namespace HonestFlow.Services.Installation
             string lmPlanReason)
         {
             var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
+            _progress.SetProgress(10, "Формирование плана установки...");
             var plan = await BuildInstallationPlan(selectedIP, effectiveVersions, precheckedLmStatus, forceLmInstall, lmPlanReason);
-            _progress.SetProgress(10, "Проверка версий...");
+            _progress.SetProgress(12, "Проверка версий и компонентов...");
 
             LogPlan(plan);
 
@@ -138,8 +141,10 @@ namespace HonestFlow.Services.Installation
                 return true;
             }
 
+            _progress.SetProgress(15, "Подготовка установщиков...");
             if (!await ResolveInstallerPaths(plan, selectedIP, effectiveVersions)) return false;
 
+            _progress.SetProgress(70, "Запуск установки компонентов...");
             bool success = await ExecuteInstallationPlan(plan, selectedIP, effectiveVersions);
 
             _progress.SetProgress(100, success ? "Установка завершена!" : "Установка завершена с ошибками");
@@ -311,9 +316,17 @@ namespace HonestFlow.Services.Installation
                     continue;
 
                 completed++;
-                _progress.SetProgress(completed * 70 / total, $"Скачивание: {item.DisplayName}...");
+                int startPercent = 15 + (completed - 1) * 50 / total;
+                int endPercent = 15 + completed * 50 / total;
+                _progress.SetProgress(startPercent, $"Подготовка скачивания: {item.DisplayName}...");
 
-                bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(item.FileName, null);
+                var downloadProgress = new Progress<int>(percent =>
+                {
+                    int currentPercent = startPercent + (endPercent - startPercent) * percent / 100;
+                    _progress.SetProgress(currentPercent, $"Скачивание {item.DisplayName}: {percent}%");
+                });
+
+                bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(item.FileName, downloadProgress);
                 if (!downloaded)
                 {
                     _log.LogUser($"❌ Не удалось скачать {item.DisplayName}: {item.FileName}", true);
@@ -321,6 +334,7 @@ namespace HonestFlow.Services.Installation
                 }
 
                 item.InstallerPath = Path.Combine(AppPaths.GitHubCacheFolder, item.FileName);
+                _progress.SetProgress(endPercent, $"Скачано: {item.DisplayName}");
             }
 
             return ValidateRequiredInstallerPaths(plan);
@@ -329,6 +343,7 @@ namespace HonestFlow.Services.Installation
         private void ResolveLocalInstallerPaths(InstallationPlan plan, IPData selectedIP)
         {
             string installersFolder = ConfigManager.GetInstallersFolder();
+            _progress.SetProgress(15, $"Поиск установщиков: {installersFolder}");
 
             _log.LogDebug($"Разрядность ИП: {selectedIP.Architecture}");
             _log.LogDebug($"Папка установщиков: {installersFolder}");
@@ -351,6 +366,8 @@ namespace HonestFlow.Services.Installation
 
         private bool ValidateRequiredInstallerPaths(InstallationPlan plan)
         {
+            _progress.SetProgress(65, "Проверка найденных установщиков...");
+
             foreach (var item in plan.RequiredItems)
             {
                 if (!item.NeedInstall)
@@ -379,16 +396,18 @@ namespace HonestFlow.Services.Installation
             foreach (var item in plan.RequiredItems)
             {
                 completed++;
-                _progress.SetProgress(70 + completed * 25 / total, $"Установка: {item.DisplayName}...");
+                int startPercent = 70 + (completed - 1) * 25 / total;
+                int endPercent = 70 + completed * 25 / total;
+                _progress.SetProgress(startPercent, $"{item.DisplayName}: подготовка...");
 
-                bool success = await InstallComponent(item, selectedIP, versions);
+                bool success = await InstallComponent(item, selectedIP, versions, startPercent, endPercent);
                 allSuccess &= success;
             }
 
             return allSuccess;
         }
 
-        private async Task<bool> InstallComponent(ComponentPlanItem item, IPData selectedIP, VersionsData versions)
+        private async Task<bool> InstallComponent(ComponentPlanItem item, IPData selectedIP, VersionsData versions, int progressStart, int progressEnd)
         {
             _log.LogUser(item.NeedInstall
                 ? $"Установка: {item.DisplayName}..."
@@ -401,8 +420,10 @@ namespace HonestFlow.Services.Installation
             {
                 case InstallationComponent.LmModule:
                     string lmVersion = EnsureLmVersionConfigured(versions);
-                    var lm = new LmModuleService(item.InstallerPath, lmVersion, _log);
+                    SetComponentProgress(progressStart, progressEnd, 5, "ЛМ ЧЗ: подготовка");
+                    var lm = new LmModuleService(item.InstallerPath, lmVersion, _log, _progress, progressStart, progressEnd);
                     bool lmSuccess = await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
+                    SetComponentProgress(progressStart, progressEnd, 100, lmSuccess ? "ЛМ ЧЗ: готов" : "ЛМ ЧЗ: ошибка");
                     _log.LogUser(lmSuccess ? "✅ ЛМ ЧЗ установлен" : "❌ ЛМ ЧЗ не установлен", !lmSuccess);
                     return lmSuccess;
 
@@ -412,18 +433,27 @@ namespace HonestFlow.Services.Installation
                     if (with1C)
                         _log.LogUser("Тег With1C найден: драйвер АТОЛ будет установлен с параметром /With1C");
 
+                    SetComponentProgress(progressStart, progressEnd, 20, "Драйвер АТОЛ: проверка установщика");
+                    SetComponentProgress(progressStart, progressEnd, 45, "Драйвер АТОЛ: запуск установки");
                     bool atolSuccess = await new AtolInstaller(item.InstallerPath, _log, with1C).Install();
+                    SetComponentProgress(progressStart, progressEnd, 100, atolSuccess ? "Драйвер АТОЛ: готов" : "Драйвер АТОЛ: ошибка");
 
                     _log.LogUser(atolSuccess ? "✅ Драйвер АТОЛ установлен" : "❌ Драйвер АТОЛ не установлен", !atolSuccess);
                     return atolSuccess;
 
                 case InstallationComponent.Esm:
+                    SetComponentProgress(progressStart, progressEnd, 20, "ЕСМ: проверка установщика");
+                    SetComponentProgress(progressStart, progressEnd, 45, "ЕСМ: запуск установки");
                     bool esmSuccess = await new EsmInstaller(item.InstallerPath, null, _log).InstallEsm();
+                    SetComponentProgress(progressStart, progressEnd, 100, esmSuccess ? "ЕСМ: готов" : "ЕСМ: ошибка");
                     _log.LogUser(esmSuccess ? "✅ ЕСМ установлен" : "❌ ЕСМ не установлен", !esmSuccess);
                     return esmSuccess;
 
                 case InstallationComponent.Controller:
+                    SetComponentProgress(progressStart, progressEnd, 20, "Контроллер ЛМ: проверка установщика");
+                    SetComponentProgress(progressStart, progressEnd, 45, "Контроллер ЛМ: запуск установки");
                     bool controllerSuccess = await new EsmInstaller(null, item.InstallerPath, _log).InstallController();
+                    SetComponentProgress(progressStart, progressEnd, 100, controllerSuccess ? "Контроллер ЛМ: готов" : "Контроллер ЛМ: ошибка");
                     _log.LogUser(controllerSuccess ? "✅ Контроллер установлен" : "❌ Контроллер не установлен", !controllerSuccess);
                     return controllerSuccess;
 
@@ -431,6 +461,12 @@ namespace HonestFlow.Services.Installation
                     _log.LogUser($"❌ Неизвестный компонент: {item.Component}", true);
                     return false;
             }
+        }
+
+        private void SetComponentProgress(int startPercent, int endPercent, int componentPercent, string message)
+        {
+            int percent = startPercent + (endPercent - startPercent) * componentPercent / 100;
+            _progress.SetProgress(percent, message);
         }
     }
 }

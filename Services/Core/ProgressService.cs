@@ -29,7 +29,6 @@ namespace HonestFlow.Services.Core
             _progressBar.Value = percent;
             _statusLabel.Text = $"{stepName} ({percent}%)";
             _statusLabel.Visible = !string.IsNullOrEmpty(stepName);
-            Logger.LogToFile($"Прогресс: {percent}% - {stepName}");
         }
     }
 }
