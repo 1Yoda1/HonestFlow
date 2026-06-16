@@ -4,6 +4,7 @@ using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Models;
 using HonestFlow.Services.Auth;
 using HonestFlow.Services.Core;
+using HonestFlow.Services.Diagnostics;
 using HonestFlow.Services.Installation;
 using System;
 using System.Collections.Generic;
@@ -24,6 +25,7 @@ namespace HonestFlow
         private VersionsData _gitHubVersions;
 
         private Form _logForm;
+        private readonly DiagnosticArchiveService _diagnosticArchiveService;
 
         public MainForm()
         {
@@ -31,6 +33,7 @@ namespace HonestFlow
 
             _logService = new LogService();
             _progressService = new ProgressService(progressBar, lblStatus);
+            _diagnosticArchiveService = new DiagnosticArchiveService(_logService);
 
             var startup = new ApplicationStartupService(_logService, _progressService).Start();
             _useGitHubMode = startup.UseGitHubMode;
@@ -158,6 +161,38 @@ namespace HonestFlow
 
             progressBar.Visible = false;
             lblStatus.Visible = false;
+        }
+
+        private void BtnDiagnostics_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                btnDiagnostics.Enabled = false;
+                string archivePath = _diagnosticArchiveService.CreateArchive();
+
+                MessageBox.Show(
+                    $"Диагностический архив успешно создан:\n{archivePath}",
+                    "Диагностика",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                System.Diagnostics.Process.Start(
+                    "explorer.exe",
+                    $"/select,\"{archivePath}\"");
+            }
+            catch (Exception ex)
+            {
+                _logService.LogDebug($"Ошибка сбора диагностики: {ex.Message}");
+                MessageBox.Show(
+                    $"Не удалось создать диагностический архив:\n{ex.Message}",
+                    "Ошибка диагностики",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                btnDiagnostics.Enabled = true;
+            }
         }
 
         private void BtnDetails_Click(object sender, EventArgs e)

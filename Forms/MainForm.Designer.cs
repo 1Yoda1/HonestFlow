@@ -22,6 +22,7 @@ namespace HonestFlow
             this.textBox1 = new System.Windows.Forms.TextBox();
             this.buttonInstall = new System.Windows.Forms.Button();
             this.progressBar = new System.Windows.Forms.ProgressBar();
+            this.btnDiagnostics = new System.Windows.Forms.Button();
             this.btnDetails = new System.Windows.Forms.Button();
             this.panelHeader = new System.Windows.Forms.Panel();
             this.labelTitle = new System.Windows.Forms.Label();
@@ -138,6 +139,20 @@ namespace HonestFlow
             this.lblStatus.Size = new System.Drawing.Size(0, 15);
             this.lblStatus.TabIndex = 10;
 
+            // ========== BUTTON DIAGNOSTICS ==========
+            this.btnDiagnostics.BackColor = System.Drawing.Color.FromArgb(100, 100, 100);
+            this.btnDiagnostics.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnDiagnostics.FlatAppearance.BorderSize = 0;
+            this.btnDiagnostics.Font = new System.Drawing.Font("Segoe UI", 10F);
+            this.btnDiagnostics.ForeColor = System.Drawing.Color.White;
+            this.btnDiagnostics.Location = new System.Drawing.Point(30, 465);
+            this.btnDiagnostics.Name = "btnDiagnostics";
+            this.btnDiagnostics.Size = new System.Drawing.Size(170, 30);
+            this.btnDiagnostics.TabIndex = 11;
+            this.btnDiagnostics.Text = "Собрать диагностику";
+            this.btnDiagnostics.UseVisualStyleBackColor = false;
+            this.btnDiagnostics.Click += new System.EventHandler(this.BtnDiagnostics_Click);
+
             // ========== BUTTON DETAILS ==========
             this.btnDetails.BackColor = System.Drawing.Color.FromArgb(100, 100, 100);
             this.btnDetails.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
@@ -159,6 +174,7 @@ namespace HonestFlow
             this.BackColor = System.Drawing.Color.White;
             this.ClientSize = new System.Drawing.Size(480, 500);
             this.Controls.Add(this.lblStatus);
+            this.Controls.Add(this.btnDiagnostics);
             this.Controls.Add(this.btnDetails);
             this.Controls.Add(this.progressBar);
             this.Controls.Add(this.buttonInstall);
@@ -186,6 +202,7 @@ namespace HonestFlow
         private System.Windows.Forms.TextBox textBox1;
         private System.Windows.Forms.Button buttonInstall;
         private System.Windows.Forms.ProgressBar progressBar;
+        private System.Windows.Forms.Button btnDiagnostics;
         private System.Windows.Forms.Button btnDetails;
         private System.Windows.Forms.Panel panelHeader;
         private System.Windows.Forms.Label labelTitle;

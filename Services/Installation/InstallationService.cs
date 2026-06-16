@@ -180,9 +180,13 @@ namespace HonestFlow.Services.Installation
             }
             else if (precheckedLmStatus != null)
             {
-                needLmInstall = precheckedLmStatus.Version != expectedLmVersion;
+                bool versionMismatch = precheckedLmStatus.Version != expectedLmVersion;
+                bool notConfigured = precheckedLmStatus.Status == "not_configured";
+                needLmInstall = versionMismatch || notConfigured;
                 lmStatusText = needLmInstall
-                    ? $"версия {precheckedLmStatus.Version}, требуется {expectedLmVersion}"
+                    ? notConfigured
+                        ? "не инициализирован"
+                        : $"версия {precheckedLmStatus.Version}, требуется {expectedLmVersion}"
                     : $"OK, версия {precheckedLmStatus.Version}";
 
                 _log.LogDebug("План ЛМ ЧЗ построен по предварительной проверке, без повторного HTTP-запроса");
