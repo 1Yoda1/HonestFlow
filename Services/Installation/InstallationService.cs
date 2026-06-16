@@ -170,6 +170,7 @@ namespace HonestFlow.Services.Installation
             string expectedLmVersion = EnsureLmVersionConfigured(effectiveVersions);
 
             bool needLmInstall;
+            bool needLmInitialize = false;
             string lmStatusText;
 
             if (forceLmInstall)
@@ -181,10 +182,10 @@ namespace HonestFlow.Services.Installation
             else if (precheckedLmStatus != null)
             {
                 bool versionMismatch = precheckedLmStatus.Version != expectedLmVersion;
-                bool notConfigured = precheckedLmStatus.Status == "not_configured";
-                needLmInstall = versionMismatch || notConfigured;
-                lmStatusText = needLmInstall
-                    ? notConfigured
+                needLmInitialize = precheckedLmStatus.Status == "not_configured";
+                needLmInstall = versionMismatch;
+                lmStatusText = needLmInstall || needLmInitialize
+                    ? needLmInitialize
                         ? "не инициализирован"
                         : $"версия {precheckedLmStatus.Version}, требуется {expectedLmVersion}"
                     : $"OK, версия {precheckedLmStatus.Version}";
@@ -195,6 +196,10 @@ namespace HonestFlow.Services.Installation
             {
                 var lmInfo = await _lmValidator.GetLmStatusInfo(expectedLmVersion);
                 needLmInstall = lmInfo.Item1;
+                needLmInitialize = lmInfo.DisplayStatus == "не инициализирован";
+                if (needLmInitialize)
+                    needLmInstall = false;
+
                 lmStatusText = lmInfo.Item2;
             }
 
@@ -203,6 +208,7 @@ namespace HonestFlow.Services.Installation
                 Component = InstallationComponent.LmModule,
                 DisplayName = "ЛМ ЧЗ",
                 NeedInstall = needLmInstall,
+                NeedInitialize = needLmInitialize,
                 StatusText = lmStatusText,
                 ExpectedVersion = expectedLmVersion
             });
@@ -275,7 +281,7 @@ namespace HonestFlow.Services.Installation
 
             foreach (var item in plan.Items)
             {
-                string marker = item.NeedInstall ? "❌" : "✅";
+                string marker = item.HasWork ? "❌" : "✅";
                 _log.LogUser($"{item.DisplayName}: {marker} {item.StatusText}");
             }
 
@@ -293,11 +299,17 @@ namespace HonestFlow.Services.Installation
 
         private async Task<bool> DownloadAndResolveGitHubInstallers(InstallationPlan plan)
         {
-            int total = plan.RequiredCount;
+            int total = plan.RequiredItems.Count(x => x.NeedInstall);
+            if (total == 0)
+                return ValidateRequiredInstallerPaths(plan);
+
             int completed = 0;
 
             foreach (var item in plan.RequiredItems)
             {
+                if (!item.NeedInstall)
+                    continue;
+
                 completed++;
                 _progress.SetProgress(completed * 70 / total, $"Скачивание: {item.DisplayName}...");
 
@@ -323,6 +335,9 @@ namespace HonestFlow.Services.Installation
 
             foreach (var item in plan.RequiredItems)
             {
+                if (!item.NeedInstall)
+                    continue;
+
                 item.InstallerPath = item.Component switch
                 {
                     InstallationComponent.LmModule => Directory.GetFiles(installersFolder, "regime-*.msi").FirstOrDefault(),
@@ -338,6 +353,9 @@ namespace HonestFlow.Services.Installation
         {
             foreach (var item in plan.RequiredItems)
             {
+                if (!item.NeedInstall)
+                    continue;
+
                 if (string.IsNullOrWhiteSpace(item.InstallerPath) || !File.Exists(item.InstallerPath))
                 {
                     _log.LogUser($"❌ Не найден установщик: {item.DisplayName} ({item.FileName ?? "локальный поиск"})", true);
@@ -372,8 +390,12 @@ namespace HonestFlow.Services.Installation
 
         private async Task<bool> InstallComponent(ComponentPlanItem item, IPData selectedIP, VersionsData versions)
         {
-            _log.LogUser($"Установка: {item.DisplayName}...");
-            _log.LogDebug($"Запуск: {item.InstallerPath}");
+            _log.LogUser(item.NeedInstall
+                ? $"Установка: {item.DisplayName}..."
+                : $"Инициализация: {item.DisplayName}...");
+
+            if (item.NeedInstall)
+                _log.LogDebug($"Запуск: {item.InstallerPath}");
 
             switch (item.Component)
             {
