@@ -1,6 +1,7 @@
 using System;
 using System.Windows.Forms;
 using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Updates;
 
 namespace HonestFlow
@@ -15,7 +16,7 @@ namespace HonestFlow
                 Logger.Initialize();
                 Logger.Info("Запуск приложения", nameof(Program));
 
-                var updater = new SelfUpdateService();
+                var updater = new SelfUpdateService(new WinFormsDialogService());
                 bool updateStarted = updater.CheckDownloadAndRunUpdateIfNeeded()
                     .GetAwaiter()
                     .GetResult();

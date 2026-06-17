@@ -1,6 +1,7 @@
 using HonestFlow.Application.Bootstrap;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Configuration;
+using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Models;
 using HonestFlow.Services.Auth;
 using HonestFlow.Services.Core;
@@ -26,6 +27,7 @@ namespace HonestFlow
 
         private Form _logForm;
         private readonly DiagnosticArchiveService _diagnosticArchiveService;
+        private readonly IUserDialogService _dialogService;
 
         public MainForm()
         {
@@ -33,9 +35,10 @@ namespace HonestFlow
 
             _logService = new LogService();
             _progressService = new ProgressService(progressBar, lblStatus);
+            _dialogService = new WinFormsDialogService(this);
             _diagnosticArchiveService = new DiagnosticArchiveService(_logService);
 
-            var startup = new ApplicationStartupService(_logService, _progressService).Start();
+            var startup = new ApplicationStartupService(_logService, _progressService, _dialogService).Start();
             _useGitHubMode = startup.UseGitHubMode;
             _gitHubIps = startup.GitHubIps;
             _gitHubVersions = startup.GitHubVersions;

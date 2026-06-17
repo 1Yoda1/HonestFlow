@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Api;
+using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Installers;
 using HonestFlow.Infrastructure.Services;
 using HonestFlow.Models;
@@ -22,6 +22,7 @@ namespace HonestFlow.Services.Lm
         private string _apiVersion = "v2";
         private readonly ILogService _log;
         private readonly IProgressService _progress;
+        private readonly IUserDialogService _dialogService;
         private readonly int _progressStart;
         private readonly int _progressEnd;
 
@@ -49,17 +50,18 @@ namespace HonestFlow.Services.Lm
         */
 
         public LmModuleService(string installerPath, string expectedVersion, ILogService log)
-            : this(installerPath, expectedVersion, log, null, 70, 95)
+            : this(installerPath, expectedVersion, log, null, null, 70, 95)
         {
         }
 
-        public LmModuleService(string installerPath, string expectedVersion, ILogService log, IProgressService progress, int progressStart, int progressEnd)
+        public LmModuleService(string installerPath, string expectedVersion, ILogService log, IProgressService progress, IUserDialogService dialogService, int progressStart, int progressEnd)
         {
             if (string.IsNullOrWhiteSpace(expectedVersion))
                 throw new ArgumentException("Версия ЛМ ЧЗ не задана.", nameof(expectedVersion));
 
             _apiClient = new LmApiClient(true);
-            _installer = new LmModuleInstaller(installerPath);
+            _dialogService = dialogService ?? new WinFormsDialogService();
+            _installer = new LmModuleInstaller(installerPath, _dialogService);
             _expectedVersion = expectedVersion;
             _log = log ?? new LogService();
             _progress = progress;
@@ -156,16 +158,15 @@ namespace HonestFlow.Services.Lm
             {
                 _log.LogUser($"⚠️ INN mismatch: в ЛМ {MaskInnForUi(actualStatus.Inn)}, ожидается {MaskInnForUi(expectedInn)}");
 
-                var answer = MessageBox.Show(
+                bool shouldReinstall = _dialogService.Confirm(
                     $"ЛМ ЧЗ уже инициализирован на другой ИНН.\n\n" +
                     $"В ЛМ: {actualStatus.Inn}\n" +
                     $"Ожидается: {expectedInn}\n\n" +
                     "Удалить текущий ЛМ ЧЗ и установить заново?",
                     "Конфликт ИНН ЛМ ЧЗ",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning);
+                    UserDialogIcon.Warning);
 
-                if (answer != DialogResult.Yes)
+                if (!shouldReinstall)
                 {
                     SetProgress(100, "ЛМ ЧЗ: переустановка отменена оператором");
                     _log.LogUser("ℹ️ Пользователь отказался от переустановки ЛМ ЧЗ");
@@ -303,7 +304,7 @@ namespace HonestFlow.Services.Lm
             else if (initResult.StatusCode == System.Net.HttpStatusCode.BadRequest)
                 userMessage = "Неверный токен. Проверьте правильность токена ЧЗ.";
 
-            MessageBox.Show($"Не удалось инициализировать ЛМ ЧЗ:\n{userMessage}", "Ошибка инициализации", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            _dialogService.ShowError("Не удалось инициализировать ЛМ ЧЗ:" + Environment.NewLine + userMessage, "Ошибка инициализации");
             return false;
         }
 

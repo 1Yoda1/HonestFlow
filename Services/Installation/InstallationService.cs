@@ -2,9 +2,9 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using HonestFlow.Helpers;
 using HonestFlow.Infrastructure.Configuration;
+using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Installers;
 using HonestFlow.Models;
 using HonestFlow.Services.Core;
@@ -24,12 +24,14 @@ namespace HonestFlow.Services.Installation
         private readonly IProgressService _progress;
         private readonly ILmValidationService _lmValidator;
         private readonly IVersionCheckService _versionChecker;
+        private readonly IUserDialogService _dialogService;
         private readonly bool _useGitHubMode;
 
-        public InstallationService(ILogService logService, IProgressService progressService, bool useGitHubMode = false)
+        public InstallationService(ILogService logService, IProgressService progressService, IUserDialogService dialogService, bool useGitHubMode = false)
         {
             _log = logService;
             _progress = progressService;
+            _dialogService = dialogService ?? new WinFormsDialogService();
             _useGitHubMode = useGitHubMode;
             _lmValidator = new LmValidationService(_log);
             _versionChecker = new VersionCheckService(_log);
@@ -80,7 +82,7 @@ namespace HonestFlow.Services.Installation
             {
                 _log.LogUser($"Ошибка: {ex.Message}", true);
                 _log.LogDebug($"Ошибка при проверке ЛМ: {ex.Message}\n{ex.StackTrace}");
-                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _dialogService.ShowError($"Ошибка: {ex.Message}", "Ошибка");
                 return false;
             }
         }
@@ -137,7 +139,7 @@ namespace HonestFlow.Services.Installation
             {
                 _progress.SetProgress(100, "Готово");
                 _log.LogUser("✅ Все компоненты уже установлены!");
-                MessageBox.Show("Все компоненты уже установлены и соответствуют требованиям!", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                _dialogService.ShowInformation("Все компоненты уже установлены и соответствуют требованиям!", "Готово");
                 return true;
             }
 
@@ -152,7 +154,7 @@ namespace HonestFlow.Services.Installation
             if (success)
             {
                 _log.LogUser("✅ Установка завершена!");
-                MessageBox.Show("Установка завершена!", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                _dialogService.ShowInformation("Установка завершена!", "Готово");
             }
             else
             {
@@ -421,7 +423,7 @@ namespace HonestFlow.Services.Installation
                 case InstallationComponent.LmModule:
                     string lmVersion = EnsureLmVersionConfigured(versions);
                     SetComponentProgress(progressStart, progressEnd, 5, "ЛМ ЧЗ: подготовка");
-                    var lm = new LmModuleService(item.InstallerPath, lmVersion, _log, _progress, progressStart, progressEnd);
+                    var lm = new LmModuleService(item.InstallerPath, lmVersion, _log, _progress, _dialogService, progressStart, progressEnd);
                     bool lmSuccess = await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
                     SetComponentProgress(progressStart, progressEnd, 100, lmSuccess ? "ЛМ ЧЗ: готов" : "ЛМ ЧЗ: ошибка");
                     _log.LogUser(lmSuccess ? "✅ ЛМ ЧЗ установлен" : "❌ ЛМ ЧЗ не установлен", !lmSuccess);

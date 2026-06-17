@@ -1,6 +1,7 @@
 using System;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Configuration;
+using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Services.Auth;
 using HonestFlow.Services.Core;
 using HonestFlow.Services.Installation;
@@ -15,11 +16,13 @@ namespace HonestFlow.Application.Bootstrap
     {
         private readonly ILogService _logService;
         private readonly IProgressService _progressService;
+        private readonly IUserDialogService _dialogService;
 
-        public ApplicationStartupService(ILogService logService, IProgressService progressService)
+        public ApplicationStartupService(ILogService logService, IProgressService progressService, IUserDialogService dialogService)
         {
             _logService = logService;
             _progressService = progressService;
+            _dialogService = dialogService;
         }
 
         public StartupResult Start()
@@ -38,7 +41,7 @@ namespace HonestFlow.Application.Bootstrap
                         GitHubIps = result.Ips,
                         GitHubVersions = result.Versions,
                         AuthService = new AuthService(result.Ips, _logService),
-                        InstallationService = new InstallationService(_logService, _progressService, true)
+                        InstallationService = new InstallationService(_logService, _progressService, _dialogService, true)
                     };
                 }
 
@@ -54,7 +57,7 @@ namespace HonestFlow.Application.Bootstrap
                 {
                     UseGitHubMode = false,
                     AuthService = authService,
-                    InstallationService = new InstallationService(_logService, _progressService, false)
+                    InstallationService = new InstallationService(_logService, _progressService, _dialogService, false)
                 };
             }
         }

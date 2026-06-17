@@ -7,7 +7,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Windows.Forms;
+using HonestFlow.Infrastructure.Dialogs;
 
 namespace HonestFlow.Infrastructure
 {
@@ -57,8 +57,7 @@ namespace HonestFlow.Infrastructure
             {
                 _initialized = false;
                 Debug.WriteLine($"Не удалось создать лог-файл: {ex}");
-                MessageBox.Show($"Не удалось создать лог-файл: {ex.Message}", "Ошибка логирования",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                new WinFormsDialogService().ShowWarning($"Не удалось создать лог-файл: {ex.Message}", "Ошибка логирования");
             }
         }
 

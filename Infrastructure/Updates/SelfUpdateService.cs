@@ -7,7 +7,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using HonestFlow.Infrastructure.Dialogs;
 
 namespace HonestFlow.Infrastructure.Updates
 {
@@ -17,6 +17,12 @@ namespace HonestFlow.Infrastructure.Updates
         private const string Repo = "HonestFlow";
         private const string UserAgent = "HonestFlow-Updater/1.0";
         private const string UpdateAssetName = "HonestFlow.exe";
+        private readonly IUserDialogService _dialogService;
+
+        public SelfUpdateService(IUserDialogService dialogService = null)
+        {
+            _dialogService = dialogService ?? new WinFormsDialogService();
+        }
 
         public async Task<bool> CheckDownloadAndRunUpdateIfNeeded()
         {
@@ -37,13 +43,12 @@ namespace HonestFlow.Infrastructure.Updates
                 if (latestVersion <= currentVersion)
                     return false;
 
-                var ask = MessageBox.Show(
+                bool shouldUpdate = _dialogService.Confirm(
                     $"Доступна новая версия HonestFlow: {latestVersion}\n\nОбновить сейчас?",
                     "Обновление HonestFlow",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Information);
+                    UserDialogIcon.Information);
 
-                if (ask != DialogResult.Yes)
+                if (!shouldUpdate)
                     return false;
 
                 string updateRoot = Path.Combine(AppPaths.ProgramDataFolder, "update");
@@ -60,7 +65,7 @@ namespace HonestFlow.Infrastructure.Updates
                 if (!File.Exists(newExePath) || new FileInfo(newExePath).Length == 0)
                 {
                     Logger.Error("Автообновление: скачанный HonestFlow.exe пустой или не найден", nameof(SelfUpdateService));
-                    MessageBox.Show("Обновление скачано некорректно.", "Ошибка обновления");
+                    _dialogService.ShowError("Обновление скачано некорректно.", "Ошибка обновления");
                     return false;
                 }
 

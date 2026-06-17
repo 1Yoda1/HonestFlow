@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using HonestFlow.Infrastructure.Dialogs;
 using Microsoft.Win32;
 using HonestFlow.Infrastructure.Services;
 
@@ -34,10 +34,12 @@ namespace HonestFlow.Infrastructure.Installers
         };
 
         private readonly string _installerPath;
+        private readonly IUserDialogService _dialogService;
 
-        public LmModuleInstaller(string installerPath)
+        public LmModuleInstaller(string installerPath, IUserDialogService dialogService = null)
         {
             _installerPath = installerPath;
+            _dialogService = dialogService ?? new WinFormsDialogService();
         }
 
         public string GetInstalledGuid() => FindLmModuleGuid();
@@ -183,11 +185,7 @@ namespace HonestFlow.Infrastructure.Installers
                     "Автоматическое обновление ЛМ может быть недоступно.";
 
                 Logger.Warning(warning, nameof(LmModuleInstaller));
-                MessageBox.Show(
-                    warning,
-                    "Предупреждение UpdateLM",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                _dialogService.ShowWarning(warning, "Предупреждение UpdateLM");
             }
         }
 
