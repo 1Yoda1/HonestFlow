@@ -6,6 +6,7 @@ namespace HonestFlow.Services.Lm
     public interface ILmValidationService
     {
         Task<LmStatus> GetLmStatus(string expectedVersion);
+        Task<LmValidationResult> CheckLmStatus(string expectedVersion);
         Task<(bool NeedInstall, string DisplayStatus)> GetLmStatusInfo(string expectedVersion);
     }
 }

@@ -50,22 +50,21 @@ namespace HonestFlow.Services.Installation
                 _log.LogDebug($"Ожидаемая версия ЛМ ЧЗ: {expectedLmVersion}");
 
                 _progress.SetProgress(8, "Проверка статуса ЛМ ЧЗ...");
-                var status = await _lmValidator.GetLmStatus(expectedLmVersion);
+                var lmCheck = await _lmValidator.CheckLmStatus(expectedLmVersion);
+                var status = lmCheck.ApiStatus;
 
-                if (status == null)
-                {
-                    _log.LogUser("ЛМ ЧЗ: не установлен", true);
-                    _log.LogDebug("ЛМ ЧЗ не установлен или не отвечает");
-                    return await PerformInstallation(selectedIP, versions, null, false, null);
-                }
-
-                _log.LogUser($"ЛМ ЧЗ: версия {status.Version}, статус: {status.Status}");
-                _log.LogDebug($"ЛМ активен: версия={status.Version}, статус={status.Status}, inn={status.Inn ?? "не задан"}");
+                _log.LogUser($"ЛМ ЧЗ: {lmCheck.DisplayStatus}");
+                _log.LogDebug(
+                    $"ЛМ ЧЗ audit: installed={lmCheck.IsPhysicallyInstalled}, " +
+                    $"physicalVersion={lmCheck.PhysicalVersion ?? "не определена"}, " +
+                    $"runtime={lmCheck.RuntimeStatus}, diagnostics={lmCheck.DiagnosticStatus}, " +
+                    $"needsInstall={lmCheck.NeedsInstall}, needsInitialize={lmCheck.NeedsInitialize}");
 
                 bool forceLmInstall = false;
                 string lmPlanReason = null;
 
-                if (!string.IsNullOrEmpty(selectedIP.Inn) &&
+                if (status != null &&
+                    !string.IsNullOrEmpty(selectedIP.Inn) &&
                     !string.IsNullOrEmpty(status.Inn) &&
                     status.Inn != selectedIP.Inn)
                 {
@@ -76,7 +75,7 @@ namespace HonestFlow.Services.Installation
                     _log.LogDebug($"ЛМ ЧЗ будет передан в ветку forced reinstall из-за INN mismatch. {lmPlanReason}");
                 }
 
-                return await PerformInstallation(selectedIP, versions, status, forceLmInstall, lmPlanReason);
+                return await PerformInstallation(selectedIP, versions, lmCheck, forceLmInstall, lmPlanReason);
             }
             catch (Exception ex)
             {
@@ -124,13 +123,13 @@ namespace HonestFlow.Services.Installation
         private async Task<bool> PerformInstallation(
             IPData selectedIP,
             VersionsData versions,
-            LmStatus precheckedLmStatus,
+            LmValidationResult precheckedLm,
             bool forceLmInstall,
             string lmPlanReason)
         {
             var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
             _progress.SetProgress(10, "Формирование плана установки...");
-            var plan = await BuildInstallationPlan(selectedIP, effectiveVersions, precheckedLmStatus, forceLmInstall, lmPlanReason);
+            var plan = await BuildInstallationPlan(selectedIP, effectiveVersions, precheckedLm, forceLmInstall, lmPlanReason);
             _progress.SetProgress(12, "Проверка версий и компонентов...");
 
             LogPlan(plan);
@@ -168,7 +167,7 @@ namespace HonestFlow.Services.Installation
 
             IPData selectedIP,
             VersionsData versions,
-            LmStatus precheckedLmStatus,
+            LmValidationResult precheckedLm,
             bool forceLmInstall,
             string lmPlanReason)
         {
@@ -186,28 +185,34 @@ namespace HonestFlow.Services.Installation
                 lmStatusText = lmPlanReason ?? "требуется переустановка ЛМ ЧЗ";
                 _log.LogDebug($"План ЛМ ЧЗ: принудительная установка. Причина: {lmStatusText}");
             }
-            else if (precheckedLmStatus != null)
+            else if (precheckedLm != null)
             {
-                bool versionMismatch = precheckedLmStatus.Version != expectedLmVersion;
-                needLmInitialize = precheckedLmStatus.Status == "not_configured";
-                needLmInstall = versionMismatch;
-                lmStatusText = needLmInstall || needLmInitialize
-                    ? needLmInitialize
-                        ? "не инициализирован"
-                        : $"версия {precheckedLmStatus.Version}, требуется {expectedLmVersion}"
-                    : $"OK, версия {precheckedLmStatus.Version}";
+                needLmInstall = precheckedLm.NeedsInstall;
+                needLmInitialize = precheckedLm.NeedsInitialize;
+                lmStatusText = precheckedLm.DisplayStatus;
 
-                _log.LogDebug("План ЛМ ЧЗ построен по предварительной проверке, без повторного HTTP-запроса");
+                _log.LogDebug(
+                    "План ЛМ ЧЗ построен по предварительному audit без повторного HTTP-запроса: " +
+                    $"Installed={precheckedLm.IsPhysicallyInstalled}; " +
+                    $"RuntimeStatus={precheckedLm.RuntimeStatus}; " +
+                    $"DiagnosticStatus={precheckedLm.DiagnosticStatus}; " +
+                    $"NeedsInstall={needLmInstall}; NeedsInitialize={needLmInitialize}; " +
+                    $"Reason={precheckedLm.DecisionReason}");
             }
             else
             {
-                var lmInfo = await _lmValidator.GetLmStatusInfo(expectedLmVersion);
-                needLmInstall = lmInfo.Item1;
-                needLmInitialize = lmInfo.DisplayStatus == "не инициализирован";
-                if (needLmInitialize)
-                    needLmInstall = false;
+                var lmCheck = await _lmValidator.CheckLmStatus(expectedLmVersion);
+                needLmInstall = lmCheck.NeedsInstall;
+                needLmInitialize = lmCheck.NeedsInitialize;
+                lmStatusText = lmCheck.DisplayStatus;
 
-                lmStatusText = lmInfo.Item2;
+                _log.LogDebug(
+                    "План ЛМ ЧЗ построен по audit: " +
+                    $"Installed={lmCheck.IsPhysicallyInstalled}; " +
+                    $"RuntimeStatus={lmCheck.RuntimeStatus}; " +
+                    $"DiagnosticStatus={lmCheck.DiagnosticStatus}; " +
+                    $"NeedsInstall={needLmInstall}; NeedsInitialize={needLmInitialize}; " +
+                    $"Reason={lmCheck.DecisionReason}");
             }
 
             plan.Items.Add(new ComponentPlanItem

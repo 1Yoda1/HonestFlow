@@ -57,6 +57,9 @@ namespace HonestFlow.Infrastructure.Services
                 if (output.Contains("RUNNING"))
                     return "running";
 
+                if (output.Contains("START_PENDING"))
+                    return "startpending";
+
                 if (output.Contains("STOPPED"))
                     return "stopped";
 
