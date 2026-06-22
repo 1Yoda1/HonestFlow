@@ -32,6 +32,14 @@ namespace HonestFlow
         public MainForm()
         {
             InitializeComponent();
+            //this.DoubleBuffered = true;
+            //this.SetStyle(
+            //    ControlStyles.AllPaintingInWmPaint |
+            //    ControlStyles.UserPaint |
+            //    ControlStyles.OptimizedDoubleBuffer,
+            //    true);
+
+            //this.UpdateStyles();
 
             _logService = new LogService();
             _progressService = new ProgressService(progressBar, lblStatus);
@@ -49,27 +57,76 @@ namespace HonestFlow
             WireUiEvents();
         }
 
+        public void ConfigureButton(System.Windows.Forms.Button button, string text, bool primary)
+        {
+            button.BackColor = primary
+                ? System.Drawing.Color.FromArgb(37, 99, 235)
+                : System.Drawing.Color.White;
+
+            button.Cursor = System.Windows.Forms.Cursors.Hand;
+            button.Dock = System.Windows.Forms.DockStyle.Fill;
+            button.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            button.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(180, 190, 205);
+            button.FlatAppearance.BorderSize = primary ? 0 : 1;
+            button.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
+            button.ForeColor = primary
+                ? System.Drawing.Color.White
+                : System.Drawing.Color.FromArgb(30, 41, 59);
+            button.Margin = new System.Windows.Forms.Padding(0, 7, 0, 7);
+            button.Text = text;
+            button.UseVisualStyleBackColor = false;
+        }
+
+        public void ConfigureNodeRow(
+            int row,
+            System.Windows.Forms.Label nodeLabel,
+            System.Windows.Forms.Label statusCircle,
+            System.Windows.Forms.Button actionButton,
+            string nodeText,
+            System.Drawing.Color circleColor,
+            string actionText)
+        {
+            nodeLabel.Dock = System.Windows.Forms.DockStyle.Fill;
+            nodeLabel.Font = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
+            nodeLabel.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
+            nodeLabel.Padding = new System.Windows.Forms.Padding(12, 0, 0, 0);
+            nodeLabel.Text = nodeText;
+            nodeLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+
+            statusCircle.Dock = System.Windows.Forms.DockStyle.Fill;
+            statusCircle.Font = new System.Drawing.Font("Segoe UI", 20F, System.Drawing.FontStyle.Bold);
+            statusCircle.ForeColor = circleColor;
+            statusCircle.Text = "●";
+            statusCircle.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+
+            actionButton.Dock = System.Windows.Forms.DockStyle.Fill;
+            actionButton.Margin = new System.Windows.Forms.Padding(12, 10, 12, 10);
+            actionButton.BackColor = System.Drawing.Color.White;
+            actionButton.Cursor = System.Windows.Forms.Cursors.Hand;
+            actionButton.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            actionButton.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(180, 190, 205);
+            actionButton.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
+            actionButton.ForeColor = System.Drawing.Color.FromArgb(30, 41, 59);
+            actionButton.Text = actionText;
+            actionButton.UseVisualStyleBackColor = false;
+            actionButton.Click += new System.EventHandler(this.BtnDiagnostics_Click);
+
+            this.nodeTable.Controls.Add(nodeLabel, 0, row);
+            this.nodeTable.Controls.Add(statusCircle, 1, row);
+            this.nodeTable.Controls.Add(actionButton, 2, row);
+        }
+
         private void InitializeUiState()
         {
             progressBar.Minimum = 0;
             progressBar.Maximum = 100;
             progressBar.Value = 0;
 
-            listBox1.Visible = false;
-            button1.Visible = false;
-            buttonInstall.Visible = false;
-            buttonInstall.Enabled = false;
-            label2.Visible = false;
-
             textBox1.Clear();
             textBox1.UseSystemPasswordChar = true;
-            textBox1.Focus();
 
-            button2.Visible = true;
-
-            btnDetails.Visible = false;
-            progressBar.Visible = false;
-            lblStatus.Visible = false;
+            lblStatus.Text = "Ожидание запуска проверки";
+            lblHeaderStatus.Text = "● Ожидание проверки";
         }
 
         private void WireUiEvents()

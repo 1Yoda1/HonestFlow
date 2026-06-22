@@ -153,8 +153,9 @@ namespace HonestFlow
             // ========== ОСНОВНАЯ ФОРМА ==========
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(750, 550);
             this.Controls.Add(this.tabControl1);
+            this.ClientSize = new System.Drawing.Size(860, 560);
+            this.MinimumSize = new System.Drawing.Size(860, 560);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
             this.Name = "AdminForm";
