@@ -1,6 +1,6 @@
 using HonestFlow.Application.Bootstrap;
+using HonestFlow.Forms;
 using HonestFlow.Infrastructure;
-using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Models;
 using HonestFlow.Services.Auth;
@@ -45,71 +45,39 @@ namespace HonestFlow
             _authService = startup.AuthService;
             _installationService = startup.InstallationService;
 
-            SetupForm();
+            InitializeUiState();
+            WireUiEvents();
         }
-        private static bool IsAdminPasswordValid(string password)
-        {
-            string configured = Environment.GetEnvironmentVariable("HONESTFLOW_ADMIN_PASSWORD");
 
-            if (!string.IsNullOrWhiteSpace(configured))
-                return password == configured;
-
-            return password == "bckfvgbljhfc228"; // TODO удалить после перехода
-        }
-        private void SetupForm()
+        private void InitializeUiState()
         {
             progressBar.Minimum = 0;
             progressBar.Maximum = 100;
             progressBar.Value = 0;
 
-            listBox1.Hide();
-            button1.Hide();
+            listBox1.Visible = false;
+            button1.Visible = false;
             buttonInstall.Visible = false;
             buttonInstall.Enabled = false;
-            label2.Hide();
+            label2.Visible = false;
 
-            label1.Text = "Введите пароль для доступа к установке:";
-            label1.Location = new Point(30, 95);
-
-            textBox1.Show();
             textBox1.Clear();
-            textBox1.Focus();
             textBox1.UseSystemPasswordChar = true;
+            textBox1.Focus();
 
-            button2.Text = "Войти";
-            button2.Show();
+            button2.Visible = true;
 
-            label1.DoubleClick += (s, ev) =>
-            {
-                string password = Microsoft.VisualBasic.Interaction.InputBox(
-                    "Введите пароль администратора:", "Доступ к диагностике", "");
+            btnDetails.Visible = false;
+            progressBar.Visible = false;
+            lblStatus.Visible = false;
+        }
 
-                if (IsAdminPasswordValid(password))
-                {
-                    AdminForm adminForm = new AdminForm();
-                    adminForm.ShowDialog();
-
-                    // Обновляем данные после закрытия админки (если нужно)
-                    if (_useGitHubMode)
-                    {
-                        var result = ConfigManager.LoadConfigFromGitHub();
-                        if (result.Success)
-                        {
-                            _gitHubIps = result.Ips;
-                            _gitHubVersions = result.Versions;
-                            _authService = new AuthService(_gitHubIps, _logService);
-                        }
-                    }
-                    else
-                    {
-                        _authService.LoadIpList();
-                    }
-                }
-                else if (!string.IsNullOrEmpty(password))
-                {
-                    MessageBox.Show("Неверный пароль!", "Доступ запрещён", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-            };
+        private void WireUiEvents()
+        {
+            btnDiagnostics.Text = "Диагностика и ремонт";
+            btnDiagnostics.Visible = true;
+            btnDiagnostics.Click -= BtnDiagnostics_Click;
+            btnDiagnostics.Click += BtnDiagnostics_Click;
         }
 
         private async void Button2_Click(object sender, EventArgs e)
@@ -168,34 +136,8 @@ namespace HonestFlow
 
         private void BtnDiagnostics_Click(object sender, EventArgs e)
         {
-            try
-            {
-                btnDiagnostics.Enabled = false;
-                string archivePath = _diagnosticArchiveService.CreateArchive();
-
-                MessageBox.Show(
-                    $"Диагностический архив успешно создан:\n{archivePath}",
-                    "Диагностика",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-
-                System.Diagnostics.Process.Start(
-                    "explorer.exe",
-                    $"/select,\"{archivePath}\"");
-            }
-            catch (Exception ex)
-            {
-                _logService.LogDebug($"Ошибка сбора диагностики: {ex.Message}");
-                MessageBox.Show(
-                    $"Не удалось создать диагностический архив:\n{ex.Message}",
-                    "Ошибка диагностики",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
-            finally
-            {
-                btnDiagnostics.Enabled = true;
-            }
+            using var form = new ServiceMenuForm();
+            form.ShowDialog(this);
         }
 
         private void BtnDetails_Click(object sender, EventArgs e)
