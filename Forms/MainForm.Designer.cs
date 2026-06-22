@@ -14,258 +14,304 @@
 
         private void InitializeComponent()
         {
-            rootLayout = new System.Windows.Forms.TableLayoutPanel();
-            panelHeader = new System.Windows.Forms.Panel();
-            labelTitle = new System.Windows.Forms.Label();
-            lblHeaderStatus = new System.Windows.Forms.Label();
-            mainLayout = new System.Windows.Forms.TableLayoutPanel();
-            panelLeft = new System.Windows.Forms.Panel();
-            leftLayout = new System.Windows.Forms.TableLayoutPanel();
-            lblAuthTitle = new System.Windows.Forms.Label();
-            label1 = new System.Windows.Forms.Label();
-            textBox1 = new System.Windows.Forms.TextBox();
-            button2 = new System.Windows.Forms.Button();
-            btnCheckWithoutPassword = new System.Windows.Forms.Button();
-            btnDiagnostics = new System.Windows.Forms.Button();
-            btnDetails = new System.Windows.Forms.Button();
-            panelNodes = new System.Windows.Forms.Panel();
-            nodesLayout = new System.Windows.Forms.TableLayoutPanel();
-            lblNodesTitle = new System.Windows.Forms.Label();
-            nodeTable = new System.Windows.Forms.TableLayoutPanel();
-            lblLmNode = new System.Windows.Forms.Label();
-            lblLmCircle = new System.Windows.Forms.Label();
-            btnLmAction = new System.Windows.Forms.Button();
-            lblControllerNode = new System.Windows.Forms.Label();
-            lblControllerCircle = new System.Windows.Forms.Label();
-            btnControllerAction = new System.Windows.Forms.Button();
-            lblEsmNode = new System.Windows.Forms.Label();
-            lblEsmCircle = new System.Windows.Forms.Label();
-            btnEsmAction = new System.Windows.Forms.Button();
-            lblKktNode = new System.Windows.Forms.Label();
-            lblKktCircle = new System.Windows.Forms.Label();
-            btnKktAction = new System.Windows.Forms.Button();
-            lblGithubNode = new System.Windows.Forms.Label();
-            lblGithubCircle = new System.Windows.Forms.Label();
-            btnGithubAction = new System.Windows.Forms.Button();
-            panelBottom = new System.Windows.Forms.Panel();
-            bottomLayout = new System.Windows.Forms.TableLayoutPanel();
-            lblStatus = new System.Windows.Forms.Label();
-            progressBar = new System.Windows.Forms.ProgressBar();
-            listBox1 = new System.Windows.Forms.ListBox();
-            button1 = new System.Windows.Forms.Button();
-            buttonInstall = new System.Windows.Forms.Button();
-            label2 = new System.Windows.Forms.Label();
-            rootLayout.SuspendLayout();
-            panelHeader.SuspendLayout();
-            mainLayout.SuspendLayout();
-            panelLeft.SuspendLayout();
-            leftLayout.SuspendLayout();
-            panelNodes.SuspendLayout();
-            nodesLayout.SuspendLayout();
-            nodeTable.SuspendLayout();
-            panelBottom.SuspendLayout();
-            bottomLayout.SuspendLayout();
-            SuspendLayout();
+            this.rootLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.panelHeader = new System.Windows.Forms.Panel();
+            this.labelTitle = new System.Windows.Forms.Label();
+            this.lblHeaderStatus = new System.Windows.Forms.Label();
+
+            this.mainLayout = new System.Windows.Forms.TableLayoutPanel();
+
+            this.panelLeft = new System.Windows.Forms.Panel();
+            this.leftLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.lblAuthTitle = new System.Windows.Forms.Label();
+            this.label1 = new System.Windows.Forms.Label();
+            this.textBox1 = new System.Windows.Forms.TextBox();
+            this.button2 = new System.Windows.Forms.Button();
+            this.btnCheckWithoutPassword = new System.Windows.Forms.Button();
+            this.btnDiagnostics = new System.Windows.Forms.Button();
+            this.btnDetails = new System.Windows.Forms.Button();
+
+            this.panelNodes = new System.Windows.Forms.Panel();
+            this.nodesLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.lblNodesTitle = new System.Windows.Forms.Label();
+            this.nodeTable = new System.Windows.Forms.TableLayoutPanel();
+
+            this.lblLmNode = new System.Windows.Forms.Label();
+            this.lblLmCircle = new System.Windows.Forms.Label();
+            this.btnLmAction = new System.Windows.Forms.Button();
+
+            this.lblControllerNode = new System.Windows.Forms.Label();
+            this.lblControllerCircle = new System.Windows.Forms.Label();
+            this.btnControllerAction = new System.Windows.Forms.Button();
+
+            this.lblEsmNode = new System.Windows.Forms.Label();
+            this.lblEsmCircle = new System.Windows.Forms.Label();
+            this.btnEsmAction = new System.Windows.Forms.Button();
+
+            this.lblKktNode = new System.Windows.Forms.Label();
+            this.lblKktCircle = new System.Windows.Forms.Label();
+            this.btnKktAction = new System.Windows.Forms.Button();
+
+            this.lblGithubNode = new System.Windows.Forms.Label();
+            this.lblGithubCircle = new System.Windows.Forms.Label();
+            this.btnGithubAction = new System.Windows.Forms.Button();
+
+            this.panelBottom = new System.Windows.Forms.Panel();
+            this.bottomLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.lblStatus = new System.Windows.Forms.Label();
+            this.progressBar = new System.Windows.Forms.ProgressBar();
+
+            this.listBox1 = new System.Windows.Forms.ListBox();
+            this.button1 = new System.Windows.Forms.Button();
+            this.buttonInstall = new System.Windows.Forms.Button();
+            this.label2 = new System.Windows.Forms.Label();
+
+            this.rootLayout.SuspendLayout();
+            this.panelHeader.SuspendLayout();
+            this.mainLayout.SuspendLayout();
+            this.panelLeft.SuspendLayout();
+            this.leftLayout.SuspendLayout();
+            this.panelNodes.SuspendLayout();
+            this.nodesLayout.SuspendLayout();
+            this.nodeTable.SuspendLayout();
+            this.panelBottom.SuspendLayout();
+            this.bottomLayout.SuspendLayout();
+            this.SuspendLayout();
+
             // rootLayout
-            rootLayout.ColumnCount = 1;
-            rootLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            rootLayout.Controls.Add(panelHeader, 0, 0);
-            rootLayout.Controls.Add(mainLayout, 0, 1);
-            rootLayout.Controls.Add(panelBottom, 0, 2);
-            rootLayout.Dock = System.Windows.Forms.DockStyle.Fill;
-            rootLayout.RowCount = 3;
-            rootLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 64F));
-            rootLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            rootLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 74F));
+            this.rootLayout.ColumnCount = 1;
+            this.rootLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.rootLayout.Controls.Add(this.panelHeader, 0, 0);
+            this.rootLayout.Controls.Add(this.mainLayout, 0, 1);
+            this.rootLayout.Controls.Add(this.panelBottom, 0, 2);
+            this.rootLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rootLayout.RowCount = 3;
+            this.rootLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 64F));
+            this.rootLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.rootLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 74F));
+
             // panelHeader
-            panelHeader.BackColor = System.Drawing.Color.FromArgb(20, 31, 51);
-            panelHeader.Controls.Add(labelTitle);
-            panelHeader.Controls.Add(lblHeaderStatus);
-            panelHeader.Dock = System.Windows.Forms.DockStyle.Fill;
-            panelHeader.Padding = new System.Windows.Forms.Padding(22, 0, 22, 0);
+            this.panelHeader.BackColor = System.Drawing.Color.FromArgb(20, 31, 51);
+            this.panelHeader.Controls.Add(this.labelTitle);
+            this.panelHeader.Controls.Add(this.lblHeaderStatus);
+            this.panelHeader.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.panelHeader.Padding = new System.Windows.Forms.Padding(22, 0, 22, 0);
+
             // labelTitle
-            labelTitle.Dock = System.Windows.Forms.DockStyle.Left;
-            labelTitle.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold);
-            labelTitle.ForeColor = System.Drawing.Color.White;
-            labelTitle.Size = new System.Drawing.Size(300, 64);
-            labelTitle.Text = "HonestFlow";
-            labelTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.labelTitle.Dock = System.Windows.Forms.DockStyle.Left;
+            this.labelTitle.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold);
+            this.labelTitle.ForeColor = System.Drawing.Color.White;
+            this.labelTitle.Size = new System.Drawing.Size(300, 64);
+            this.labelTitle.Text = "HonestFlow";
+            this.labelTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+
             // lblHeaderStatus
-            lblHeaderStatus.Dock = System.Windows.Forms.DockStyle.Right;
-            lblHeaderStatus.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
-            lblHeaderStatus.ForeColor = System.Drawing.Color.FromArgb(251, 191, 36);
-            lblHeaderStatus.Size = new System.Drawing.Size(330, 64);
-            lblHeaderStatus.Text = "● Ожидание проверки";
-            lblHeaderStatus.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            this.lblHeaderStatus.Dock = System.Windows.Forms.DockStyle.Right;
+            this.lblHeaderStatus.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
+            this.lblHeaderStatus.ForeColor = System.Drawing.Color.FromArgb(251, 191, 36);
+            this.lblHeaderStatus.Size = new System.Drawing.Size(330, 64);
+            this.lblHeaderStatus.Text = "● Ожидание проверки";
+            this.lblHeaderStatus.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+
             // mainLayout
-            mainLayout.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
-            mainLayout.ColumnCount = 2;
-            mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 270F));
-            mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            mainLayout.Controls.Add(panelLeft, 0, 0);
-            mainLayout.Controls.Add(panelNodes, 1, 0);
-            mainLayout.Dock = System.Windows.Forms.DockStyle.Fill;
-            mainLayout.Padding = new System.Windows.Forms.Padding(14);
+            this.mainLayout.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
+            this.mainLayout.ColumnCount = 2;
+            this.mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 270F));
+            this.mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.mainLayout.Controls.Add(this.panelLeft, 0, 0);
+            this.mainLayout.Controls.Add(this.panelNodes, 1, 0);
+            this.mainLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.mainLayout.Padding = new System.Windows.Forms.Padding(14);
+
             // panelLeft
-            panelLeft.BackColor = System.Drawing.Color.White;
-            panelLeft.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            panelLeft.Controls.Add(leftLayout);
-            panelLeft.Dock = System.Windows.Forms.DockStyle.Fill;
-            panelLeft.Margin = new System.Windows.Forms.Padding(0, 0, 10, 0);
-            panelLeft.Padding = new System.Windows.Forms.Padding(18);
+            this.panelLeft.BackColor = System.Drawing.Color.White;
+            this.panelLeft.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.panelLeft.Controls.Add(this.leftLayout);
+            this.panelLeft.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.panelLeft.Margin = new System.Windows.Forms.Padding(0, 0, 10, 0);
+            this.panelLeft.Padding = new System.Windows.Forms.Padding(18);
+
             // leftLayout
-            leftLayout.ColumnCount = 1;
-            leftLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            leftLayout.Controls.Add(lblAuthTitle, 0, 0);
-            leftLayout.Controls.Add(label1, 0, 1);
-            leftLayout.Controls.Add(textBox1, 0, 2);
-            leftLayout.Controls.Add(button2, 0, 3);
-            leftLayout.Controls.Add(btnCheckWithoutPassword, 0, 4);
-            leftLayout.Controls.Add(btnDiagnostics, 0, 5);
-            leftLayout.Controls.Add(btnDetails, 0, 6);
-            leftLayout.Dock = System.Windows.Forms.DockStyle.Fill;
-            leftLayout.RowCount = 8;
-            leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 42F));
-            leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 28F));
-            leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 38F));
-            leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
-            leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
-            leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
-            leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
-            leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.leftLayout.ColumnCount = 1;
+            this.leftLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.leftLayout.Controls.Add(this.lblAuthTitle, 0, 0);
+            this.leftLayout.Controls.Add(this.label1, 0, 1);
+            this.leftLayout.Controls.Add(this.textBox1, 0, 2);
+            this.leftLayout.Controls.Add(this.button2, 0, 3);
+            this.leftLayout.Controls.Add(this.btnCheckWithoutPassword, 0, 4);
+            this.leftLayout.Controls.Add(this.btnDiagnostics, 0, 5);
+            this.leftLayout.Controls.Add(this.btnDetails, 0, 6);
+            this.leftLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftLayout.RowCount = 8;
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 42F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 28F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 38F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+
             // lblAuthTitle
-            lblAuthTitle.Dock = System.Windows.Forms.DockStyle.Fill;
-            lblAuthTitle.Font = new System.Drawing.Font("Segoe UI", 13F, System.Drawing.FontStyle.Bold);
-            lblAuthTitle.ForeColor = System.Drawing.Color.FromArgb(20, 31, 51);
-            lblAuthTitle.Text = "Авторизация";
-            lblAuthTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblAuthTitle.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lblAuthTitle.Font = new System.Drawing.Font("Segoe UI", 13F, System.Drawing.FontStyle.Bold);
+            this.lblAuthTitle.ForeColor = System.Drawing.Color.FromArgb(20, 31, 51);
+            this.lblAuthTitle.Text = "Авторизация";
+            this.lblAuthTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+
             // label1
-            label1.Dock = System.Windows.Forms.DockStyle.Fill;
-            label1.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
-            label1.ForeColor = System.Drawing.Color.FromArgb(20, 31, 51);
-            label1.Text = "Пароль доступа";
-            label1.TextAlign = System.Drawing.ContentAlignment.BottomLeft;
+            this.label1.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.label1.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
+            this.label1.ForeColor = System.Drawing.Color.FromArgb(20, 31, 51);
+            this.label1.Text = "Пароль доступа";
+            this.label1.TextAlign = System.Drawing.ContentAlignment.BottomLeft;
+
             // textBox1
-            textBox1.Dock = System.Windows.Forms.DockStyle.Fill;
-            textBox1.Font = new System.Drawing.Font("Segoe UI", 10.5F);
-            textBox1.Margin = new System.Windows.Forms.Padding(0, 3, 0, 5);
-            textBox1.UseSystemPasswordChar = true;
+            this.textBox1.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.textBox1.Font = new System.Drawing.Font("Segoe UI", 10.5F);
+            this.textBox1.Margin = new System.Windows.Forms.Padding(0, 3, 0, 5);
+            this.textBox1.UseSystemPasswordChar = true;
+
             // button2
-            ConfigureButton(button2, "Войти и запустить", true);
-            button2.Click += Button2_Click;
+            ConfigureButton(this.button2, "Войти и запустить", true);
+            this.button2.Click += new System.EventHandler(this.Button2_Click);
+
             // btnCheckWithoutPassword
-            ConfigureButton(btnCheckWithoutPassword, "Проверить без пароля", false);
-            btnCheckWithoutPassword.Click += BtnDiagnostics_Click;
+            ConfigureButton(this.btnCheckWithoutPassword, "Проверить без пароля", false);
+            this.btnCheckWithoutPassword.Click += new System.EventHandler(this.BtnDiagnostics_Click);
+
             // btnDiagnostics
-            ConfigureButton(btnDiagnostics, "Диагностика и ремонт", false);
-            btnDiagnostics.Click += BtnDiagnostics_Click;
+            ConfigureButton(this.btnDiagnostics, "Диагностика и ремонт", false);
+            this.btnDiagnostics.Click += new System.EventHandler(this.BtnDiagnostics_Click);
+
             // btnDetails
-            ConfigureButton(btnDetails, "Журнал выполнения", false);
-            btnDetails.Click += BtnDetails_Click;
+            ConfigureButton(this.btnDetails, "Журнал выполнения", false);
+            this.btnDetails.Click += new System.EventHandler(this.BtnDetails_Click);
+
             // panelNodes
-            panelNodes.BackColor = System.Drawing.Color.White;
-            panelNodes.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            panelNodes.Controls.Add(nodesLayout);
-            panelNodes.Dock = System.Windows.Forms.DockStyle.Fill;
-            panelNodes.Padding = new System.Windows.Forms.Padding(18);
+            this.panelNodes.BackColor = System.Drawing.Color.White;
+            this.panelNodes.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.panelNodes.Controls.Add(this.nodesLayout);
+            this.panelNodes.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.panelNodes.Padding = new System.Windows.Forms.Padding(18);
+
             // nodesLayout
-            nodesLayout.ColumnCount = 1;
-            nodesLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            nodesLayout.Controls.Add(lblNodesTitle, 0, 0);
-            nodesLayout.Controls.Add(nodeTable, 0, 1);
-            nodesLayout.Dock = System.Windows.Forms.DockStyle.Fill;
-            nodesLayout.RowCount = 2;
-            nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 42F));
-            nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.nodesLayout.ColumnCount = 1;
+            this.nodesLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.nodesLayout.Controls.Add(this.lblNodesTitle, 0, 0);
+            this.nodesLayout.Controls.Add(this.nodeTable, 0, 1);
+            this.nodesLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.nodesLayout.RowCount = 2;
+            this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 42F));
+            this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+
             // lblNodesTitle
-            lblNodesTitle.Dock = System.Windows.Forms.DockStyle.Fill;
-            lblNodesTitle.Font = new System.Drawing.Font("Segoe UI", 14F, System.Drawing.FontStyle.Bold);
-            lblNodesTitle.ForeColor = System.Drawing.Color.FromArgb(20, 31, 51);
-            lblNodesTitle.Text = "Состояние точки";
-            lblNodesTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblNodesTitle.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lblNodesTitle.Font = new System.Drawing.Font("Segoe UI", 14F, System.Drawing.FontStyle.Bold);
+            this.lblNodesTitle.ForeColor = System.Drawing.Color.FromArgb(20, 31, 51);
+            this.lblNodesTitle.Text = "Состояние точки";
+            this.lblNodesTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+
             // nodeTable
-            nodeTable.ColumnCount = 3;
-            nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 90F));
-            nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 160F));
-            nodeTable.Dock = System.Windows.Forms.DockStyle.Top;
-            nodeTable.Height = 270;
-            nodeTable.RowCount = 5;
-            nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
-            nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
-            nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
-            nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
-            nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
-            ConfigureNodeRow(0, lblLmNode, lblLmCircle, btnLmAction, "ЛМ ЧЗ", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
-            ConfigureNodeRow(1, lblControllerNode, lblControllerCircle, btnControllerAction, "Контроллер", System.Drawing.Color.FromArgb(251, 191, 36), "Исправить");
-            ConfigureNodeRow(2, lblEsmNode, lblEsmCircle, btnEsmAction, "ЕСМ", System.Drawing.Color.FromArgb(239, 68, 68), "Исправить");
-            ConfigureNodeRow(3, lblKktNode, lblKktCircle, btnKktAction, "ККТ", System.Drawing.Color.FromArgb(148, 163, 184), "Проверить");
-            ConfigureNodeRow(4, lblGithubNode, lblGithubCircle, btnGithubAction, "GitHub", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
+            this.nodeTable.ColumnCount = 3;
+            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 90F));
+            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 160F));
+            this.nodeTable.Dock = System.Windows.Forms.DockStyle.Top;
+            this.nodeTable.Height = 270;
+            this.nodeTable.RowCount = 5;
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
+
+            ConfigureNodeRow(0, this.lblLmNode, this.lblLmCircle, this.btnLmAction,
+                "ЛМ ЧЗ", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
+
+            ConfigureNodeRow(1, this.lblControllerNode, this.lblControllerCircle, this.btnControllerAction,
+                "Контроллер", System.Drawing.Color.FromArgb(251, 191, 36), "Исправить");
+
+            ConfigureNodeRow(2, this.lblEsmNode, this.lblEsmCircle, this.btnEsmAction,
+                "ЕСМ", System.Drawing.Color.FromArgb(239, 68, 68), "Исправить");
+
+            ConfigureNodeRow(3, this.lblKktNode, this.lblKktCircle, this.btnKktAction,
+                "ККТ", System.Drawing.Color.FromArgb(148, 163, 184), "Проверить");
+
+            ConfigureNodeRow(4, this.lblGithubNode, this.lblGithubCircle, this.btnGithubAction,
+                "GitHub", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
+
             // panelBottom
-            panelBottom.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
-            panelBottom.Controls.Add(bottomLayout);
-            panelBottom.Dock = System.Windows.Forms.DockStyle.Fill;
-            panelBottom.Padding = new System.Windows.Forms.Padding(14, 0, 14, 10);
+            this.panelBottom.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
+            this.panelBottom.Controls.Add(this.bottomLayout);
+            this.panelBottom.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.panelBottom.Padding = new System.Windows.Forms.Padding(14, 0, 14, 10);
+
             // bottomLayout
-            bottomLayout.BackColor = System.Drawing.Color.White;
-            bottomLayout.ColumnCount = 1;
-            bottomLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            bottomLayout.Controls.Add(lblStatus, 0, 0);
-            bottomLayout.Controls.Add(progressBar, 0, 1);
-            bottomLayout.Dock = System.Windows.Forms.DockStyle.Fill;
-            bottomLayout.Padding = new System.Windows.Forms.Padding(18, 10, 18, 10);
-            bottomLayout.RowCount = 2;
-            bottomLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 24F));
-            bottomLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 24F));
+            this.bottomLayout.BackColor = System.Drawing.Color.White;
+            this.bottomLayout.ColumnCount = 1;
+            this.bottomLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.bottomLayout.Controls.Add(this.lblStatus, 0, 0);
+            this.bottomLayout.Controls.Add(this.progressBar, 0, 1);
+            this.bottomLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.bottomLayout.Padding = new System.Windows.Forms.Padding(18, 10, 18, 10);
+            this.bottomLayout.RowCount = 2;
+            this.bottomLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 24F));
+            this.bottomLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 24F));
+
             // lblStatus
-            lblStatus.Dock = System.Windows.Forms.DockStyle.Fill;
-            lblStatus.Font = new System.Drawing.Font("Segoe UI", 9.5F);
-            lblStatus.ForeColor = System.Drawing.Color.FromArgb(51, 65, 85);
-            lblStatus.Text = "Ожидание запуска проверки";
-            lblStatus.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblStatus.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lblStatus.Font = new System.Drawing.Font("Segoe UI", 9.5F);
+            this.lblStatus.ForeColor = System.Drawing.Color.FromArgb(51, 65, 85);
+            this.lblStatus.Text = "Ожидание запуска проверки";
+            this.lblStatus.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+
             // progressBar
-            progressBar.Dock = System.Windows.Forms.DockStyle.Fill;
-            progressBar.Margin = new System.Windows.Forms.Padding(0, 4, 0, 2);
-            progressBar.Style = System.Windows.Forms.ProgressBarStyle.Blocks;
+            this.progressBar.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.progressBar.Margin = new System.Windows.Forms.Padding(0, 4, 0, 2);
+            this.progressBar.Style = System.Windows.Forms.ProgressBarStyle.Blocks;
+
             // hidden legacy controls
-            listBox1.Visible = false;
-            button1.Visible = false;
-            buttonInstall.Visible = false;
-            label2.Visible = false;
+            this.listBox1.Visible = false;
+            this.button1.Visible = false;
+            this.buttonInstall.Visible = false;
+            this.label2.Visible = false;
+
             // MainForm
-            AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
-            AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
-            ClientSize = new System.Drawing.Size(860, 560);
-            Controls.Add(rootLayout);
-            Controls.Add(listBox1);
-            Controls.Add(button1);
-            Controls.Add(buttonInstall);
-            Controls.Add(label2);
-            Font = new System.Drawing.Font("Segoe UI", 9F);
-            FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MinimumSize = new System.Drawing.Size(860, 560);
-            Name = "MainForm";
-            StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            Text = "HonestFlow";
-            rootLayout.ResumeLayout(false);
-            panelHeader.ResumeLayout(false);
-            mainLayout.ResumeLayout(false);
-            panelLeft.ResumeLayout(false);
-            leftLayout.ResumeLayout(false);
-            leftLayout.PerformLayout();
-            panelNodes.ResumeLayout(false);
-            nodesLayout.ResumeLayout(false);
-            nodeTable.ResumeLayout(false);
-            nodeTable.PerformLayout();
-            panelBottom.ResumeLayout(false);
-            bottomLayout.ResumeLayout(false);
-            ResumeLayout(false);
-            PerformLayout();
+            this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
+            this.ClientSize = new System.Drawing.Size(860, 560);
+            this.Controls.Add(this.rootLayout);
+            this.Controls.Add(this.listBox1);
+            this.Controls.Add(this.button1);
+            this.Controls.Add(this.buttonInstall);
+            this.Controls.Add(this.label2);
+            this.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
+            this.MaximizeBox = false;
+            this.MinimumSize = new System.Drawing.Size(860, 560);
+            this.Name = "MainForm";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+            this.Text = "HonestFlow";
+
+            this.rootLayout.ResumeLayout(false);
+            this.panelHeader.ResumeLayout(false);
+            this.mainLayout.ResumeLayout(false);
+            this.panelLeft.ResumeLayout(false);
+            this.leftLayout.ResumeLayout(false);
+            this.leftLayout.PerformLayout();
+            this.panelNodes.ResumeLayout(false);
+            this.nodesLayout.ResumeLayout(false);
+            this.nodeTable.ResumeLayout(false);
+            this.nodeTable.PerformLayout();
+            this.panelBottom.ResumeLayout(false);
+            this.bottomLayout.ResumeLayout(false);
+            this.ResumeLayout(false);
+            this.PerformLayout();
         }
 
-
+       
 
         private System.Windows.Forms.TableLayoutPanel rootLayout;
         private System.Windows.Forms.Panel panelHeader;

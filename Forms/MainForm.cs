@@ -57,7 +57,7 @@ namespace HonestFlow
             WireUiEvents();
         }
 
-        public void ConfigureButton(System.Windows.Forms.Button button, string text, bool primary)
+                public void ConfigureButton(System.Windows.Forms.Button button, string text, bool primary)
         {
             button.BackColor = primary
                 ? System.Drawing.Color.FromArgb(37, 99, 235)
