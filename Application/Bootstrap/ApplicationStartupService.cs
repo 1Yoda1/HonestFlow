@@ -9,7 +9,7 @@ using HonestFlow.Services.Installation;
 namespace HonestFlow.Application.Bootstrap
 {
     /// <summary>
-    /// Создаёт режим запуска приложения: GitHub-конфиги или локальные файлы.
+    /// Создаёт режим запуска приложения: Yandex Disk-конфиги или локальные файлы.
     /// Форма больше не должна знать, как именно подтягиваются конфиги и создаются сервисы.
     /// </summary>
     public class ApplicationStartupService
@@ -29,11 +29,11 @@ namespace HonestFlow.Application.Bootstrap
         {
             try
             {
-                var result = ConfigManager.LoadConfigFromGitHub();
+                var result = ConfigManager.LoadConfigFromYandexDisk();
                 if (result.Success && result.Ips != null && result.Ips.Count > 0)
                 {
                     ConfigManager.InitGitHubDownloader();
-                    Logger.LogToFile("✅ Режим v1.3: конфиги загружены с GitHub");
+                    Logger.LogToFile("Remote mode: configs loaded from Yandex Disk");
 
                     return new StartupResult
                     {
@@ -45,7 +45,7 @@ namespace HonestFlow.Application.Bootstrap
                     };
                 }
 
-                throw new Exception("GitHub не ответил или данные пусты");
+                throw new Exception("Yandex Disk did not respond or returned empty data");
             }
             catch (Exception ex)
             {

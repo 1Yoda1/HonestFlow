@@ -6,5 +6,6 @@ namespace HonestFlow.Models
         public string AtolDriver { get; set; }
         public string ESM { get; set; }
         public string Controller { get; set; }
+        public string HonestFlow { get; set; }
     }
 }

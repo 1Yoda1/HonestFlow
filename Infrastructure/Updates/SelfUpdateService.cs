@@ -1,21 +1,22 @@
-﻿using HonestFlow.Infrastructure.Configuration;
+using HonestFlow.Infrastructure.Configuration;
+using HonestFlow.Infrastructure.Dialogs;
+using HonestFlow.Infrastructure.Downloads;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using HonestFlow.Infrastructure.Dialogs;
 
 namespace HonestFlow.Infrastructure.Updates
 {
     public class SelfUpdateService
     {
-        private const string Owner = "1Yoda1";
-        private const string Repo = "HonestFlow";
-        private const string UserAgent = "HonestFlow-Updater/1.0";
         private const string UpdateAssetName = "HonestFlow.exe";
         private readonly IUserDialogService _dialogService;
 
@@ -31,14 +32,14 @@ namespace HonestFlow.Infrastructure.Updates
                 var latest = await GetLatestReleaseInfo();
                 if (latest == null)
                 {
-                    Logger.Warning("Автообновление: asset HonestFlow.exe в latest-релизе не найден", nameof(SelfUpdateService));
+                    Logger.Warning("Auto-update: HonestFlow.exe info was not found on Yandex Disk", nameof(SelfUpdateService));
                     return false;
                 }
 
                 Version currentVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0, 0);
                 Version latestVersion = NormalizeVersion(latest.Version);
 
-                Logger.Info($"Автообновление: текущая версия {currentVersion}, latest {latestVersion}", nameof(SelfUpdateService));
+                Logger.Info($"Auto-update: current version {currentVersion}, latest {latestVersion}", nameof(SelfUpdateService));
 
                 if (latestVersion <= currentVersion)
                     return false;
@@ -64,8 +65,22 @@ namespace HonestFlow.Infrastructure.Updates
 
                 if (!File.Exists(newExePath) || new FileInfo(newExePath).Length == 0)
                 {
-                    Logger.Error("Автообновление: скачанный HonestFlow.exe пустой или не найден", nameof(SelfUpdateService));
+                    Logger.Error("Auto-update: downloaded HonestFlow.exe is empty or missing", nameof(SelfUpdateService));
                     _dialogService.ShowError("Обновление скачано некорректно.", "Ошибка обновления");
+                    return false;
+                }
+
+                Version downloadedVersion = GetExecutableVersion(newExePath);
+                Logger.Info($"Auto-update: downloaded exe version {downloadedVersion}", nameof(SelfUpdateService));
+
+                if (downloadedVersion < latestVersion)
+                {
+                    Logger.Error(
+                        $"Auto-update: downloaded exe version {downloadedVersion} is lower than advertised {latestVersion}",
+                        nameof(SelfUpdateService));
+                    _dialogService.ShowError(
+                        $"Скачанный HonestFlow.exe имеет версию {downloadedVersion}, а папка/манифест обновления объявляет {latestVersion}.\n\nПроверьте, что в папку {latest.Version} загружен exe, собранный с этой же новой версией.",
+                        "Ошибка обновления");
                     return false;
                 }
 
@@ -82,35 +97,33 @@ namespace HonestFlow.Infrastructure.Updates
 
         private async Task<SelfUpdateInfo> GetLatestReleaseInfo()
         {
-            using var client = CreateClient();
+            using var client = GitHubDownloader.CreateClient(TimeSpan.FromSeconds(30));
+            var manifest = await TryLoadUpdateFromVersionFolder(client);
+            if (manifest == null)
+                return null;
 
-            string apiUrl = $"https://api.github.com/repos/{Owner}/{Repo}/releases/latest";
-            string json = await client.GetStringAsync(apiUrl);
+            string assetName = manifest.AssetName ?? UpdateAssetName;
+            if (string.IsNullOrWhiteSpace(manifest.Version))
+                return null;
 
-            dynamic release = JsonConvert.DeserializeObject(json);
-            string tag = release.tag_name;
-
-            foreach (var asset in release.assets)
+            string downloadUrl = await TryGetYandexDownloadUrl(client, "/" + assetName);
+            if (string.IsNullOrWhiteSpace(downloadUrl))
             {
-                string name = asset.name;
-                if (string.Equals(name, UpdateAssetName, StringComparison.OrdinalIgnoreCase))
-                {
-                    return new SelfUpdateInfo
-                    {
-                        Version = tag,
-                        AssetName = name,
-                        DownloadUrl = asset.browser_download_url
-                    };
-                }
+                Logger.Warning($"Auto-update: update file not found on Yandex Disk: /{assetName}", nameof(SelfUpdateService));
+                return null;
             }
 
-            return null;
+            return new SelfUpdateInfo
+            {
+                Version = manifest.Version,
+                AssetName = assetName,
+                DownloadUrl = downloadUrl
+            };
         }
 
         private async Task DownloadFile(string url, string destinationPath)
         {
-            using var client = CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(5);
+            using var client = GitHubDownloader.CreateClient(TimeSpan.FromMinutes(5));
 
             using var response = await client.GetAsync(url);
             response.EnsureSuccessStatusCode();
@@ -127,66 +140,181 @@ namespace HonestFlow.Infrastructure.Updates
             string appDir = AppPaths.BaseFolder.TrimEnd('\\');
             int currentPid = Environment.ProcessId;
 
-            string scriptPath = Path.Combine(AppPaths.ProgramDataFolder, "update", "apply_update.cmd");
+            string scriptPath = Path.Combine(AppPaths.ProgramDataFolder, "update", "apply_update.ps1");
+            string scriptLogPath = Path.Combine(AppPaths.ProgramDataFolder, "update", "apply_update.log");
             string backupExe = Path.Combine(backupPath, "HonestFlow.backup.exe");
+            string currentExePs = ToPowerShellSingleQuotedString(currentExe);
+            string newExePathPs = ToPowerShellSingleQuotedString(newExePath);
+            string backupPathPs = ToPowerShellSingleQuotedString(backupPath);
+            string backupExePs = ToPowerShellSingleQuotedString(backupExe);
+            string appDirPs = ToPowerShellSingleQuotedString(appDir);
+            string scriptLogPathPs = ToPowerShellSingleQuotedString(scriptLogPath);
 
             string script = $@"
-@echo off
-chcp 65001 > nul
-echo Updating HonestFlow...
+$ErrorActionPreference = 'Stop'
+$log = {scriptLogPathPs}
+$currentExe = {currentExePs}
+$newExe = {newExePathPs}
+$backupDir = {backupPathPs}
+$backupExe = {backupExePs}
+$appDir = {appDirPs}
+$pidToWait = {currentPid}
 
-timeout /t 2 /nobreak > nul
+function Write-UpdateLog([string]$message) {{
+    Add-Content -LiteralPath $log -Value ""[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] $message"" -Encoding UTF8
+}}
 
-:wait
-tasklist /FI ""PID eq {currentPid}"" | find ""{currentPid}"" > nul
-if not errorlevel 1 (
-    timeout /t 1 /nobreak > nul
-    goto wait
-)
+try {{
+    Set-Content -LiteralPath $log -Value ""[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] Updating HonestFlow..."" -Encoding UTF8
+    Write-UpdateLog ""Current exe: $currentExe""
+    Write-UpdateLog ""New exe: $newExe""
+    Write-UpdateLog ""Backup exe: $backupExe""
 
-if not exist ""{backupPath}"" mkdir ""{backupPath}""
+    Start-Sleep -Seconds 2
+    while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {{
+        Write-UpdateLog ""Waiting for process $pidToWait""
+        Start-Sleep -Seconds 1
+    }}
 
-copy /Y ""{currentExe}"" ""{backupExe}""
-if errorlevel 1 (
-    start """" ""{currentExe}""
-    exit /b 1
-)
+    New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 
-copy /Y ""{newExePath}"" ""{currentExe}""
-if errorlevel 1 (
-    copy /Y ""{backupExe}"" ""{currentExe}""
-    start """" ""{currentExe}""
-    exit /b 1
-)
+    Write-UpdateLog ""Backing up current exe""
+    Copy-Item -LiteralPath $currentExe -Destination $backupExe -Force
 
-start """" ""{currentExe}""
-exit /b 0
+    Write-UpdateLog ""Replacing current exe""
+    Copy-Item -LiteralPath $newExe -Destination $currentExe -Force
+
+    Write-UpdateLog ""Update applied successfully""
+    Start-Process -FilePath $currentExe -WorkingDirectory $appDir
+    exit 0
+}}
+catch {{
+    Write-UpdateLog ""Update failed: $($_.Exception.Message)""
+    try {{
+        if (Test-Path -LiteralPath $backupExe) {{
+            Write-UpdateLog ""Restoring backup""
+            Copy-Item -LiteralPath $backupExe -Destination $currentExe -Force
+        }}
+    }}
+    catch {{
+        Write-UpdateLog ""Backup restore failed: $($_.Exception.Message)""
+    }}
+
+    try {{
+        Start-Process -FilePath $currentExe -WorkingDirectory $appDir
+    }}
+    catch {{
+        Write-UpdateLog ""Restart failed: $($_.Exception.Message)""
+    }}
+
+    exit 1
+}}
 ";
 
             File.WriteAllText(scriptPath, script, Encoding.UTF8);
 
             Process.Start(new ProcessStartInfo
             {
-                FileName = scriptPath,
-                UseShellExecute = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                Verb = "runas"
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = appDir
             });
 
             System.Windows.Forms.Application.Exit();
         }
 
-        private static HttpClient CreateClient()
+        private static string ToPowerShellSingleQuotedString(string value)
         {
-            var client = new HttpClient();
-            client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
-            return client;
+            return "'" + (value ?? string.Empty).Replace("'", "''") + "'";
+        }
+
+        private static Version GetExecutableVersion(string exePath)
+        {
+            var versionInfo = FileVersionInfo.GetVersionInfo(exePath);
+            string versionText = versionInfo.FileVersion ?? versionInfo.ProductVersion;
+
+            if (Version.TryParse(versionText, out var version))
+                return version;
+
+            return new Version(0, 0, 0, 0);
         }
 
         private static Version NormalizeVersion(string tag)
         {
             string cleaned = tag?.Trim().TrimStart('v', 'V') ?? "0.0.0.0";
             return Version.TryParse(cleaned, out var version) ? version : new Version(0, 0, 0, 0);
+        }
+
+        private static async Task<SelfUpdateInfo> TryLoadUpdateFromVersionFolder(HttpClient client)
+        {
+            try
+            {
+                string json = await client.GetStringAsync(GitHubDownloader.BuildPublicResourcesUrl());
+                var payload = JObject.Parse(json);
+                var items = payload["_embedded"]?["items"] as JArray;
+
+                if (items == null)
+                    return null;
+
+                var versionFolder = items
+                    .Where(item => string.Equals((string)item["type"], "dir", StringComparison.OrdinalIgnoreCase))
+                    .Select(item => new
+                    {
+                        Name = (string)item["name"],
+                        VersionText = ExtractVersion((string)item["name"])
+                    })
+                    .Where(item => Version.TryParse(item.VersionText, out _))
+                    .Select(item => new
+                    {
+                        item.Name,
+                        item.VersionText,
+                        Version = Version.Parse(item.VersionText)
+                    })
+                    .OrderByDescending(item => item.Version)
+                    .FirstOrDefault();
+
+                if (versionFolder == null)
+                    return null;
+
+                return new SelfUpdateInfo
+                {
+                    Version = versionFolder.VersionText,
+                    AssetName = versionFolder.Name.Trim('/') + "/" + UpdateAssetName
+                };
+            }
+            catch (HttpRequestException)
+            {
+                return null;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        private static string ExtractVersion(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            var match = Regex.Match(text, @"\d+\.\d+\.\d+(?:\.\d+)?");
+            return match.Success ? match.Value : null;
+        }
+
+        private static async Task<string> TryGetYandexDownloadUrl(HttpClient client, string path)
+        {
+            try
+            {
+                string json = await client.GetStringAsync(GitHubDownloader.BuildPublicDownloadUrl(path));
+                var payload = JObject.Parse(json);
+                return (string)payload["href"];
+            }
+            catch (HttpRequestException)
+            {
+                return null;
+            }
         }
     }
 }

@@ -12,6 +12,8 @@ namespace HonestFlow.Infrastructure.Configuration
         public static string BaseFolder => AppDomain.CurrentDomain.BaseDirectory;
         public static string LocalIpsFile => Path.Combine(BaseFolder, "ips.json");
         public static string LocalVersionsFile => Path.Combine(BaseFolder, "versions.json");
+        public static string YandexPublicKeyFile => Path.Combine(BaseFolder, "yandex_public_key.txt");
+        public static string YandexPublicUrlFile => Path.Combine(BaseFolder, "yandex_public_url.txt");
         public static string DistrFolder => Path.Combine(BaseFolder, "Distr");
         public static string GitHubCacheFolder => Path.Combine(BaseFolder, "GitHubCache");
         public static string ProgramDataFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "HonestFlow");

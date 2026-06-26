@@ -20,7 +20,7 @@ namespace HonestFlow.Services.Auth
         {
             _ipList = ips;
             _logService = logService;
-            _logService.LogDebug($"Загружено {_ipList.Count} ИП из GitHub");
+            _logService.LogDebug($"Loaded {_ipList.Count} IP entries from Yandex Disk");
         }
 
         public void LoadIpList()

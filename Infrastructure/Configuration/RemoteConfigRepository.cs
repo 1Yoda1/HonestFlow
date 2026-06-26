@@ -1,21 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using HonestFlow.Infrastructure.Downloads;
 using HonestFlow.Models;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace HonestFlow.Infrastructure.Configuration
 {
-    /// <summary>
-    /// Чтение конфигов из latest GitHub Release.
-    /// Отдельный класс, чтобы UI и установщик не знали деталей GitHub API.
-    /// </summary>
     public class RemoteConfigRepository
     {
-        private const string GitHubOwner = "1Yoda1";
-        private const string GitHubRepo = "HonestFlow";
-        private static string UserAgent =>
-            $"HonestFlow/{typeof(RemoteConfigRepository).Assembly.GetName().Version}";
+        private const string IpsFileName = "ips_encrypted.json";
+        private const string VersionsFileName = "versions.json";
 
         private List<IPData> _cachedIps;
         private VersionsData _cachedVersions;
@@ -24,19 +20,11 @@ namespace HonestFlow.Infrastructure.Configuration
         {
             try
             {
-                using var client = CreateClient();
-                dynamic release = LoadLatestRelease(client);
+                using var client = GitHubDownloader.CreateClient(TimeSpan.FromSeconds(30));
 
-                string ipsUrl = FindAssetUrl(release, "ips_encrypted.json");
-                string versionsUrl = FindAssetUrl(release, "versions.json");
-
-                if (ipsUrl == null || versionsUrl == null)
-                    return (false, null, null);
-
-                string encryptedIps = client.GetStringAsync(ipsUrl).GetAwaiter().GetResult();
+                string encryptedIps = DownloadPublicTextFile(client, IpsFileName);
                 string decryptedIps = ObfuscationService.Deobfuscate(encryptedIps);
-
-                string versionsJson = client.GetStringAsync(versionsUrl).GetAwaiter().GetResult();
+                string versionsJson = DownloadPublicTextFile(client, VersionsFileName);
 
                 _cachedIps = JsonConvert.DeserializeObject<List<IPData>>(decryptedIps) ?? new List<IPData>();
                 _cachedVersions = JsonConvert.DeserializeObject<VersionsData>(versionsJson) ?? new VersionsData();
@@ -45,7 +33,7 @@ namespace HonestFlow.Infrastructure.Configuration
             }
             catch (Exception ex)
             {
-                Logger.LogToFile($"Ошибка загрузки конфигов с GitHub: {ex.Message}", true);
+                Logger.LogToFile($"Yandex Disk config loading error: {ex.Message}", true);
                 return (false, null, null);
             }
         }
@@ -59,28 +47,20 @@ namespace HonestFlow.Infrastructure.Configuration
             return result.Success ? result.Versions : new VersionsData();
         }
 
-        private static HttpClient CreateClient()
+        private static string DownloadPublicTextFile(HttpClient client, string fileName)
         {
-            var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
-            return client;
-        }
+            string downloadInfoJson = client
+                .GetStringAsync(GitHubDownloader.BuildPublicDownloadUrl("/" + fileName))
+                .GetAwaiter()
+                .GetResult();
 
-        private static dynamic LoadLatestRelease(HttpClient client)
-        {
-            string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases/tags/installers";
-            var releaseJson = client.GetStringAsync(apiUrl).GetAwaiter().GetResult();
-            return JsonConvert.DeserializeObject(releaseJson);
-        }
+            var downloadInfo = JObject.Parse(downloadInfoJson);
+            string href = (string)downloadInfo["href"];
 
-        private static string FindAssetUrl(dynamic release, string fileName)
-        {
-            foreach (var asset in release.assets)
-            {
-                if ((string)asset.name == fileName)
-                    return asset.browser_download_url;
-            }
-            return null;
+            if (string.IsNullOrWhiteSpace(href))
+                throw new InvalidOperationException($"Yandex Disk did not return a download URL for {fileName}.");
+
+            return client.GetStringAsync(href).GetAwaiter().GetResult();
         }
     }
 }

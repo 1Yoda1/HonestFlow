@@ -4,21 +4,24 @@ using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure.Configuration;
-using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace HonestFlow.Infrastructure.Downloads
 {
     public class GitHubDownloader
     {
-        private const string OWNER = "1Yoda1";
-        private const string REPO = "HonestFlow";
+        private const string PublicResourcesApi = "https://cloud-api.yandex.net/v1/disk/public/resources";
+        private const string PublicDownloadApi = "https://cloud-api.yandex.net/v1/disk/public/resources/download";
         private readonly string _cacheFolder;
+        private readonly string _publicKey;
         private Dictionary<string, (string Url, long Size)> _cachedAssets = null;
         private readonly object _cacheLock = new object();
 
         public GitHubDownloader()
         {
             _cacheFolder = AppPaths.GitHubCacheFolder;
+            _publicKey = ConfigManager.GetYandexPublicKey();
+
             if (!Directory.Exists(_cacheFolder))
                 Directory.CreateDirectory(_cacheFolder);
         }
@@ -28,22 +31,34 @@ namespace HonestFlow.Infrastructure.Downloads
             if (!forceRefresh && _cachedAssets != null)
                 return _cachedAssets;
 
-            using var client = new HttpClient();
-            client.DefaultRequestHeaders.Add("User-Agent", "HonestFlow/1.3");
-            client.Timeout = TimeSpan.FromSeconds(10);
+            using var client = CreateClient(TimeSpan.FromSeconds(60));
+            string listUrl = BuildPublicResourcesUrl();
+            string resourcesJson = await client.GetStringAsync(listUrl);
+            var root = JObject.Parse(resourcesJson);
+            var items = root["_embedded"]?["items"] as JArray;
 
-            string apiUrl = $"https://api.github.com/repos/{OWNER}/{REPO}/releases/tags/installers";
-            var releaseJson = await client.GetStringAsync(apiUrl);
-            dynamic release = JsonConvert.DeserializeObject(releaseJson);
+            if (items == null)
+                throw new InvalidDataException("Yandex Disk public folder does not contain an item list.");
 
-            var assets = new Dictionary<string, (string Url, long Size)>();
-            foreach (var asset in release.assets)
+            var assets = new Dictionary<string, (string Url, long Size)>(StringComparer.OrdinalIgnoreCase);
+            foreach (JToken item in items)
             {
-                string name = asset.name;
-                string url = asset.browser_download_url;
-                long size = asset.size;
+                string type = (string)item["type"];
+                if (!string.Equals(type, "file", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string name = (string)item["name"];
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+
+                long size = (long?)item["size"] ?? 0;
+                string url = (string)item["file"];
+
+                if (string.IsNullOrWhiteSpace(url))
+                    url = await GetDownloadUrl(client, "/" + name);
+
                 assets[name] = (url, size);
-                Logger.LogToFile($"📦 Найден asset: {name}");
+                Logger.LogToFile($"Yandex Disk asset found: {name}");
             }
 
             lock (_cacheLock)
@@ -67,9 +82,7 @@ namespace HonestFlow.Infrastructure.Downloads
                 if (File.Exists(temporaryPath))
                     File.Delete(temporaryPath);
 
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.Add("User-Agent", "HonestFlow/1.3");
-                client.Timeout = TimeSpan.FromMinutes(10);
+                using var client = CreateClient(TimeSpan.FromMinutes(10));
 
                 using var response = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
@@ -101,12 +114,12 @@ namespace HonestFlow.Infrastructure.Downloads
                 if (requiredBytes > 0 && totalRead != requiredBytes)
                 {
                     throw new InvalidDataException(
-                        $"Размер скачанного файла не совпадает: получено {totalRead} байт, ожидалось {requiredBytes} байт");
+                        $"Downloaded file size mismatch: got {totalRead} bytes, expected {requiredBytes} bytes");
                 }
 
                 File.Move(temporaryPath, destinationPath, true);
 
-                Logger.LogToFile($"✅ Скачан: {Path.GetFileName(destinationPath)}");
+                Logger.LogToFile($"Downloaded: {Path.GetFileName(destinationPath)}");
                 return true;
             }
             catch (Exception ex)
@@ -119,11 +132,11 @@ namespace HonestFlow.Infrastructure.Downloads
                 catch (Exception cleanupEx)
                 {
                     Logger.LogToFile(
-                        $"Не удалось удалить временный файл {Path.GetFileName(temporaryPath)}: {cleanupEx.Message}",
+                        $"Failed to delete temporary file {Path.GetFileName(temporaryPath)}: {cleanupEx.Message}",
                         true);
                 }
 
-                Logger.LogToFile($"❌ Ошибка скачивания {Path.GetFileName(destinationPath)}: {ex.Message}", true);
+                Logger.LogToFile($"Download error {Path.GetFileName(destinationPath)}: {ex.Message}", true);
                 return false;
             }
         }
@@ -137,19 +150,17 @@ namespace HonestFlow.Infrastructure.Downloads
         {
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                Logger.LogToFile($"⬇ Попытка {attempt}/{maxRetries}: {Path.GetFileName(destinationPath)}");
+                Logger.LogToFile($"Download attempt {attempt}/{maxRetries}: {Path.GetFileName(destinationPath)}");
 
                 bool success = await DownloadFile(downloadUrl, destinationPath, progress, expectedBytes);
                 if (success)
                     return true;
 
                 if (attempt < maxRetries)
-                {
-                    await Task.Delay(2000 * attempt); // 2, 4, 6 секунд
-                }
+                    await Task.Delay(2000 * attempt);
             }
 
-            Logger.LogToFile($"❌ Не удалось скачать после {maxRetries} попыток: {Path.GetFileName(destinationPath)}", true);
+            Logger.LogToFile($"Failed to download after {maxRetries} attempts: {Path.GetFileName(destinationPath)}", true);
             return false;
         }
 
@@ -161,6 +172,34 @@ namespace HonestFlow.Infrastructure.Downloads
 
             long actualBytes = new FileInfo(path).Length;
             return expectedBytes <= 0 || actualBytes == expectedBytes;
+        }
+
+        internal static HttpClient CreateClient(TimeSpan timeout)
+        {
+            var client = new HttpClient { Timeout = timeout };
+            client.DefaultRequestHeaders.Add("User-Agent", "HonestFlow/2.1 YandexDisk");
+            return client;
+        }
+
+        internal static string BuildPublicResourcesUrl(string publicKey = null)
+        {
+            return PublicResourcesApi +
+                "?public_key=" + Uri.EscapeDataString(publicKey ?? ConfigManager.GetYandexPublicKey()) +
+                "&limit=1000";
+        }
+
+        internal static string BuildPublicDownloadUrl(string path, string publicKey = null)
+        {
+            return PublicDownloadApi +
+                "?public_key=" + Uri.EscapeDataString(publicKey ?? ConfigManager.GetYandexPublicKey()) +
+                "&path=" + Uri.EscapeDataString(path);
+        }
+
+        internal async Task<string> GetDownloadUrl(HttpClient client, string path)
+        {
+            string json = await client.GetStringAsync(BuildPublicDownloadUrl(path, _publicKey));
+            var payload = JObject.Parse(json);
+            return (string)payload["href"];
         }
     }
 }
