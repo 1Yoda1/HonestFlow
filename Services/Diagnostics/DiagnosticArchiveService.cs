@@ -127,6 +127,11 @@ namespace HonestFlow.Services.Diagnostics
                 return;
             }
 
+            TryCopyKnownLog(
+                Path.Combine(esmLogFolder, "esm-orchestrator.log"),
+                Path.Combine(targetFolder, "esm-orchestrator.log"),
+                "ESM");
+
             string esmLog = Directory.GetFiles(esmLogFolder, "esm-cm_*.log")
                 .OrderByDescending(File.GetLastWriteTime)
                 .FirstOrDefault();

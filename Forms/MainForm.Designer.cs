@@ -29,6 +29,8 @@
             this.button2 = new System.Windows.Forms.Button();
             this.btnCheckWithoutPassword = new System.Windows.Forms.Button();
             this.btnDiagnostics = new System.Windows.Forms.Button();
+            this.btnOpenKktDriver = new System.Windows.Forms.Button();
+            this.btnOpenEsm = new System.Windows.Forms.Button();
             this.btnDetails = new System.Windows.Forms.Button();
 
             this.panelNodes = new System.Windows.Forms.Panel();
@@ -129,7 +131,7 @@
             this.panelLeft.Controls.Add(this.leftLayout);
             this.panelLeft.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panelLeft.Margin = new System.Windows.Forms.Padding(0, 0, 10, 0);
-            this.panelLeft.Padding = new System.Windows.Forms.Padding(18);
+            this.panelLeft.Padding = new System.Windows.Forms.Padding(14);
 
             // leftLayout
             this.leftLayout.ColumnCount = 1;
@@ -140,16 +142,20 @@
             this.leftLayout.Controls.Add(this.button2, 0, 3);
             this.leftLayout.Controls.Add(this.btnCheckWithoutPassword, 0, 4);
             this.leftLayout.Controls.Add(this.btnDiagnostics, 0, 5);
-            this.leftLayout.Controls.Add(this.btnDetails, 0, 6);
+            this.leftLayout.Controls.Add(this.btnOpenKktDriver, 0, 6);
+            this.leftLayout.Controls.Add(this.btnOpenEsm, 0, 7);
+            this.leftLayout.Controls.Add(this.btnDetails, 0, 8);
             this.leftLayout.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.leftLayout.RowCount = 8;
-            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 42F));
-            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 28F));
+            this.leftLayout.RowCount = 10;
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 38F));
-            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
-            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
-            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
-            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 52F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 24F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 34F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
 
             // lblAuthTitle
@@ -183,6 +189,12 @@
             // btnDiagnostics
             ConfigureButton(this.btnDiagnostics, "Диагностика и ремонт", false);
             this.btnDiagnostics.Click += new System.EventHandler(this.BtnDiagnostics_Click);
+
+            // btnOpenKktDriver
+            ConfigureButton(this.btnOpenKktDriver, "Открыть Драйвер ККТ", false);
+
+            // btnOpenEsm
+            ConfigureButton(this.btnOpenEsm, "Открыть ЕСМ", false);
 
             // btnDetails
             ConfigureButton(this.btnDetails, "Журнал выполнения", false);
@@ -328,6 +340,8 @@
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.Button btnCheckWithoutPassword;
         private System.Windows.Forms.Button btnDiagnostics;
+        private System.Windows.Forms.Button btnOpenKktDriver;
+        private System.Windows.Forms.Button btnOpenEsm;
         private System.Windows.Forms.Button btnDetails;
 
         private System.Windows.Forms.Panel panelNodes;

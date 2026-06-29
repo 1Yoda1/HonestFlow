@@ -10,7 +10,7 @@ namespace HonestFlow.Infrastructure.Configuration
     public static class AppPaths
     {
         public static string BaseFolder => AppDomain.CurrentDomain.BaseDirectory;
-        public static string LocalIpsFile => Path.Combine(BaseFolder, "ips.json");
+        public static string LocalIpsFile => Path.Combine(BaseFolder, "ips_encrypted.json");
         public static string LocalVersionsFile => Path.Combine(BaseFolder, "versions.json");
         public static string YandexPublicKeyFile => Path.Combine(BaseFolder, "yandex_public_key.txt");
         public static string YandexPublicUrlFile => Path.Combine(BaseFolder, "yandex_public_url.txt");
@@ -27,4 +27,6 @@ namespace HonestFlow.Infrastructure.Configuration
             Directory.CreateDirectory(DiagnosticsFolder);
         }
     }
+
+
 }

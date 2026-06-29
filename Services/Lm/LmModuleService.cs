@@ -295,6 +295,19 @@ namespace HonestFlow.Services.Lm
                 return true;
             }
 
+            if (IsAmbiguousInitFailure(initResult))
+            {
+                SetProgress(90, "ЛМ ЧЗ: проверка результата init после таймаута");
+                _log.LogUser($"⚠️ Init не вернул ответ вовремя ({initResult.ErrorMessage}). Проверяем фактический статус ЛМ ЧЗ...");
+
+                if (await ConfirmInitializationCompletedAfterAmbiguousFailure())
+                {
+                    SetProgress(100, "ЛМ ЧЗ: инициализация подтверждена");
+                    _log.LogUser($"✅ Инициализация ЛМ ЧЗ подтверждена по статусу после таймаута: {context}");
+                    return true;
+                }
+            }
+
             SetProgress(100, "ЛМ ЧЗ: ошибка инициализации");
             _log.LogUser($"❌ Ошибка инициализации ЛМ ЧЗ ({context}): {initResult.StatusCode} - {initResult.ErrorMessage}");
 
@@ -305,6 +318,45 @@ namespace HonestFlow.Services.Lm
                 userMessage = "Неверный токен. Проверьте правильность токена ЧЗ.";
 
             _dialogService.ShowError("Не удалось инициализировать ЛМ ЧЗ:" + Environment.NewLine + userMessage, "Ошибка инициализации");
+            return false;
+        }
+
+        private static bool IsAmbiguousInitFailure(ApiSimpleResponse initResult)
+        {
+            if (initResult == null || initResult.IsSuccess)
+                return false;
+
+            string message = initResult.ErrorMessage ?? string.Empty;
+            return initResult.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable &&
+                   (message.IndexOf("HttpClient.Timeout", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    message.IndexOf("request was canceled", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    message.IndexOf("task was canceled", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    initResult.DurationMs >= 9500);
+        }
+
+        private async Task<bool> ConfirmInitializationCompletedAfterAmbiguousFailure()
+        {
+            for (int attempt = 1; attempt <= 8; attempt++)
+            {
+                await Task.Delay(attempt == 1 ? 1500 : 3000);
+
+                var statusResponse = await _apiClient.GetStatus();
+                if (!statusResponse.IsSuccess || statusResponse.Data == null)
+                {
+                    _log.LogUser($"⚠️ Проверка init после таймаута, попытка {attempt}/8: статус ЛМ не получен ({statusResponse.ErrorMessage})");
+                    continue;
+                }
+
+                var status = statusResponse.Data;
+                _log.LogUser($"ℹ️ Проверка init после таймаута, попытка {attempt}/8: статус={status.Status}, ИНН={MaskInnForUi(status.Inn)}");
+
+                if (status.Status == "initialization" || status.Status == "ready")
+                    return true;
+
+                if (status.Status == "not_configured")
+                    return false;
+            }
+
             return false;
         }
 
