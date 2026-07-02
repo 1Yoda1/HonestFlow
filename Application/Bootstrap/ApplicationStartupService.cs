@@ -1,16 +1,16 @@
 using System;
+using HonestFlow.Application.Auth;
+using HonestFlow.Application.Core;
+using HonestFlow.Application.Installation;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Dialogs;
-using HonestFlow.Services.Auth;
-using HonestFlow.Services.Core;
-using HonestFlow.Services.Installation;
+using HonestFlow.Models;
 
 namespace HonestFlow.Application.Bootstrap
 {
     /// <summary>
-    /// Создаёт режим запуска приложения: Yandex Disk-конфиги или локальные файлы.
-    /// Форма больше не должна знать, как именно подтягиваются конфиги и создаются сервисы.
+    /// Builds the application startup mode: remote Yandex Disk configuration or local files.
     /// </summary>
     public class ApplicationStartupService
     {
@@ -29,17 +29,18 @@ namespace HonestFlow.Application.Bootstrap
         {
             try
             {
-                var result = ConfigManager.LoadConfigFromYandexDisk();
+                var result = ConfigManager.LoadRemoteConfig();
                 if (result.Success && result.Ips != null && result.Ips.Count > 0)
                 {
-                    ConfigManager.InitGitHubDownloader();
+                    ConfigManager.InitYandexDiskDownloader();
                     Logger.LogToFile("Remote mode: configs loaded from Yandex Disk");
 
                     return new StartupResult
                     {
-                        UseGitHubMode = true,
-                        GitHubIps = result.Ips,
-                        GitHubVersions = result.Versions,
+                        UseRemoteConfigMode = true,
+                        Ips = result.Ips,
+                        RemoteIps = result.Ips,
+                        RemoteVersions = result.Versions,
                         AuthService = new AuthService(result.Ips, _logService),
                         InstallationService = new InstallationService(_logService, _progressService, _dialogService, true)
                     };
@@ -51,11 +52,12 @@ namespace HonestFlow.Application.Bootstrap
             {
                 var authService = new AuthService(_logService);
                 authService.LoadIpList();
-                Logger.LogToFile($"⚠️ Режим v1.2.3: используем локальные файлы. Ошибка: {ex.Message}");
+                Logger.LogToFile($"Remote config unavailable, using local files. Error: {ex.Message}");
 
                 return new StartupResult
                 {
-                    UseGitHubMode = false,
+                    UseRemoteConfigMode = false,
+                    Ips = new System.Collections.Generic.List<IPData>(authService.Ips),
                     AuthService = authService,
                     InstallationService = new InstallationService(_logService, _progressService, _dialogService, false)
                 };

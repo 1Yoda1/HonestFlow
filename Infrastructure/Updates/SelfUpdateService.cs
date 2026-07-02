@@ -97,7 +97,7 @@ namespace HonestFlow.Infrastructure.Updates
 
         private async Task<SelfUpdateInfo> GetLatestReleaseInfo()
         {
-            using var client = GitHubDownloader.CreateClient(TimeSpan.FromSeconds(30));
+            using var client = YandexDiskDownloader.CreateClient(TimeSpan.FromSeconds(30));
             var manifest = await TryLoadUpdateFromVersionFolder(client);
             if (manifest == null)
                 return null;
@@ -123,7 +123,7 @@ namespace HonestFlow.Infrastructure.Updates
 
         private async Task DownloadFile(string url, string destinationPath)
         {
-            using var client = GitHubDownloader.CreateClient(TimeSpan.FromMinutes(5));
+            using var client = YandexDiskDownloader.CreateClient(TimeSpan.FromMinutes(5));
 
             using var response = await client.GetAsync(url);
             response.EnsureSuccessStatusCode();
@@ -251,7 +251,7 @@ catch {{
         {
             try
             {
-                string json = await client.GetStringAsync(GitHubDownloader.BuildPublicResourcesUrl());
+                string json = await client.GetStringAsync(YandexDiskDownloader.BuildPublicResourcesUrl());
                 var payload = JObject.Parse(json);
                 var items = payload["_embedded"]?["items"] as JArray;
 
@@ -307,7 +307,7 @@ catch {{
         {
             try
             {
-                string json = await client.GetStringAsync(GitHubDownloader.BuildPublicDownloadUrl(path));
+                string json = await client.GetStringAsync(YandexDiskDownloader.BuildPublicDownloadUrl(path));
                 var payload = JObject.Parse(json);
                 return (string)payload["href"];
             }

@@ -39,24 +39,29 @@
             this.nodeTable = new System.Windows.Forms.TableLayoutPanel();
 
             this.lblLmNode = new System.Windows.Forms.Label();
+            this.lblLmStatusText = new System.Windows.Forms.Label();
             this.lblLmCircle = new System.Windows.Forms.Label();
             this.btnLmAction = new System.Windows.Forms.Button();
 
             this.lblControllerNode = new System.Windows.Forms.Label();
+            this.lblControllerStatusText = new System.Windows.Forms.Label();
             this.lblControllerCircle = new System.Windows.Forms.Label();
             this.btnControllerAction = new System.Windows.Forms.Button();
 
             this.lblEsmNode = new System.Windows.Forms.Label();
+            this.lblEsmStatusText = new System.Windows.Forms.Label();
             this.lblEsmCircle = new System.Windows.Forms.Label();
             this.btnEsmAction = new System.Windows.Forms.Button();
 
             this.lblKktNode = new System.Windows.Forms.Label();
+            this.lblKktStatusText = new System.Windows.Forms.Label();
             this.lblKktCircle = new System.Windows.Forms.Label();
             this.btnKktAction = new System.Windows.Forms.Button();
 
-            this.lblGithubNode = new System.Windows.Forms.Label();
-            this.lblGithubCircle = new System.Windows.Forms.Label();
-            this.btnGithubAction = new System.Windows.Forms.Button();
+            this.lblCloudNode = new System.Windows.Forms.Label();
+            this.lblCloudStatusText = new System.Windows.Forms.Label();
+            this.lblCloudCircle = new System.Windows.Forms.Label();
+            this.btnCloudAction = new System.Windows.Forms.Button();
 
             this.panelBottom = new System.Windows.Forms.Panel();
             this.bottomLayout = new System.Windows.Forms.TableLayoutPanel();
@@ -205,7 +210,7 @@
             this.panelNodes.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.panelNodes.Controls.Add(this.nodesLayout);
             this.panelNodes.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.panelNodes.Padding = new System.Windows.Forms.Padding(18);
+            this.panelNodes.Padding = new System.Windows.Forms.Padding(18, 8, 18, 18);
 
             // nodesLayout
             this.nodesLayout.ColumnCount = 1;
@@ -214,7 +219,7 @@
             this.nodesLayout.Controls.Add(this.nodeTable, 0, 1);
             this.nodesLayout.Dock = System.Windows.Forms.DockStyle.Fill;
             this.nodesLayout.RowCount = 2;
-            this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 42F));
+            this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 34F));
             this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
 
             // lblNodesTitle
@@ -225,33 +230,34 @@
             this.lblNodesTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
             // nodeTable
-            this.nodeTable.ColumnCount = 3;
+            this.nodeTable.ColumnCount = 4;
+            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 150F));
             this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 90F));
-            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 160F));
+            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 64F));
+            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 150F));
             this.nodeTable.Dock = System.Windows.Forms.DockStyle.Top;
-            this.nodeTable.Height = 270;
+            this.nodeTable.Height = 290;
             this.nodeTable.RowCount = 5;
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
 
-            ConfigureNodeRow(0, this.lblLmNode, this.lblLmCircle, this.btnLmAction,
+            ConfigureNodeRow(0, this.lblLmNode, this.lblLmStatusText, this.lblLmCircle, this.btnLmAction,
                 "ЛМ ЧЗ", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
 
-            ConfigureNodeRow(1, this.lblControllerNode, this.lblControllerCircle, this.btnControllerAction,
+            ConfigureNodeRow(1, this.lblControllerNode, this.lblControllerStatusText, this.lblControllerCircle, this.btnControllerAction,
                 "Контроллер", System.Drawing.Color.FromArgb(251, 191, 36), "Исправить");
 
-            ConfigureNodeRow(2, this.lblEsmNode, this.lblEsmCircle, this.btnEsmAction,
+            ConfigureNodeRow(2, this.lblEsmNode, this.lblEsmStatusText, this.lblEsmCircle, this.btnEsmAction,
                 "ЕСМ", System.Drawing.Color.FromArgb(239, 68, 68), "Исправить");
 
-            ConfigureNodeRow(3, this.lblKktNode, this.lblKktCircle, this.btnKktAction,
+            ConfigureNodeRow(3, this.lblKktNode, this.lblKktStatusText, this.lblKktCircle, this.btnKktAction,
                 "ККТ", System.Drawing.Color.FromArgb(148, 163, 184), "Проверить");
 
-            ConfigureNodeRow(4, this.lblGithubNode, this.lblGithubCircle, this.btnGithubAction,
-                "GitHub", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
+            ConfigureNodeRow(4, this.lblCloudNode, this.lblCloudStatusText, this.lblCloudCircle, this.btnCloudAction,
+                "Облако", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
 
             // panelBottom
             this.panelBottom.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
@@ -350,24 +356,29 @@
         private System.Windows.Forms.TableLayoutPanel nodeTable;
 
         private System.Windows.Forms.Label lblLmNode;
+        private System.Windows.Forms.Label lblLmStatusText;
         private System.Windows.Forms.Label lblLmCircle;
         private System.Windows.Forms.Button btnLmAction;
 
         private System.Windows.Forms.Label lblControllerNode;
+        private System.Windows.Forms.Label lblControllerStatusText;
         private System.Windows.Forms.Label lblControllerCircle;
         private System.Windows.Forms.Button btnControllerAction;
 
         private System.Windows.Forms.Label lblEsmNode;
+        private System.Windows.Forms.Label lblEsmStatusText;
         private System.Windows.Forms.Label lblEsmCircle;
         private System.Windows.Forms.Button btnEsmAction;
 
         private System.Windows.Forms.Label lblKktNode;
+        private System.Windows.Forms.Label lblKktStatusText;
         private System.Windows.Forms.Label lblKktCircle;
         private System.Windows.Forms.Button btnKktAction;
 
-        private System.Windows.Forms.Label lblGithubNode;
-        private System.Windows.Forms.Label lblGithubCircle;
-        private System.Windows.Forms.Button btnGithubAction;
+        private System.Windows.Forms.Label lblCloudNode;
+        private System.Windows.Forms.Label lblCloudStatusText;
+        private System.Windows.Forms.Label lblCloudCircle;
+        private System.Windows.Forms.Button btnCloudAction;
 
         private System.Windows.Forms.Panel panelBottom;
         private System.Windows.Forms.TableLayoutPanel bottomLayout;

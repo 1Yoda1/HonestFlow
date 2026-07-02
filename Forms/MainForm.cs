@@ -2,12 +2,12 @@
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Models;
-using HonestFlow.Services.Auth;
-using HonestFlow.Services.Core;
-using HonestFlow.Services.Diagnostics;
-using HonestFlow.Services.Installation;
-using HonestFlow.Services.PointStatus;
-using HonestFlow.Services.Ui;
+using HonestFlow.Application.Auth;
+using HonestFlow.Application.Core;
+using HonestFlow.Application.Diagnostics;
+using HonestFlow.Application.Installation;
+using HonestFlow.Application.PointStatus;
+using HonestFlow.Application.Ui;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -25,9 +25,9 @@ namespace HonestFlow
         private readonly IProgressService _progressService;
         private IAuthService _authService;
         private IInstallationService _installationService;
-        private bool _useGitHubMode = false;
-        private List<IPData> _gitHubIps;
-        private VersionsData _gitHubVersions;
+        private bool _useRemoteConfigMode = false;
+        private List<IPData> _remoteIps;
+        private VersionsData _remoteVersions;
 
         private readonly DiagnosticArchiveService _diagnosticArchiveService;
         private readonly DiagnosticsEmailSender _diagnosticsEmailSender;
@@ -66,12 +66,12 @@ namespace HonestFlow
             _windowIconService = new WindowIconService(_logService);
 
             var startup = new ApplicationStartupService(_logService, _progressService, _dialogService).Start();
-            _useGitHubMode = startup.UseGitHubMode;
-            _gitHubIps = startup.GitHubIps;
-            _gitHubVersions = startup.GitHubVersions;
+            _useRemoteConfigMode = startup.UseRemoteConfigMode;
+            _remoteIps = startup.Ips ?? startup.RemoteIps;
+            _remoteVersions = startup.RemoteVersions;
             _authService = startup.AuthService;
             _installationService = startup.InstallationService;
-            _pointStatusService = new PointStatusService(_useGitHubMode, _gitHubIps?.Count ?? 0);
+            _pointStatusService = new PointStatusService(_useRemoteConfigMode, _remoteIps?.Count ?? 0, _remoteIps);
 
             InitializeUiState();
             WireUiEvents();
@@ -101,6 +101,7 @@ namespace HonestFlow
         public void ConfigureNodeRow(
             int row,
             System.Windows.Forms.Label nodeLabel,
+            System.Windows.Forms.Label statusTextLabel,
             System.Windows.Forms.Label statusCircle,
             System.Windows.Forms.Button actionButton,
             string nodeText,
@@ -108,20 +109,27 @@ namespace HonestFlow
             string actionText)
         {
             nodeLabel.Dock = System.Windows.Forms.DockStyle.Fill;
-            nodeLabel.Font = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
+            nodeLabel.Font = new System.Drawing.Font("Segoe UI", 9.75F, System.Drawing.FontStyle.Bold);
             nodeLabel.ForeColor = System.Drawing.Color.FromArgb(15, 23, 42);
             nodeLabel.Padding = new System.Windows.Forms.Padding(12, 0, 0, 0);
             nodeLabel.Text = nodeText;
             nodeLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
+            statusTextLabel.Dock = System.Windows.Forms.DockStyle.Fill;
+            statusTextLabel.Font = new System.Drawing.Font("Segoe UI", 9F);
+            statusTextLabel.ForeColor = System.Drawing.Color.FromArgb(51, 65, 85);
+            statusTextLabel.Padding = new System.Windows.Forms.Padding(6, 0, 0, 0);
+            statusTextLabel.Text = "Ожидание";
+            statusTextLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+
             statusCircle.Dock = System.Windows.Forms.DockStyle.Fill;
-            statusCircle.Font = new System.Drawing.Font("Segoe UI", 20F, System.Drawing.FontStyle.Bold);
+            statusCircle.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold);
             statusCircle.ForeColor = circleColor;
             statusCircle.Text = "●";
             statusCircle.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
 
             actionButton.Dock = System.Windows.Forms.DockStyle.Fill;
-            actionButton.Margin = new System.Windows.Forms.Padding(12, 10, 12, 10);
+            actionButton.Margin = new System.Windows.Forms.Padding(10, 8, 10, 8);
             actionButton.BackColor = System.Drawing.Color.White;
             actionButton.Cursor = System.Windows.Forms.Cursors.Hand;
             actionButton.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
@@ -133,8 +141,9 @@ namespace HonestFlow
             actionButton.Click += new System.EventHandler(this.BtnRefreshStatus_Click);
 
             this.nodeTable.Controls.Add(nodeLabel, 0, row);
-            this.nodeTable.Controls.Add(statusCircle, 1, row);
-            this.nodeTable.Controls.Add(actionButton, 2, row);
+            this.nodeTable.Controls.Add(statusTextLabel, 1, row);
+            this.nodeTable.Controls.Add(statusCircle, 2, row);
+            this.nodeTable.Controls.Add(actionButton, 3, row);
         }
 
         private void InitializeUiState()
@@ -148,7 +157,7 @@ namespace HonestFlow
 
             lblStatus.Text = "Ожидание запуска проверки";
             lblHeaderStatus.Text = "● Ожидание проверки";
-            lblGithubNode.Text = "Связь с облаком";
+            lblCloudNode.Text = "Связь с облаком";
             SetNodeChecking();
         }
 
@@ -256,11 +265,13 @@ namespace HonestFlow
 
             progressBar.Visible = false;
             lblStatus.Visible = false;
+
+            await RefreshPointStatusAsync();
         }
 
         private async void BtnDiagnostics_Click(object sender, EventArgs e)
         {
-            string archivePath = null;
+            DiagnosticArchiveInfo archiveInfo = null;
 
             try
             {
@@ -269,7 +280,8 @@ namespace HonestFlow
                 progressBar.Value = 0;
                 lblStatus.Text = "Сборка архива диагностики...";
 
-                archivePath = await Task.Run(() => _diagnosticArchiveService.CreateArchive());
+                archiveInfo = await Task.Run(() => _diagnosticArchiveService.CreateArchiveInfo());
+                string archivePath = archiveInfo.ArchivePath;
                 progressBar.Value = 35;
                 lblStatus.Text = $"Архив собран: {Path.GetFileName(archivePath)}";
 
@@ -290,7 +302,7 @@ namespace HonestFlow
                     return;
                 }
 
-                await _diagnosticsEmailSender.SendWithRetries(archivePath, SetDiagnosticsProgress);
+                await _diagnosticsEmailSender.SendWithRetries(archivePath, SetDiagnosticsProgress, archiveInfo.FiscalAddress);
 
                 MessageBox.Show(
                     $"Диагностический архив создан и отправлен:\n{archivePath}",
@@ -305,16 +317,16 @@ namespace HonestFlow
             {
                 _logService.LogDebug($"Ошибка сбора диагностики: {ex.Message}");
 
-                if (!string.IsNullOrWhiteSpace(archivePath) && File.Exists(archivePath))
+                if (!string.IsNullOrWhiteSpace(archiveInfo?.ArchivePath) && File.Exists(archiveInfo.ArchivePath))
                 {
                     Process.Start(
                         "explorer.exe",
-                        $"/select,\"{archivePath}\"");
+                        $"/select,\"{archiveInfo.ArchivePath}\"");
                 }
 
                 MessageBox.Show(
                     $"Не удалось завершить диагностику:\n{ex.Message}" +
-                    (string.IsNullOrWhiteSpace(archivePath) ? string.Empty : $"\n\nАрхив сохранён локально:\n{archivePath}"),
+                    (archiveInfo == null ? string.Empty : $"\n\nАрхив сохранён локально:\n{archiveInfo.ArchivePath}"),
                     "Ошибка диагностики",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
@@ -427,11 +439,11 @@ namespace HonestFlow
             {
                 var result = await Task.Run(() => _pointStatusService.Check());
 
-                ApplyNodeStatus(lblLmCircle, btnLmAction, result.Lm);
-                ApplyNodeStatus(lblControllerCircle, btnControllerAction, result.Controller);
-                ApplyNodeStatus(lblEsmCircle, btnEsmAction, result.Esm);
-                ApplyNodeStatus(lblKktCircle, btnKktAction, result.Kkt);
-                ApplyNodeStatus(lblGithubCircle, btnGithubAction, result.Cloud);
+                ApplyNodeStatus(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, result.Lm, "ЛМ ЧЗ");
+                ApplyNodeStatus(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, result.Controller, "Контроллер");
+                ApplyNodeStatus(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, result.Esm, "ЕСМ");
+                ApplyNodeStatus(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, result.Kkt, "ККТ");
+                ApplyNodeStatus(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, result.Cloud, "Облако");
 
                 bool hasRed = new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud }
                     .Any(x => x.Level == NodeLevel.Error);
@@ -460,15 +472,17 @@ namespace HonestFlow
 
         private void SetNodeChecking()
         {
-            SetNodeChecking(lblLmCircle, btnLmAction);
-            SetNodeChecking(lblControllerCircle, btnControllerAction);
-            SetNodeChecking(lblEsmCircle, btnEsmAction);
-            SetNodeChecking(lblKktCircle, btnKktAction);
-            SetNodeChecking(lblGithubCircle, btnGithubAction);
+            SetNodeChecking(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, "ЛМ ЧЗ");
+            SetNodeChecking(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, "Контроллер");
+            SetNodeChecking(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, "ЕСМ");
+            SetNodeChecking(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, "ККТ");
+            SetNodeChecking(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, "Облако");
         }
 
-        private void SetNodeChecking(Label circle, Button actionButton)
+        private void SetNodeChecking(Label nodeLabel, Label statusTextLabel, Label circle, Button actionButton, string defaultLabel)
         {
+            nodeLabel.Text = defaultLabel;
+            statusTextLabel.Text = "Проверка...";
             SetNode(circle, actionButton, StatusGray, "Проверка");
             actionButton.Tag = null;
             actionButton.Click -= ShowNodeDetails_Click;
@@ -477,7 +491,7 @@ namespace HonestFlow
             actionButton.Click += BtnRefreshStatus_Click;
         }
 
-        private void ApplyNodeStatus(Label circle, Button actionButton, NodeStatus status)
+        private void ApplyNodeStatus(Label nodeLabel, Label statusTextLabel, Label circle, Button actionButton, NodeStatus status, string defaultLabel)
         {
             Color color = status.Level switch
             {
@@ -487,6 +501,8 @@ namespace HonestFlow
                 _ => StatusGray
             };
 
+            nodeLabel.Text = defaultLabel;
+            statusTextLabel.Text = string.IsNullOrWhiteSpace(status.StatusText) ? status.ShortText : status.StatusText;
             SetNode(circle, actionButton, color, status.ShortText);
             actionButton.Text = status.ActionText;
             actionButton.Tag = status;

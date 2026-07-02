@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 
 namespace HonestFlow.Infrastructure.Configuration
 {
@@ -15,7 +16,44 @@ namespace HonestFlow.Infrastructure.Configuration
         public static string YandexPublicKeyFile => Path.Combine(BaseFolder, "yandex_public_key.txt");
         public static string YandexPublicUrlFile => Path.Combine(BaseFolder, "yandex_public_url.txt");
         public static string DistrFolder => Path.Combine(BaseFolder, "Distr");
-        public static string GitHubCacheFolder => Path.Combine(BaseFolder, "GitHubCache");
+        public static string YandexDiskCacheFolder => Path.Combine(BaseFolder, "YandexDiskCache");
+        public static string LegacyRemoteCacheFolder => Path.Combine(BaseFolder, "Git" + "HubCache");
+        public static string RemoteInstallersCacheFolder
+        {
+            get
+            {
+                if (Directory.Exists(YandexDiskCacheFolder) && Directory.EnumerateFiles(YandexDiskCacheFolder).Any())
+                    return YandexDiskCacheFolder;
+
+                if (Directory.Exists(LegacyRemoteCacheFolder) && Directory.EnumerateFiles(LegacyRemoteCacheFolder).Any())
+                    return LegacyRemoteCacheFolder;
+
+                return YandexDiskCacheFolder;
+            }
+        }
+
+        public static string ResolveRemoteInstallerPath(string fileName)
+        {
+            string yandexPath = Path.Combine(YandexDiskCacheFolder, fileName);
+            if (File.Exists(yandexPath))
+                return yandexPath;
+
+            string legacyPath = Path.Combine(LegacyRemoteCacheFolder, fileName);
+            if (File.Exists(legacyPath))
+                return legacyPath;
+
+            return yandexPath;
+        }
+
+        public static string GetRemoteInstallerDownloadPath(string fileName)
+        {
+            string existingPath = ResolveRemoteInstallerPath(fileName);
+            if (File.Exists(existingPath))
+                return existingPath;
+
+            return Path.Combine(YandexDiskCacheFolder, fileName);
+        }
+
         public static string ProgramDataFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "HonestFlow");
         public static string LogsFolder => Path.Combine(ProgramDataFolder, "logs");
         public static string DiagnosticsFolder => Path.Combine(ProgramDataFolder, "diagnostics");

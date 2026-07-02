@@ -20,7 +20,7 @@ namespace HonestFlow.Infrastructure.Configuration
         {
             try
             {
-                using var client = GitHubDownloader.CreateClient(TimeSpan.FromSeconds(30));
+                using var client = YandexDiskDownloader.CreateClient(TimeSpan.FromSeconds(30));
 
                 string encryptedIps = DownloadPublicTextFile(client, IpsFileName);
                 string decryptedIps = ObfuscationService.Deobfuscate(encryptedIps);
@@ -50,7 +50,7 @@ namespace HonestFlow.Infrastructure.Configuration
         private static string DownloadPublicTextFile(HttpClient client, string fileName)
         {
             string downloadInfoJson = client
-                .GetStringAsync(GitHubDownloader.BuildPublicDownloadUrl("/" + fileName))
+                .GetStringAsync(YandexDiskDownloader.BuildPublicDownloadUrl("/" + fileName))
                 .GetAwaiter()
                 .GetResult();
 

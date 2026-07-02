@@ -5,7 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure.Dialogs;
 using Microsoft.Win32;
-using HonestFlow.Infrastructure.Services;
+using HonestFlow.Infrastructure.WindowsServices;
 
 namespace HonestFlow.Infrastructure.Installers
 {
@@ -364,7 +364,6 @@ namespace HonestFlow.Infrastructure.Installers
 
             return serviceStatus.Equals("notfound", StringComparison.OrdinalIgnoreCase) ||
                    serviceStatus.Equals("not found", StringComparison.OrdinalIgnoreCase) ||
-                   serviceStatus.Equals("unknown", StringComparison.OrdinalIgnoreCase) ||
                    serviceStatus.Equals("absent", StringComparison.OrdinalIgnoreCase);
         }
 

@@ -9,25 +9,23 @@ using HonestFlow.Models;
 namespace HonestFlow.Infrastructure.Configuration
 {
     /// <summary>
-    /// Фасад совместимости для конфигурации и загрузки установщиков.
+    /// Compatibility facade for configuration and installer downloads.
     /// </summary>
     public static class ConfigManager
     {
         private static readonly LocalConfigRepository LocalConfig = new();
         private static readonly RemoteConfigRepository RemoteConfig = new();
         private const string DefaultYandexPublicKey = "https://disk.360.yandex.ru/d/sngNP8yBz9weWA";
-        private static GitHubDownloader _downloader;
+        private static YandexDiskDownloader _downloader;
 
         public static List<IPData> LoadIps() => LocalConfig.LoadIps();
         public static VersionsData LoadVersions() => LocalConfig.LoadVersions();
-        public static (bool Success, List<IPData> Ips, VersionsData Versions) LoadConfigFromGitHub() => RemoteConfig.LoadAll();
-        public static VersionsData LoadVersionsFromGitHub() => RemoteConfig.LoadVersions();
-        public static (bool Success, List<IPData> Ips, VersionsData Versions) LoadConfigFromYandexDisk() => RemoteConfig.LoadAll();
-        public static VersionsData LoadVersionsFromYandexDisk() => RemoteConfig.LoadVersions();
+        public static (bool Success, List<IPData> Ips, VersionsData Versions) LoadRemoteConfig() => RemoteConfig.LoadAll();
+        public static VersionsData LoadRemoteVersions() => RemoteConfig.LoadVersions();
 
-        public static void InitGitHubDownloader()
+        public static void InitYandexDiskDownloader()
         {
-            _downloader ??= new GitHubDownloader();
+            _downloader ??= new YandexDiskDownloader();
         }
 
         public static string GetYandexPublicKey()
@@ -55,20 +53,20 @@ namespace HonestFlow.Infrastructure.Configuration
 
         public static async Task<bool> DownloadInstallerIfNeeded(string fileName, IProgress<int> progress)
         {
-            InitGitHubDownloader();
+            InitYandexDiskDownloader();
 
             var assets = await _downloader.GetReleaseAssets();
             if (!assets.TryGetValue(fileName, out var asset))
             {
-                Logger.LogToFile($"Файл не найден в релизе: {fileName}", true);
+                Logger.LogToFile($"File not found in Yandex Disk public folder: {fileName}", true);
                 return false;
             }
 
-            string destination = Path.Combine(AppPaths.GitHubCacheFolder, fileName);
+            string destination = AppPaths.GetRemoteInstallerDownloadPath(fileName);
 
             if (_downloader.IsFileCached(fileName, asset.Size))
             {
-                Logger.LogToFile($"Файл уже в кэше: {fileName}, размер: {asset.Size} байт");
+                Logger.LogToFile($"File already cached: {fileName}, size: {asset.Size} bytes");
                 return true;
             }
 
@@ -76,7 +74,7 @@ namespace HonestFlow.Infrastructure.Configuration
             {
                 long actualBytes = new FileInfo(destination).Length;
                 Logger.LogToFile(
-                    $"Повреждённый или неполный файл в кэше: {fileName}, размер {actualBytes} байт, ожидалось {asset.Size} байт. Файл будет скачан заново.",
+                    $"Damaged or incomplete cached file: {fileName}, size {actualBytes} bytes, expected {asset.Size} bytes. The file will be downloaded again.",
                     true);
                 File.Delete(destination);
             }
@@ -93,8 +91,8 @@ namespace HonestFlow.Infrastructure.Configuration
             if (Directory.Exists(AppPaths.DistrFolder))
                 return AppPaths.DistrFolder;
 
-            if (Directory.Exists(AppPaths.GitHubCacheFolder) && Directory.EnumerateFiles(AppPaths.GitHubCacheFolder).Any())
-                return AppPaths.GitHubCacheFolder;
+            if (Directory.Exists(AppPaths.RemoteInstallersCacheFolder) && Directory.EnumerateFiles(AppPaths.RemoteInstallersCacheFolder).Any())
+                return AppPaths.RemoteInstallersCacheFolder;
 
             return AppPaths.BaseFolder;
         }
