@@ -24,13 +24,29 @@ namespace HonestFlow.Infrastructure.WindowsServices
 
         public static async Task StartService()
         {
+            await StartService("Regime");
+        }
+
+        public static async Task StartLmServices()
+        {
+            await StartService("yenisei");
+            await StartService("Regime");
+        }
+
+        public static async Task StartService(string serviceName)
+        {
+            if (string.IsNullOrWhiteSpace(serviceName))
+                return;
+
             try
             {
-                await ProcessRunner.RunAsync("net", "start Regime", true);
+                int exitCode = await ProcessRunner.RunAsync("net", $"start {serviceName}", true);
+                if (exitCode != 0 && exitCode != 2)
+                    Logger.LogToFile($"Ошибка при запуске службы {serviceName}: net start вернул код {exitCode}", true);
             }
             catch (Exception ex)
             {
-                Logger.LogToFile($"Ошибка при запуске службы Regime: {ex.Message}", true);
+                Logger.LogToFile($"Ошибка при запуске службы {serviceName}: {ex.Message}", true);
             }
         }
 

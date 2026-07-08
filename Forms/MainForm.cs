@@ -7,6 +7,7 @@ using HonestFlow.Application.Core;
 using HonestFlow.Application.Diagnostics;
 using HonestFlow.Application.Installation;
 using HonestFlow.Application.Installation.Planning;
+using HonestFlow.Application.Lm;
 using HonestFlow.Application.PointStatus;
 using HonestFlow.Application.Ui;
 using System;
@@ -33,6 +34,7 @@ namespace HonestFlow
 
         private readonly DiagnosticArchiveService _diagnosticArchiveService;
         private readonly DiagnosticsEmailSender _diagnosticsEmailSender;
+        private readonly LmDatabaseRestoreService _lmDatabaseRestoreService;
         private readonly WindowsServiceControlService _serviceControlService;
         private readonly ExternalApplicationLauncher _externalApplicationLauncher;
         private readonly WindowIconService _windowIconService;
@@ -78,6 +80,7 @@ namespace HonestFlow
             _remoteVersions = startup.RemoteVersions;
             _authService = startup.AuthService;
             _installationService = new InstallationService(_logService, _progressService, _dialogService, _useRemoteConfigMode);
+            _lmDatabaseRestoreService = new LmDatabaseRestoreService(_logService, _progressService, _dialogService, _useRemoteConfigMode);
             _pointStatusService = new PointStatusService(_useRemoteConfigMode, _remoteIps?.Count ?? 0, _remoteIps);
 
             InitializeUiState();
@@ -180,6 +183,7 @@ namespace HonestFlow
             btnDiagnostics.Click += BtnDiagnostics_Click;
 
             btnReinstallComponents.Click += BtnReinstallComponents_Click;
+            btnRestoreLmDatabase.Click += BtnRestoreLmDatabase_Click;
 
             btnOpenKktDriver.Click += BtnOpenKktDriver_Click;
             btnOpenEsm.Click += BtnOpenEsm_Click;
@@ -407,6 +411,45 @@ namespace HonestFlow
             }
             finally
             {
+                btnReinstallComponents.Enabled = true;
+                btnCheckWithoutPassword.Enabled = true;
+                progressBar.Visible = false;
+            }
+        }
+
+        private async void BtnRestoreLmDatabase_Click(object sender, EventArgs e)
+        {
+            if (!Utils.IsAdministrator())
+            {
+                MessageBox.Show(
+                    "Для восстановления базы ЛМ ЧЗ нужны права администратора.\nПерезапустите HonestFlow от имени администратора.",
+                    "Нужны права администратора",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            var selectedIP = GetAuthorizedIpForManualAction();
+            if (selectedIP == null)
+                return;
+
+            try
+            {
+                btnRestoreLmDatabase.Enabled = false;
+                btnReinstallComponents.Enabled = false;
+                btnCheckWithoutPassword.Enabled = false;
+                progressBar.Visible = true;
+                progressBar.Value = 0;
+                lblStatus.Visible = true;
+                lblStatus.Text = "Восстановление базы ЛМ ЧЗ...";
+
+                bool success = await _lmDatabaseRestoreService.Restore(selectedIP);
+                if (success)
+                    await RefreshPointStatusAsync();
+            }
+            finally
+            {
+                btnRestoreLmDatabase.Enabled = true;
                 btnReinstallComponents.Enabled = true;
                 btnCheckWithoutPassword.Enabled = true;
                 progressBar.Visible = false;

@@ -9,6 +9,7 @@ namespace HonestFlow.Models
         public string Token { get; set; }
         public string Inn { get; set; }
         public string Architecture { get; set; } = "x64";
+        public bool HasLmDatabaseBackup { get; set; } = false;
 
         public List<string> Tags { get; set; } = new();
         public VersionsData Versions { get; set; } = new();
