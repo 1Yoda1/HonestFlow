@@ -26,8 +26,10 @@ namespace HonestFlow.Application.Core
                 return;
             }
 
-            _progressBar.Value = percent;
-            _statusLabel.Text = $"{stepName} ({percent}%)";
+            int safePercent = Math.Min(Math.Max(percent, _progressBar.Minimum), _progressBar.Maximum);
+
+            _progressBar.Value = safePercent;
+            _statusLabel.Text = $"{stepName} ({safePercent}%)";
             _statusLabel.Visible = !string.IsNullOrEmpty(stepName);
         }
     }

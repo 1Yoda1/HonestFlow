@@ -42,6 +42,7 @@ namespace HonestFlow
         private PointStatusService _pointStatusService;
         private bool _statusRefreshRunning;
         private bool _serviceActionRunning;
+        private string _longOperationName;
 
         private static readonly Color StatusGreen = Color.FromArgb(34, 197, 94);
         private static readonly Color StatusYellow = Color.FromArgb(251, 191, 36);
@@ -88,7 +89,7 @@ namespace HonestFlow
             _windowIconService.ApplyExecutableIcon(this);
         }
 
-                public void ConfigureButton(System.Windows.Forms.Button button, string text, bool primary)
+        public void ConfigureButton(System.Windows.Forms.Button button, string text, bool primary)
         {
             button.BackColor = primary
                 ? System.Drawing.Color.FromArgb(37, 99, 235)
@@ -184,6 +185,7 @@ namespace HonestFlow
 
             btnReinstallComponents.Click += BtnReinstallComponents_Click;
             btnRestoreLmDatabase.Click += BtnRestoreLmDatabase_Click;
+            btnMaintenance.Click += BtnMaintenance_Click;
 
             btnOpenKktDriver.Click += BtnOpenKktDriver_Click;
             btnOpenEsm.Click += BtnOpenEsm_Click;
@@ -203,13 +205,22 @@ namespace HonestFlow
 
         private void OpenExternalApplication(Action open, string title)
         {
+            LogOperatorAction($"открытие внешнего приложения: {title}");
+
+            if (!EnsureNoLongOperation($"открытие {title}"))
+                return;
+
             try
             {
                 open();
                 lblStatus.Text = $"Открыто: {title}";
+                LogOperatorAction($"внешнее приложение открыто: {title}");
             }
             catch (FileNotFoundException ex)
             {
+                LogOperatorAction($"не удалось открыть {title}: файл не найден", isError: true);
+                _logService.LogDebug($"Не найден файл для запуска {title}: {ex.FileName}");
+
                 MessageBox.Show(
                     $"Не найден файл:\n{ex.FileName}",
                     title,
@@ -218,6 +229,9 @@ namespace HonestFlow
             }
             catch (Exception ex)
             {
+                LogOperatorAction($"не удалось открыть {title}: {ex.Message}", isError: true);
+                _logService.LogDebug($"Ошибка запуска {title}: {ex}");
+
                 MessageBox.Show(
                     $"Не удалось открыть {title}:\n{ex.Message}",
                     title,
@@ -228,10 +242,16 @@ namespace HonestFlow
 
         private async void Button2_Click(object sender, EventArgs e)
         {
+            LogOperatorAction("нажата кнопка входа и запуска проверки");
+
+            if (!EnsureNoLongOperation("проверка и установка компонентов"))
+                return;
+
             string enteredPassword = textBox1.Text;
 
             if (string.IsNullOrWhiteSpace(enteredPassword))
             {
+                LogOperatorAction("вход отменен: пароль не введен", isError: true);
                 MessageBox.Show("Введите пароль!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 textBox1.Focus();
                 return;
@@ -239,6 +259,7 @@ namespace HonestFlow
 
             if (!Utils.IsAdministrator())
             {
+                LogOperatorAction("вход и запуск проверки отменены: нет прав администратора", isError: true);
                 MessageBox.Show(
                     "Программа требует прав администратора!\n\n" +
                     "Пожалуйста, перезапустите программу от имени администратора:\n" +
@@ -252,6 +273,7 @@ namespace HonestFlow
             var selectedIP = _authService.Authenticate(enteredPassword);
             if (selectedIP == null)
             {
+                LogOperatorAction("вход отклонен: неверный пароль", isError: true);
                 MessageBox.Show("Неверный пароль!\nДоступ запрещен.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 textBox1.Clear();
                 textBox1.Focus();
@@ -268,30 +290,56 @@ namespace HonestFlow
             _logService.LogUser($"Пользователь: {selectedIP.Name}");
             _logService.LogDebug($"Авторизован: {selectedIP.Name}, ИНН: {selectedIP.Inn}, Разрядность: {selectedIP.Architecture}");
 
+            if (!TryBeginLongOperation("проверка и установка компонентов"))
+                return;
+
             progressBar.Visible = true;
             lblStatus.Visible = true;
 
-            bool success = await _installationService.CheckLmAndInstall(selectedIP);
-            if (!success)
+            try
             {
-                MessageBox.Show("Установка не выполнена. Смотрите лог.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                bool success = await _installationService.CheckLmAndInstall(selectedIP);
+                if (!success)
+                {
+                    LogOperatorAction("проверка и установка завершены с ошибкой", isError: true);
+                    MessageBox.Show("Установка не выполнена. Смотрите лог.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    LogOperatorAction("проверка и установка завершены успешно");
+                }
+
+                progressBar.Visible = false;
+                lblStatus.Visible = false;
+
+                await RefreshPointStatusAsync(allowDuringLongOperation: true);
             }
-
-            progressBar.Visible = false;
-            lblStatus.Visible = false;
-
-            await RefreshPointStatusAsync();
+            finally
+            {
+                progressBar.Visible = false;
+                EndLongOperation();
+            }
         }
 
         private async void BtnDiagnostics_Click(object sender, EventArgs e)
         {
-            DiagnosticArchiveInfo archiveInfo = null;
-            DiagnosticLogSelection selection = ShowDiagnosticLogSelectionDialog();
-            if (selection == null)
+            LogOperatorAction("нажата кнопка сбора диагностики");
+
+            if (!TryBeginLongOperation("сбор диагностики"))
                 return;
+
+            DiagnosticArchiveInfo archiveInfo = null;
 
             try
             {
+                DiagnosticLogSelection selection = ShowDiagnosticLogSelectionDialog();
+                if (selection == null)
+                {
+                    LogOperatorAction("сбор диагностики отменен на выборе логов");
+                    return;
+                }
+
+                LogOperatorAction($"запущен сбор диагностики: {DescribeDiagnosticSelection(selection)}");
                 btnDiagnostics.Enabled = false;
                 progressBar.Visible = true;
                 progressBar.Value = 0;
@@ -310,6 +358,7 @@ namespace HonestFlow
 
                 if (sendConfirm != DialogResult.Yes)
                 {
+                    LogOperatorAction("оператор отказался от отправки диагностики на почту");
                     Process.Start(
                         "explorer.exe",
                         $"/select,\"{archivePath}\"");
@@ -319,6 +368,7 @@ namespace HonestFlow
                     return;
                 }
 
+                LogOperatorAction("оператор подтвердил отправку диагностики на почту");
                 await _diagnosticsEmailSender.SendWithRetries(archivePath, SetDiagnosticsProgress, archiveInfo.FiscalAddress);
 
                 MessageBox.Show(
@@ -332,6 +382,7 @@ namespace HonestFlow
             }
             catch (Exception ex)
             {
+                LogOperatorAction($"сбор диагностики завершился ошибкой: {ex.Message}", isError: true);
                 _logService.LogDebug($"Ошибка сбора диагностики: {ex.Message}");
 
                 if (!string.IsNullOrWhiteSpace(archiveInfo?.ArchivePath) && File.Exists(archiveInfo.ArchivePath))
@@ -353,6 +404,7 @@ namespace HonestFlow
             finally
             {
                 btnDiagnostics.Enabled = true;
+                EndLongOperation();
             }
         }
 
@@ -362,10 +414,41 @@ namespace HonestFlow
             lblStatus.Text = message;
         }
 
+        private void BtnMaintenance_Click(object sender, EventArgs e)
+        {
+            LogOperatorAction("открыто меню обслуживания точки");
+
+            var action = ShowMaintenanceActionDialog();
+            if (action == null)
+            {
+                LogOperatorAction("меню обслуживания точки закрыто без выбора");
+                return;
+            }
+
+            switch (action.Value)
+            {
+                case MaintenanceAction.ReinstallComponents:
+                    LogOperatorAction("выбрано обслуживание: переустановить компоненты");
+                    BtnReinstallComponents_Click(sender, e);
+                    break;
+
+                case MaintenanceAction.RestoreLmDatabase:
+                    LogOperatorAction("выбрано обслуживание: восстановить базу ЛМ ЧЗ");
+                    BtnRestoreLmDatabase_Click(sender, e);
+                    break;
+            }
+        }
+
         private async void BtnReinstallComponents_Click(object sender, EventArgs e)
         {
+            LogOperatorAction("запрошена ручная переустановка компонентов");
+
+            if (!EnsureNoLongOperation("ручная переустановка компонентов"))
+                return;
+
             if (!Utils.IsAdministrator())
             {
+                LogOperatorAction("ручная переустановка отменена: нет прав администратора", isError: true);
                 MessageBox.Show(
                     "Для переустановки компонентов нужны права администратора.\nПерезапустите HonestFlow от имени администратора.",
                     "Нужны права администратора",
@@ -376,13 +459,21 @@ namespace HonestFlow
 
             var selectedIP = GetAuthorizedIpForManualAction();
             if (selectedIP == null)
+            {
+                LogOperatorAction("ручная переустановка отменена: авторизация не пройдена", isError: true);
                 return;
+            }
 
             var components = ShowComponentSelectionDialog();
             if (components == null || components.Count == 0)
+            {
+                LogOperatorAction("ручная переустановка отменена: компоненты не выбраны");
                 return;
+            }
 
             string componentNames = string.Join(", ", components.Select(GetComponentDisplayName));
+            LogOperatorAction($"для ручной переустановки выбраны компоненты: {componentNames}");
+
             var confirm = MessageBox.Show(
                 $"Будет выполнена принудительная переустановка компонентов:\n\n{componentNames}\n\nПродолжить?",
                 "Ручная переустановка",
@@ -390,11 +481,19 @@ namespace HonestFlow
                 MessageBoxIcon.Warning);
 
             if (confirm != DialogResult.Yes)
+            {
+                LogOperatorAction("ручная переустановка отменена на подтверждении");
+                return;
+            }
+
+            if (!TryBeginLongOperation("ручная переустановка компонентов"))
                 return;
 
             try
             {
+                LogOperatorAction($"ручная переустановка запущена: {componentNames}");
                 btnReinstallComponents.Enabled = false;
+                btnMaintenance.Enabled = false;
                 btnCheckWithoutPassword.Enabled = false;
                 progressBar.Visible = true;
                 progressBar.Value = 0;
@@ -404,23 +503,36 @@ namespace HonestFlow
                 bool success = await _installationService.ReinstallSelectedComponents(selectedIP, components);
                 if (!success)
                 {
+                    LogOperatorAction("ручная переустановка завершена с ошибками", isError: true);
                     MessageBox.Show("Ручная переустановка завершена с ошибками. Смотрите лог.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
+                else
+                {
+                    LogOperatorAction("ручная переустановка завершена успешно");
+                }
 
-                await RefreshPointStatusAsync();
+                await RefreshPointStatusAsync(allowDuringLongOperation: true);
             }
             finally
             {
                 btnReinstallComponents.Enabled = true;
+                btnMaintenance.Enabled = true;
                 btnCheckWithoutPassword.Enabled = true;
                 progressBar.Visible = false;
+                EndLongOperation();
             }
         }
 
         private async void BtnRestoreLmDatabase_Click(object sender, EventArgs e)
         {
+            LogOperatorAction("запрошено восстановление базы ЛМ ЧЗ");
+
+            if (!EnsureNoLongOperation("восстановление базы ЛМ ЧЗ"))
+                return;
+
             if (!Utils.IsAdministrator())
             {
+                LogOperatorAction("восстановление базы ЛМ ЧЗ отменено: нет прав администратора", isError: true);
                 MessageBox.Show(
                     "Для восстановления базы ЛМ ЧЗ нужны права администратора.\nПерезапустите HonestFlow от имени администратора.",
                     "Нужны права администратора",
@@ -431,12 +543,20 @@ namespace HonestFlow
 
             var selectedIP = GetAuthorizedIpForManualAction();
             if (selectedIP == null)
+            {
+                LogOperatorAction("восстановление базы ЛМ ЧЗ отменено: авторизация не пройдена", isError: true);
+                return;
+            }
+
+            if (!TryBeginLongOperation("восстановление базы ЛМ ЧЗ"))
                 return;
 
             try
             {
+                LogOperatorAction($"восстановление базы ЛМ ЧЗ запущено для точки: {selectedIP.Name}");
                 btnRestoreLmDatabase.Enabled = false;
                 btnReinstallComponents.Enabled = false;
+                btnMaintenance.Enabled = false;
                 btnCheckWithoutPassword.Enabled = false;
                 progressBar.Visible = true;
                 progressBar.Value = 0;
@@ -445,25 +565,38 @@ namespace HonestFlow
 
                 bool success = await _lmDatabaseRestoreService.Restore(selectedIP);
                 if (success)
-                    await RefreshPointStatusAsync();
+                {
+                    LogOperatorAction("восстановление базы ЛМ ЧЗ завершено успешно");
+                    await RefreshPointStatusAsync(allowDuringLongOperation: true);
+                }
+                else
+                {
+                    LogOperatorAction("восстановление базы ЛМ ЧЗ завершено без успеха", isError: true);
+                }
             }
             finally
             {
                 btnRestoreLmDatabase.Enabled = true;
                 btnReinstallComponents.Enabled = true;
+                btnMaintenance.Enabled = true;
                 btnCheckWithoutPassword.Enabled = true;
                 progressBar.Visible = false;
+                EndLongOperation();
             }
         }
 
         private IPData GetAuthorizedIpForManualAction()
         {
             if (_selectedIP != null)
+            {
+                LogOperatorAction($"используется уже авторизованная точка: {_selectedIP.Name}");
                 return _selectedIP;
+            }
 
             string enteredPassword = textBox1.Text;
             if (string.IsNullOrWhiteSpace(enteredPassword))
             {
+                LogOperatorAction("ручная операция отменена: пароль точки не введен", isError: true);
                 MessageBox.Show("Введите пароль точки перед ручной переустановкой.", "Авторизация", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 textBox1.Focus();
                 return null;
@@ -472,6 +605,7 @@ namespace HonestFlow
             var selectedIP = _authService.Authenticate(enteredPassword);
             if (selectedIP == null)
             {
+                LogOperatorAction("ручная операция отклонена: неверный пароль", isError: true);
                 MessageBox.Show("Неверный пароль!\nДоступ запрещен.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 textBox1.Clear();
                 textBox1.Focus();
@@ -515,6 +649,7 @@ namespace HonestFlow
 
             if (!selection.HasAnySelection)
             {
+                LogOperatorAction("сбор диагностики: оператор не выбрал ни одной группы логов");
                 MessageBox.Show("Выберите хотя бы одну группу логов.", "Диагностика", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return null;
             }
@@ -543,11 +678,81 @@ namespace HonestFlow
 
             if (selected.Count == 0)
             {
+                LogOperatorAction("ручная переустановка: оператор не выбрал ни одного компонента");
                 MessageBox.Show("Выберите хотя бы один компонент.", "Ручная переустановка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return null;
             }
 
             return selected.Select(x => x.Value).ToArray();
+        }
+
+        private MaintenanceAction? ShowMaintenanceActionDialog()
+        {
+            using var form = new Form
+            {
+                Text = "Обслуживание точки",
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ClientSize = new Size(420, 190)
+            };
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 4,
+                Padding = new Padding(12)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            var label = new Label
+            {
+                Text = "Выберите действие обслуживания:",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            var reinstallButton = new Button
+            {
+                Text = "Переустановить компоненты",
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 4, 0, 4)
+            };
+
+            var restoreButton = new Button
+            {
+                Text = "Восстановить базу ЛМ ЧЗ",
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 4, 0, 4)
+            };
+
+            MaintenanceAction? selected = null;
+
+            reinstallButton.Click += (s, e) =>
+            {
+                selected = MaintenanceAction.ReinstallComponents;
+                form.DialogResult = DialogResult.OK;
+                form.Close();
+            };
+
+            restoreButton.Click += (s, e) =>
+            {
+                selected = MaintenanceAction.RestoreLmDatabase;
+                form.DialogResult = DialogResult.OK;
+                form.Close();
+            };
+
+            layout.Controls.Add(label, 0, 0);
+            layout.Controls.Add(reinstallButton, 0, 1);
+            layout.Controls.Add(restoreButton, 0, 2);
+            form.Controls.Add(layout);
+
+            return form.ShowDialog(this) == DialogResult.OK ? selected : null;
         }
 
         private static List<SelectionItem<T>> ShowCheckedSelectionDialog<T>(
@@ -656,14 +861,27 @@ namespace HonestFlow
             public override string ToString() => Text;
         }
 
+        private enum MaintenanceAction
+        {
+            ReinstallComponents,
+            RestoreLmDatabase
+        }
+
         private async void BtnRefreshStatus_Click(object sender, EventArgs e)
         {
+            LogOperatorAction("запрошено ручное обновление статусов точки");
             await RefreshPointStatusAsync();
         }
 
         private async void ServiceAction_Click(object sender, EventArgs e)
         {
             if (_serviceActionRunning)
+            {
+                LogOperatorAction("действие со службами пропущено: уже выполняется другая операция");
+                return;
+            }
+
+            if (!EnsureNoLongOperation("управление службами"))
                 return;
 
             if (!(sender is Button button) || !(button.Tag is NodeStatus status))
@@ -671,12 +889,14 @@ namespace HonestFlow
 
             if (!status.CanManageServices)
             {
+                LogOperatorAction($"открыты детали состояния: {status.ShortText}");
                 ShowNodeDetails(status);
                 return;
             }
 
             if (!Utils.IsAdministrator())
             {
+                LogOperatorAction("управление службами отменено: нет прав администратора", isError: true);
                 MessageBox.Show(
                     "Для управления службами нужны права администратора.\nПерезапустите HonestFlow от имени администратора.",
                     "Нужны права администратора",
@@ -688,6 +908,7 @@ namespace HonestFlow
             bool shouldStart = status.Services.Any(x => !x.IsRunning);
             string actionName = shouldStart ? "запустить" : "перезапустить";
             string serviceList = string.Join(", ", status.Services.Select(x => x.ServiceName));
+            LogOperatorAction($"запрошено действие со службами: {actionName} ({serviceList})");
 
             if (!shouldStart)
             {
@@ -698,11 +919,18 @@ namespace HonestFlow
                     MessageBoxIcon.Question);
 
                 if (confirm != DialogResult.Yes)
+                {
+                    LogOperatorAction($"перезапуск служб отменен на подтверждении: {serviceList}");
                     return;
+                }
             }
+
+            if (!TryBeginLongOperation("управление службами"))
+                return;
 
             try
             {
+                LogOperatorAction($"операция со службами начата: {actionName} ({serviceList})");
                 _serviceActionRunning = true;
                 button.Enabled = false;
                 btnCheckWithoutPassword.Enabled = false;
@@ -714,10 +942,12 @@ namespace HonestFlow
                     await Task.Run(() => _serviceControlService.RestartServices(status.Services));
 
                 lblStatus.Text = "Операция со службами завершена";
-                await RefreshPointStatusAsync();
+                LogOperatorAction($"операция со службами завершена: {actionName} ({serviceList})");
+                await RefreshPointStatusAsync(allowDuringLongOperation: true);
             }
             catch (Exception ex)
             {
+                LogOperatorAction($"операция со службами завершилась ошибкой: {ex.Message}", isError: true);
                 _logService.LogDebug($"Ошибка управления службами: {ex.Message}");
                 MessageBox.Show(
                     $"Не удалось {actionName} службы:\n{ex.Message}",
@@ -731,13 +961,23 @@ namespace HonestFlow
                 button.Enabled = true;
                 btnCheckWithoutPassword.Enabled = true;
                 _serviceActionRunning = false;
+                EndLongOperation();
             }
         }
 
-        private async Task RefreshPointStatusAsync()
+        private async Task RefreshPointStatusAsync(bool allowDuringLongOperation = false)
         {
-            if (_statusRefreshRunning)
+            if (!allowDuringLongOperation && IsLongOperationRunning)
+            {
+                LogOperatorAction($"обновление статусов пропущено: выполняется операция \"{_longOperationName}\"");
                 return;
+            }
+
+            if (_statusRefreshRunning)
+            {
+                _logService.LogDebug("Проверка состояния точки пропущена: предыдущая проверка еще выполняется");
+                return;
+            }
 
             _statusRefreshRunning = true;
             btnCheckWithoutPassword.Enabled = false;
@@ -749,6 +989,12 @@ namespace HonestFlow
             try
             {
                 var result = await Task.Run(() => _pointStatusService.Check());
+
+                if (!allowDuringLongOperation && IsLongOperationRunning)
+                {
+                    _logService.LogDebug($"Результат проверки состояния точки не применен: выполняется операция \"{_longOperationName}\"");
+                    return;
+                }
 
                 ApplyNodeStatus(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, result.Lm, "ЛМ ЧЗ");
                 ApplyNodeStatus(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, result.Controller, "Контроллер");
@@ -766,6 +1012,8 @@ namespace HonestFlow
                     : hasYellow ? "● Требует внимания" : "● Всё работает";
                 lblHeaderStatus.ForeColor = hasRed ? StatusRed : hasYellow ? StatusYellow : StatusGreen;
                 lblStatus.Text = "Проверка завершена";
+                _logService.LogDebug(
+                    $"Проверка состояния точки завершена: LM={result.Lm.ShortText}, Controller={result.Controller.ShortText}, ESM={result.Esm.ShortText}, KKT={result.Kkt.ShortText}, Cloud={result.Cloud.ShortText}");
             }
             catch (Exception ex)
             {
@@ -776,7 +1024,7 @@ namespace HonestFlow
             }
             finally
             {
-                btnCheckWithoutPassword.Enabled = true;
+                btnCheckWithoutPassword.Enabled = !IsLongOperationRunning;
                 _statusRefreshRunning = false;
             }
         }
@@ -833,7 +1081,10 @@ namespace HonestFlow
         private void ShowNodeDetails_Click(object sender, EventArgs e)
         {
             if (sender is Button button && button.Tag is NodeStatus status)
+            {
+                LogOperatorAction($"открыты детали состояния: {status.ShortText}");
                 ShowNodeDetails(status);
+            }
         }
 
         private static void ShowNodeDetails(NodeStatus status)
@@ -844,6 +1095,8 @@ namespace HonestFlow
 
         private void BtnDetails_Click(object sender, EventArgs e)
         {
+            LogOperatorAction("открытие журнала выполнения");
+
             try
             {
                 string logPath = Logger.GetLogPath();
@@ -854,6 +1107,7 @@ namespace HonestFlow
                         FileName = logPath,
                         UseShellExecute = true
                     });
+                    LogOperatorAction($"журнал выполнения открыт: {logPath}");
                     return;
                 }
 
@@ -865,19 +1119,101 @@ namespace HonestFlow
                         FileName = logsFolder,
                         UseShellExecute = true
                     });
+                    LogOperatorAction($"папка логов открыта: {logsFolder}");
                     return;
                 }
 
+                LogOperatorAction("журнал выполнения не найден", isError: true);
                 MessageBox.Show("Файл лога не найден.", "Журнал выполнения", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
+                LogOperatorAction($"не удалось открыть журнал выполнения: {ex.Message}", isError: true);
+                _logService.LogDebug($"Ошибка открытия журнала выполнения: {ex}");
                 MessageBox.Show(
                     $"Не удалось открыть журнал:\n{ex.Message}",
                     "Журнал выполнения",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
+        }
+
+        private bool IsLongOperationRunning => !string.IsNullOrWhiteSpace(_longOperationName);
+
+        private bool EnsureNoLongOperation(string requestedAction)
+        {
+            if (!IsLongOperationRunning)
+                return true;
+
+            string message = $"Сейчас выполняется операция: {_longOperationName}. Дождитесь завершения.";
+            LogOperatorAction($"{requestedAction} не запущено: {message}");
+            MessageBox.Show(message, "Операция уже выполняется", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return false;
+        }
+
+        private bool TryBeginLongOperation(string operationName)
+        {
+            if (!EnsureNoLongOperation(operationName))
+                return false;
+
+            _longOperationName = operationName;
+            SetLongOperationControlsEnabled(false);
+            return true;
+        }
+
+        private void EndLongOperation()
+        {
+            _longOperationName = null;
+            SetLongOperationControlsEnabled(true);
+        }
+
+        private void SetLongOperationControlsEnabled(bool enabled)
+        {
+            bool authEnabled = enabled && _selectedIP == null;
+
+            textBox1.Enabled = authEnabled;
+            button2.Enabled = authEnabled;
+            btnCheckWithoutPassword.Enabled = enabled;
+            btnDiagnostics.Enabled = enabled;
+            btnMaintenance.Enabled = enabled;
+            btnReinstallComponents.Enabled = enabled;
+            btnRestoreLmDatabase.Enabled = enabled;
+            btnOpenKktDriver.Enabled = enabled;
+            btnOpenEsm.Enabled = enabled;
+
+            SetNodeActionButtonsEnabled(enabled);
+        }
+
+        private void SetNodeActionButtonsEnabled(bool enabled)
+        {
+            btnLmAction.Enabled = enabled;
+            btnControllerAction.Enabled = enabled;
+            btnEsmAction.Enabled = enabled;
+            btnKktAction.Enabled = enabled;
+            btnCloudAction.Enabled = enabled;
+        }
+
+        private void LogOperatorAction(string action, bool isError = false)
+        {
+            _logService.LogUser($"Оператор: {action}", isError);
+        }
+
+        private static string DescribeDiagnosticSelection(DiagnosticLogSelection selection)
+        {
+            var groups = new List<string>();
+
+            if (selection.IncludeSystemInfo)
+                groups.Add("система");
+            if (selection.IncludeHonestFlow)
+                groups.Add("HonestFlow");
+            if (selection.IncludeLm)
+                groups.Add("ЛМ ЧЗ");
+            if (selection.IncludeEsm)
+                groups.Add("ЕСМ");
+            if (selection.IncludeKkt)
+                groups.Add("ККТ/АТОЛ");
+
+            return groups.Count == 0 ? "ничего не выбрано" : string.Join(", ", groups);
         }
     }
 }
