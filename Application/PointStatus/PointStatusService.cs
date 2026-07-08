@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
+using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Infrastructure.Api;
 using HonestFlow.Models;
 
@@ -13,12 +14,14 @@ namespace HonestFlow.Application.PointStatus
         private readonly bool _remoteConfigLoaded;
         private readonly int _ipCount;
         private readonly IReadOnlyList<IPData> _clients;
+        private readonly RuDesktopService _ruDesktopService;
 
-        public PointStatusService(bool remoteConfigLoaded, int ipCount, IReadOnlyList<IPData> clients = null)
+        public PointStatusService(bool remoteConfigLoaded, int ipCount, IReadOnlyList<IPData> clients = null, RuDesktopService ruDesktopService = null)
         {
             _remoteConfigLoaded = remoteConfigLoaded;
             _ipCount = ipCount;
             _clients = clients ?? Array.Empty<IPData>();
+            _ruDesktopService = ruDesktopService;
         }
 
         public PointStatusResult Check()
@@ -31,8 +34,48 @@ namespace HonestFlow.Application.PointStatus
                 Controller = CheckExactServices(services, "esm-lm-controller"),
                 Esm = CheckEsmServices(services),
                 Kkt = CheckExactServices(services, "uem-agent", "uem-updater", "atol-grpc-service"),
-                Cloud = CheckCloudStatus()
+                Cloud = CheckCloudStatus(),
+                RuDesktop = CheckRuDesktopStatus()
             };
+        }
+
+        private NodeStatus CheckRuDesktopStatus()
+        {
+            if (_ruDesktopService == null)
+                return new NodeStatus(NodeLevel.Warning, "Не проверено", "Сервис проверки RuDesktop не инициализирован");
+
+            var status = _ruDesktopService.GetStatus().GetAwaiter().GetResult();
+            if (!string.IsNullOrWhiteSpace(status.ErrorMessage))
+            {
+                return new NodeStatus(
+                    NodeLevel.Warning,
+                    "Ошибка",
+                    $"Ошибка проверки RuDesktop: {status.ErrorMessage}",
+                    statusText: "Ошибка проверки");
+            }
+
+            if (!status.IsInstalled)
+                return new NodeStatus(NodeLevel.Error, "Не найден", "RuDesktop не найден на этом компьютере", statusText: "Не установлен");
+
+            if (string.IsNullOrWhiteSpace(status.Id))
+            {
+                return new NodeStatus(
+                    NodeLevel.Warning,
+                    "ID не получен",
+                    $"RuDesktop установлен\nСлужба: {FormatServiceStatus(status)}\nID: не удалось получить",
+                    statusText: "ID не получен");
+            }
+
+            var level = status.ServiceInstalled && !status.ServiceRunning
+                ? NodeLevel.Warning
+                : NodeLevel.Ok;
+
+            string passwordText = status.PasswordConfiguredByHonestFlow ? "пароль применён" : "пароль не применялся";
+            return new NodeStatus(
+                level,
+                "Запросить помощь",
+                $"RuDesktop установлен\nID: {status.Id}\nСлужба: {FormatServiceStatus(status)}\nПароль HonestFlow: {passwordText}",
+                statusText: $"ID: {status.Id}\n{passwordText}");
         }
 
         private NodeStatus CheckLmStatus(ServiceSnapshot[] services)
@@ -218,6 +261,14 @@ namespace HonestFlow.Application.PointStatus
         {
             return services.FirstOrDefault(x =>
                 string.Equals(x.ServiceName, serviceName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string FormatServiceStatus(RuDesktopStatus status)
+        {
+            if (!status.ServiceInstalled)
+                return "не найдена";
+
+            return status.ServiceRunning ? "запущена" : "остановлена";
         }
 
         private static string ValueOrDash(string value)

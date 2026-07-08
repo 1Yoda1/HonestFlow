@@ -65,6 +65,10 @@
             this.lblCloudStatusText = new System.Windows.Forms.Label();
             this.lblCloudCircle = new System.Windows.Forms.Label();
             this.btnCloudAction = new System.Windows.Forms.Button();
+            this.lblRuDesktopNode = new System.Windows.Forms.Label();
+            this.lblRuDesktopStatusText = new System.Windows.Forms.Label();
+            this.lblRuDesktopCircle = new System.Windows.Forms.Label();
+            this.btnRuDesktopAction = new System.Windows.Forms.Button();
 
             this.panelBottom = new System.Windows.Forms.Panel();
             this.bottomLayout = new System.Windows.Forms.TableLayoutPanel();
@@ -190,7 +194,7 @@
             this.textBox1.UseSystemPasswordChar = true;
 
             // button2
-            ConfigureButton(this.button2, "Войти и запустить", true);
+            ConfigureButton(this.button2, "Войти", true);
             this.button2.Click += new System.EventHandler(this.Button2_Click);
 
             // btnCheckWithoutPassword
@@ -251,8 +255,9 @@
             this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 64F));
             this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 150F));
             this.nodeTable.Dock = System.Windows.Forms.DockStyle.Top;
-            this.nodeTable.Height = 290;
-            this.nodeTable.RowCount = 5;
+            this.nodeTable.Height = 348;
+            this.nodeTable.RowCount = 6;
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
             this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
             this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
             this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
@@ -273,6 +278,9 @@
 
             ConfigureNodeRow(4, this.lblCloudNode, this.lblCloudStatusText, this.lblCloudCircle, this.btnCloudAction,
                 "Облако", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
+
+            ConfigureNodeRow(5, this.lblRuDesktopNode, this.lblRuDesktopStatusText, this.lblRuDesktopCircle, this.btnRuDesktopAction,
+                "RuDesktop", System.Drawing.Color.FromArgb(148, 163, 184), "Проверить");
 
             // panelBottom
             this.panelBottom.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
@@ -397,6 +405,10 @@
         private System.Windows.Forms.Label lblCloudStatusText;
         private System.Windows.Forms.Label lblCloudCircle;
         private System.Windows.Forms.Button btnCloudAction;
+        private System.Windows.Forms.Label lblRuDesktopNode;
+        private System.Windows.Forms.Label lblRuDesktopStatusText;
+        private System.Windows.Forms.Label lblRuDesktopCircle;
+        private System.Windows.Forms.Button btnRuDesktopAction;
 
         private System.Windows.Forms.Panel panelBottom;
         private System.Windows.Forms.TableLayoutPanel bottomLayout;

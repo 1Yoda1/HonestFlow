@@ -9,6 +9,7 @@ using HonestFlow.Application.Installation;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Application.Lm;
 using HonestFlow.Application.PointStatus;
+using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Application.Ui;
 using System;
 using System.Collections.Generic;
@@ -35,6 +36,8 @@ namespace HonestFlow
         private readonly DiagnosticArchiveService _diagnosticArchiveService;
         private readonly DiagnosticsEmailSender _diagnosticsEmailSender;
         private readonly LmDatabaseRestoreService _lmDatabaseRestoreService;
+        private readonly RuDesktopService _ruDesktopService;
+        private readonly HelpRequestEmailSender _helpRequestEmailSender;
         private readonly WindowsServiceControlService _serviceControlService;
         private readonly ExternalApplicationLauncher _externalApplicationLauncher;
         private readonly WindowIconService _windowIconService;
@@ -69,8 +72,10 @@ namespace HonestFlow
             _logService = new LogService();
             _progressService = new ProgressService(progressBar, lblStatus);
             _dialogService = new WinFormsDialogService(this);
+            _ruDesktopService = new RuDesktopService(_logService);
             _diagnosticArchiveService = new DiagnosticArchiveService(_logService);
-            _diagnosticsEmailSender = new DiagnosticsEmailSender(_logService, new AnyDeskIdProvider());
+            _diagnosticsEmailSender = new DiagnosticsEmailSender(_logService, _ruDesktopService);
+            _helpRequestEmailSender = new HelpRequestEmailSender(_logService);
             _serviceControlService = new WindowsServiceControlService();
             _externalApplicationLauncher = new ExternalApplicationLauncher();
             _windowIconService = new WindowIconService(_logService);
@@ -82,7 +87,7 @@ namespace HonestFlow
             _authService = startup.AuthService;
             _installationService = new InstallationService(_logService, _progressService, _dialogService, _useRemoteConfigMode);
             _lmDatabaseRestoreService = new LmDatabaseRestoreService(_logService, _progressService, _dialogService, _useRemoteConfigMode);
-            _pointStatusService = new PointStatusService(_useRemoteConfigMode, _remoteIps?.Count ?? 0, _remoteIps);
+            _pointStatusService = new PointStatusService(_useRemoteConfigMode, _remoteIps?.Count ?? 0, _remoteIps, _ruDesktopService);
 
             InitializeUiState();
             WireUiEvents();
@@ -165,6 +170,7 @@ namespace HonestFlow
 
             textBox1.Clear();
             textBox1.UseSystemPasswordChar = true;
+            button2.Text = "Войти";
 
             lblStatus.Text = "Ожидание запуска проверки";
             lblHeaderStatus.Text = "● Ожидание проверки";
@@ -242,9 +248,15 @@ namespace HonestFlow
 
         private async void Button2_Click(object sender, EventArgs e)
         {
-            LogOperatorAction("нажата кнопка входа и запуска проверки");
+            if (_selectedIP != null)
+            {
+                await StartInstallationForAuthorizedUser();
+                return;
+            }
 
-            if (!EnsureNoLongOperation("проверка и установка компонентов"))
+            LogOperatorAction("нажата кнопка входа");
+
+            if (!EnsureNoLongOperation("вход"))
                 return;
 
             string enteredPassword = textBox1.Text;
@@ -254,19 +266,6 @@ namespace HonestFlow
                 LogOperatorAction("вход отменен: пароль не введен", isError: true);
                 MessageBox.Show("Введите пароль!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 textBox1.Focus();
-                return;
-            }
-
-            if (!Utils.IsAdministrator())
-            {
-                LogOperatorAction("вход и запуск проверки отменены: нет прав администратора", isError: true);
-                MessageBox.Show(
-                    "Программа требует прав администратора!\n\n" +
-                    "Пожалуйста, перезапустите программу от имени администратора:\n" +
-                    "1. Нажмите правой кнопкой на HonestFlow.exe\n" +
-                    "2. Выберите 'Запуск от имени администратора'",
-                    "Требуются права администратора",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -284,11 +283,41 @@ namespace HonestFlow
             MessageBox.Show($"Добро пожаловать, {selectedIP.Name}!", "Успешный вход", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             textBox1.Enabled = false;
-            button2.Enabled = false;
+            button2.Text = "Запустить";
             btnDetails.Visible = true;
+            lblStatus.Text = "Вход выполнен. Можно запускать проверку.";
 
             _logService.LogUser($"Пользователь: {selectedIP.Name}");
             _logService.LogDebug($"Авторизован: {selectedIP.Name}, ИНН: {selectedIP.Inn}, Разрядность: {selectedIP.Architecture}");
+            _ruDesktopService.SaveLastAuthorizedClient(selectedIP);
+
+            await OfferRuDesktopPasswordSetupIfNeeded(selectedIP);
+        }
+
+        private async Task StartInstallationForAuthorizedUser()
+        {
+            LogOperatorAction("нажата кнопка запуска проверки");
+
+            IPData selectedIP = _selectedIP;
+            if (selectedIP == null)
+            {
+                LogOperatorAction("запуск проверки отменен: пользователь не авторизован", isError: true);
+                MessageBox.Show("Сначала выполните вход.", "Авторизация", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!Utils.IsAdministrator())
+            {
+                LogOperatorAction("запуск проверки отменен: нет прав администратора", isError: true);
+                MessageBox.Show(
+                    "Программа требует прав администратора!\n\n" +
+                    "Пожалуйста, перезапустите программу от имени администратора:\n" +
+                    "1. Нажмите правой кнопкой на HonestFlow.exe\n" +
+                    "2. Выберите 'Запуск от имени администратора'",
+                    "Требуются права администратора",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             if (!TryBeginLongOperation("проверка и установка компонентов"))
                 return;
@@ -1001,10 +1030,11 @@ namespace HonestFlow
                 ApplyNodeStatus(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, result.Esm, "ЕСМ");
                 ApplyNodeStatus(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, result.Kkt, "ККТ");
                 ApplyNodeStatus(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, result.Cloud, "Облако");
+                ApplyRuDesktopStatus(result.RuDesktop);
 
-                bool hasRed = new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud }
+                bool hasRed = new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud, result.RuDesktop }
                     .Any(x => x.Level == NodeLevel.Error);
-                bool hasYellow = new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud }
+                bool hasYellow = new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud, result.RuDesktop }
                     .Any(x => x.Level == NodeLevel.Warning);
 
                 lblHeaderStatus.Text = hasRed
@@ -1013,7 +1043,7 @@ namespace HonestFlow
                 lblHeaderStatus.ForeColor = hasRed ? StatusRed : hasYellow ? StatusYellow : StatusGreen;
                 lblStatus.Text = "Проверка завершена";
                 _logService.LogDebug(
-                    $"Проверка состояния точки завершена: LM={result.Lm.ShortText}, Controller={result.Controller.ShortText}, ESM={result.Esm.ShortText}, KKT={result.Kkt.ShortText}, Cloud={result.Cloud.ShortText}");
+                    $"Проверка состояния точки завершена: LM={result.Lm.ShortText}, Controller={result.Controller.ShortText}, ESM={result.Esm.ShortText}, KKT={result.Kkt.ShortText}, Cloud={result.Cloud.ShortText}, RuDesktop={result.RuDesktop.ShortText}");
             }
             catch (Exception ex)
             {
@@ -1036,6 +1066,7 @@ namespace HonestFlow
             SetNodeChecking(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, "ЕСМ");
             SetNodeChecking(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, "ККТ");
             SetNodeChecking(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, "Облако");
+            SetNodeChecking(lblRuDesktopNode, lblRuDesktopStatusText, lblRuDesktopCircle, btnRuDesktopAction, "RuDesktop");
         }
 
         private void SetNodeChecking(Label nodeLabel, Label statusTextLabel, Label circle, Button actionButton, string defaultLabel)
@@ -1071,6 +1102,26 @@ namespace HonestFlow
             actionButton.Click += status.CanManageServices ? ServiceAction_Click : ShowNodeDetails_Click;
         }
 
+        private void ApplyRuDesktopStatus(NodeStatus status)
+        {
+            ApplyNodeStatus(lblRuDesktopNode, lblRuDesktopStatusText, lblRuDesktopCircle, btnRuDesktopAction, status, "RuDesktop");
+            btnRuDesktopAction.Click -= ShowNodeDetails_Click;
+            btnRuDesktopAction.Click -= ServiceAction_Click;
+            btnRuDesktopAction.Click -= BtnRefreshStatus_Click;
+            btnRuDesktopAction.Click -= BtnRequestHelp_Click;
+
+            if (status.Level == NodeLevel.Ok || status.Level == NodeLevel.Warning)
+            {
+                btnRuDesktopAction.Text = "Запросить помощь";
+                btnRuDesktopAction.Click += BtnRequestHelp_Click;
+            }
+            else
+            {
+                btnRuDesktopAction.Text = "Подробнее";
+                btnRuDesktopAction.Click += ShowNodeDetails_Click;
+            }
+        }
+
         private static void SetNode(Label circle, Button actionButton, Color color, string text)
         {
             circle.Text = "●";
@@ -1084,6 +1135,63 @@ namespace HonestFlow
             {
                 LogOperatorAction($"открыты детали состояния: {status.ShortText}");
                 ShowNodeDetails(status);
+            }
+        }
+
+        private async void BtnRequestHelp_Click(object sender, EventArgs e)
+        {
+            LogOperatorAction("нажата кнопка запроса помощи");
+
+            if (!EnsureNoLongOperation("запрос помощи"))
+                return;
+
+            try
+            {
+                btnRuDesktopAction.Enabled = false;
+                lblStatus.Visible = true;
+                lblStatus.Text = "Отправка запроса помощи...";
+
+                string ruDesktopId = await _ruDesktopService.GetId();
+                if (string.IsNullOrWhiteSpace(ruDesktopId))
+                {
+                    LogOperatorAction("запрос помощи отменен: не удалось получить RuDesktop ID", isError: true);
+                    MessageBox.Show(
+                        "Не удалось получить RuDesktop ID. Проверьте, что RuDesktop установлен и запущен.",
+                        "Запрос помощи",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                LastAuthorizedClientState lastClient = _selectedIP == null
+                    ? _ruDesktopService.GetLastAuthorizedClient()
+                    : null;
+
+                await _helpRequestEmailSender.Send(_selectedIP, lastClient, ruDesktopId);
+
+                MessageBox.Show(
+                    "Запрос помощи отправлен.\n\n" +
+                    $"RuDesktop ID: {ruDesktopId}",
+                    "Запрос помощи",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                lblStatus.Text = "Запрос помощи отправлен";
+            }
+            catch (Exception ex)
+            {
+                LogOperatorAction($"не удалось отправить запрос помощи: {ex.Message}", isError: true);
+                _logService.LogDebug($"Ошибка отправки запроса помощи: {ex}");
+                MessageBox.Show(
+                    $"Не удалось отправить запрос помощи:\n{ex.Message}",
+                    "Запрос помощи",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                lblStatus.Text = $"Ошибка запроса помощи: {ex.Message}";
+            }
+            finally
+            {
+                btnRuDesktopAction.Enabled = true;
             }
         }
 
@@ -1140,6 +1248,83 @@ namespace HonestFlow
 
         private bool IsLongOperationRunning => !string.IsNullOrWhiteSpace(_longOperationName);
 
+        private async Task OfferRuDesktopPasswordSetupIfNeeded(IPData selectedIP)
+        {
+            if (!_ruDesktopService.ShouldOfferPasswordSetup(selectedIP))
+                return;
+
+            string ruDesktopId = await _ruDesktopService.GetId();
+            if (string.IsNullOrWhiteSpace(ruDesktopId))
+            {
+                _logService.LogDebug("RuDesktop: предложение настройки пропущено, ID не получен");
+                return;
+            }
+
+            LogOperatorAction($"RuDesktop: предложена настройка постоянного пароля, ID: {ruDesktopId}");
+
+            var answer = MessageBox.Show(
+                "Обнаружен RuDesktop.\n\n" +
+                $"ID для подключения: {ruDesktopId}\n\n" +
+                "Можно применить постоянный пароль из карточки клиента.\n" +
+                "Пароль не будет записан в лог HonestFlow.\n\n" +
+                "Настроить пароль сейчас?\n\n" +
+                "Да — настроить пароль\n" +
+                "Нет — спросить позже\n" +
+                "Отмена — закрыть окно",
+                "Настройка RuDesktop",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question);
+
+            if (answer == DialogResult.Cancel)
+            {
+                LogOperatorAction("RuDesktop: оператор закрыл окно настройки постоянного пароля");
+                return;
+            }
+
+            if (answer != DialogResult.Yes)
+            {
+                LogOperatorAction("RuDesktop: оператор отложил настройку постоянного пароля");
+                return;
+            }
+
+            if (!TryBeginLongOperation("настройка RuDesktop"))
+                return;
+
+            try
+            {
+                LogOperatorAction($"RuDesktop: запуск настройки постоянного пароля, ID: {ruDesktopId}");
+                lblStatus.Visible = true;
+                lblStatus.Text = "Настройка RuDesktop...";
+
+                RuDesktopSetupResult result = await _ruDesktopService.ConfigurePermanentPassword(selectedIP.RuDesktop.Password);
+                if (!result.Success)
+                {
+                    LogOperatorAction($"RuDesktop: не удалось создать постоянный пароль: {result.ErrorMessage}", isError: true);
+                    MessageBox.Show(
+                        $"Не удалось настроить постоянный пароль RuDesktop:\n{result.ErrorMessage}",
+                        "RuDesktop",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                MessageBox.Show(
+                    "Постоянный пароль RuDesktop настроен.\n\n" +
+                    $"ID: {result.Id}\n" +
+                    "Пароль: из карточки клиента\n\n" +
+                    "В лог HonestFlow пароль не записан.",
+                    "RuDesktop",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                lblStatus.Text = "RuDesktop настроен";
+            }
+            finally
+            {
+                EndLongOperation();
+            }
+        }
+
         private bool EnsureNoLongOperation(string requestedAction)
         {
             if (!IsLongOperationRunning)
@@ -1172,7 +1357,7 @@ namespace HonestFlow
             bool authEnabled = enabled && _selectedIP == null;
 
             textBox1.Enabled = authEnabled;
-            button2.Enabled = authEnabled;
+            button2.Enabled = enabled;
             btnCheckWithoutPassword.Enabled = enabled;
             btnDiagnostics.Enabled = enabled;
             btnMaintenance.Enabled = enabled;
@@ -1191,6 +1376,7 @@ namespace HonestFlow
             btnEsmAction.Enabled = enabled;
             btnKktAction.Enabled = enabled;
             btnCloudAction.Enabled = enabled;
+            btnRuDesktopAction.Enabled = enabled;
         }
 
         private void LogOperatorAction(string action, bool isError = false)

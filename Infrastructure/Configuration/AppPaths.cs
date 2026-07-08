@@ -57,6 +57,7 @@ namespace HonestFlow.Infrastructure.Configuration
         public static string ProgramDataFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "HonestFlow");
         public static string LogsFolder => Path.Combine(ProgramDataFolder, "logs");
         public static string DiagnosticsFolder => Path.Combine(ProgramDataFolder, "diagnostics");
+        public static string RuDesktopStateFile => Path.Combine(ProgramDataFolder, "rudesktop_state.json");
 
         public static void EnsureRuntimeFolders()
         {

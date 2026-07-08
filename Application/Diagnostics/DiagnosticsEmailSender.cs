@@ -1,4 +1,5 @@
 using HonestFlow.Application.Core;
+using HonestFlow.Application.RemoteAccess;
 using System;
 using System.Net;
 using System.Net.Mail;
@@ -16,12 +17,12 @@ namespace HonestFlow.Application.Diagnostics
         public const int SendAttempts = 3;
 
         private readonly ILogService _log;
-        private readonly AnyDeskIdProvider _anyDeskIdProvider;
+        private readonly RuDesktopService _ruDesktopService;
 
-        public DiagnosticsEmailSender(ILogService log, AnyDeskIdProvider anyDeskIdProvider)
+        public DiagnosticsEmailSender(ILogService log, RuDesktopService ruDesktopService)
         {
             _log = log;
-            _anyDeskIdProvider = anyDeskIdProvider;
+            _ruDesktopService = ruDesktopService;
         }
 
         public async Task SendWithRetries(string archivePath, Action<int, string> reportProgress, string fiscalAddress = null)
@@ -58,12 +59,13 @@ namespace HonestFlow.Application.Diagnostics
             message.From = new MailAddress(SenderEmail, "HonestFlow Diagnostics");
             message.To.Add(RecipientEmail);
             message.Subject = $"HonestFlow диагностика {Environment.MachineName} {DateTime.Now:yyyy-MM-dd HH:mm}";
+            string ruDesktopId = await _ruDesktopService.GetId() ?? "не найден";
             message.Body =
                 "Диагностический архив HonestFlow во вложении." + Environment.NewLine +
                 $"ПК: {Environment.MachineName}" + Environment.NewLine +
                 $"Пользователь: {Environment.UserName}" + Environment.NewLine +
                 $"Адрес: {FormatAddress(fiscalAddress)}" + Environment.NewLine +
-                $"AnyDesk ID: {_anyDeskIdProvider.GetId()}" + Environment.NewLine +
+                $"RuDesktop ID: {ruDesktopId}" + Environment.NewLine +
                 $"Время: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
             message.Attachments.Add(new Attachment(archivePath));
 

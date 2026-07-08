@@ -18,10 +18,16 @@ namespace HonestFlow.Infrastructure
             return result.ExitCode;
         }
 
-        public static async Task<ProcessExecutionResult> RunDetailed(string fileName, string arguments, bool asAdmin = false, int timeoutSeconds = 0)
+        public static async Task<ProcessExecutionResult> RunDetailed(
+            string fileName,
+            string arguments,
+            bool asAdmin = false,
+            int timeoutSeconds = 0,
+            string logArguments = null)
         {
             var watch = Stopwatch.StartNew();
             var result = new ProcessExecutionResult();
+            string safeArguments = logArguments ?? arguments;
 
             try
             {
@@ -66,13 +72,13 @@ namespace HonestFlow.Infrastructure
             {
                 result.Exception = ex;
                 result.ExitCode = -1;
-                Logger.LogException($"Запуск процесса: {fileName} {arguments}", ex);
+                Logger.LogException($"Запуск процесса: {fileName} {safeArguments}", ex);
             }
             finally
             {
                 watch.Stop();
                 result.Duration = watch.Elapsed;
-                Logger.LogToFile($"Process: {fileName} {arguments} | ExitCode={result.ExitCode} | Duration={result.Duration.TotalSeconds:F1}s | TimedOut={result.TimedOut}", result.ExitCode != 0);
+                Logger.LogToFile($"Process: {fileName} {safeArguments} | ExitCode={result.ExitCode} | Duration={result.Duration.TotalSeconds:F1}s | TimedOut={result.TimedOut}", result.ExitCode != 0);
             }
 
             return result;
