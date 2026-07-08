@@ -29,6 +29,7 @@
             this.button2 = new System.Windows.Forms.Button();
             this.btnCheckWithoutPassword = new System.Windows.Forms.Button();
             this.btnDiagnostics = new System.Windows.Forms.Button();
+            this.btnReinstallComponents = new System.Windows.Forms.Button();
             this.btnOpenKktDriver = new System.Windows.Forms.Button();
             this.btnOpenEsm = new System.Windows.Forms.Button();
             this.btnDetails = new System.Windows.Forms.Button();
@@ -123,7 +124,7 @@
             // mainLayout
             this.mainLayout.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
             this.mainLayout.ColumnCount = 2;
-            this.mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 270F));
+            this.mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 300F));
             this.mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.mainLayout.Controls.Add(this.panelLeft, 0, 0);
             this.mainLayout.Controls.Add(this.panelNodes, 1, 0);
@@ -147,14 +148,16 @@
             this.leftLayout.Controls.Add(this.button2, 0, 3);
             this.leftLayout.Controls.Add(this.btnCheckWithoutPassword, 0, 4);
             this.leftLayout.Controls.Add(this.btnDiagnostics, 0, 5);
-            this.leftLayout.Controls.Add(this.btnOpenKktDriver, 0, 6);
-            this.leftLayout.Controls.Add(this.btnOpenEsm, 0, 7);
-            this.leftLayout.Controls.Add(this.btnDetails, 0, 8);
+            this.leftLayout.Controls.Add(this.btnReinstallComponents, 0, 6);
+            this.leftLayout.Controls.Add(this.btnOpenKktDriver, 0, 7);
+            this.leftLayout.Controls.Add(this.btnOpenEsm, 0, 8);
+            this.leftLayout.Controls.Add(this.btnDetails, 0, 9);
             this.leftLayout.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.leftLayout.RowCount = 10;
+            this.leftLayout.RowCount = 11;
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 38F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 24F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 34F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
@@ -194,6 +197,9 @@
             // btnDiagnostics
             ConfigureButton(this.btnDiagnostics, "Диагностика и ремонт", false);
             this.btnDiagnostics.Click += new System.EventHandler(this.BtnDiagnostics_Click);
+
+            // btnReinstallComponents
+            ConfigureButton(this.btnReinstallComponents, "Переустановить компоненты", false);
 
             // btnOpenKktDriver
             ConfigureButton(this.btnOpenKktDriver, "Открыть Драйвер ККТ", false);
@@ -299,7 +305,7 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
-            this.ClientSize = new System.Drawing.Size(860, 560);
+            this.ClientSize = new System.Drawing.Size(900, 620);
             this.Controls.Add(this.rootLayout);
             this.Controls.Add(this.listBox1);
             this.Controls.Add(this.button1);
@@ -308,7 +314,7 @@
             this.Font = new System.Drawing.Font("Segoe UI", 9F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
-            this.MinimumSize = new System.Drawing.Size(860, 560);
+            this.MinimumSize = new System.Drawing.Size(900, 620);
             this.Name = "MainForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "HonestFlow";
@@ -346,6 +352,7 @@
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.Button btnCheckWithoutPassword;
         private System.Windows.Forms.Button btnDiagnostics;
+        private System.Windows.Forms.Button btnReinstallComponents;
         private System.Windows.Forms.Button btnOpenKktDriver;
         private System.Windows.Forms.Button btnOpenEsm;
         private System.Windows.Forms.Button btnDetails;

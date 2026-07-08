@@ -6,6 +6,7 @@ using HonestFlow.Application.Auth;
 using HonestFlow.Application.Core;
 using HonestFlow.Application.Diagnostics;
 using HonestFlow.Application.Installation;
+using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Application.PointStatus;
 using HonestFlow.Application.Ui;
 using System;
@@ -28,6 +29,7 @@ namespace HonestFlow
         private bool _useRemoteConfigMode = false;
         private List<IPData> _remoteIps;
         private VersionsData _remoteVersions;
+        private IPData _selectedIP;
 
         private readonly DiagnosticArchiveService _diagnosticArchiveService;
         private readonly DiagnosticsEmailSender _diagnosticsEmailSender;
@@ -45,6 +47,11 @@ namespace HonestFlow
         private static readonly Color StatusGray = Color.FromArgb(148, 163, 184);
 
         public MainForm()
+            : this(null)
+        {
+        }
+
+        public MainForm(StartupResult startup)
         {
             InitializeComponent();
             //this.DoubleBuffered = true;
@@ -65,12 +72,12 @@ namespace HonestFlow
             _externalApplicationLauncher = new ExternalApplicationLauncher();
             _windowIconService = new WindowIconService(_logService);
 
-            var startup = new ApplicationStartupService(_logService, _progressService, _dialogService).Start();
+            startup ??= new ApplicationStartupService(_logService, _progressService, _dialogService).Start();
             _useRemoteConfigMode = startup.UseRemoteConfigMode;
             _remoteIps = startup.Ips ?? startup.RemoteIps;
             _remoteVersions = startup.RemoteVersions;
             _authService = startup.AuthService;
-            _installationService = startup.InstallationService;
+            _installationService = new InstallationService(_logService, _progressService, _dialogService, _useRemoteConfigMode);
             _pointStatusService = new PointStatusService(_useRemoteConfigMode, _remoteIps?.Count ?? 0, _remoteIps);
 
             InitializeUiState();
@@ -172,6 +179,8 @@ namespace HonestFlow
             btnDiagnostics.Click -= BtnDiagnostics_Click;
             btnDiagnostics.Click += BtnDiagnostics_Click;
 
+            btnReinstallComponents.Click += BtnReinstallComponents_Click;
+
             btnOpenKktDriver.Click += BtnOpenKktDriver_Click;
             btnOpenEsm.Click += BtnOpenEsm_Click;
 
@@ -245,6 +254,7 @@ namespace HonestFlow
                 return;
             }
 
+            _selectedIP = selectedIP;
             MessageBox.Show($"Добро пожаловать, {selectedIP.Name}!", "Успешный вход", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
             textBox1.Enabled = false;
@@ -272,6 +282,9 @@ namespace HonestFlow
         private async void BtnDiagnostics_Click(object sender, EventArgs e)
         {
             DiagnosticArchiveInfo archiveInfo = null;
+            DiagnosticLogSelection selection = ShowDiagnosticLogSelectionDialog();
+            if (selection == null)
+                return;
 
             try
             {
@@ -280,7 +293,7 @@ namespace HonestFlow
                 progressBar.Value = 0;
                 lblStatus.Text = "Сборка архива диагностики...";
 
-                archiveInfo = await Task.Run(() => _diagnosticArchiveService.CreateArchiveInfo());
+                archiveInfo = await Task.Run(() => _diagnosticArchiveService.CreateArchiveInfo(selection));
                 string archivePath = archiveInfo.ArchivePath;
                 progressBar.Value = 35;
                 lblStatus.Text = $"Архив собран: {Path.GetFileName(archivePath)}";
@@ -343,6 +356,261 @@ namespace HonestFlow
         {
             progressBar.Value = Math.Min(Math.Max(progress, progressBar.Minimum), progressBar.Maximum);
             lblStatus.Text = message;
+        }
+
+        private async void BtnReinstallComponents_Click(object sender, EventArgs e)
+        {
+            if (!Utils.IsAdministrator())
+            {
+                MessageBox.Show(
+                    "Для переустановки компонентов нужны права администратора.\nПерезапустите HonestFlow от имени администратора.",
+                    "Нужны права администратора",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            var selectedIP = GetAuthorizedIpForManualAction();
+            if (selectedIP == null)
+                return;
+
+            var components = ShowComponentSelectionDialog();
+            if (components == null || components.Count == 0)
+                return;
+
+            string componentNames = string.Join(", ", components.Select(GetComponentDisplayName));
+            var confirm = MessageBox.Show(
+                $"Будет выполнена принудительная переустановка компонентов:\n\n{componentNames}\n\nПродолжить?",
+                "Ручная переустановка",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (confirm != DialogResult.Yes)
+                return;
+
+            try
+            {
+                btnReinstallComponents.Enabled = false;
+                btnCheckWithoutPassword.Enabled = false;
+                progressBar.Visible = true;
+                progressBar.Value = 0;
+                lblStatus.Visible = true;
+                lblStatus.Text = "Ручная переустановка компонентов...";
+
+                bool success = await _installationService.ReinstallSelectedComponents(selectedIP, components);
+                if (!success)
+                {
+                    MessageBox.Show("Ручная переустановка завершена с ошибками. Смотрите лог.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+
+                await RefreshPointStatusAsync();
+            }
+            finally
+            {
+                btnReinstallComponents.Enabled = true;
+                btnCheckWithoutPassword.Enabled = true;
+                progressBar.Visible = false;
+            }
+        }
+
+        private IPData GetAuthorizedIpForManualAction()
+        {
+            if (_selectedIP != null)
+                return _selectedIP;
+
+            string enteredPassword = textBox1.Text;
+            if (string.IsNullOrWhiteSpace(enteredPassword))
+            {
+                MessageBox.Show("Введите пароль точки перед ручной переустановкой.", "Авторизация", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                textBox1.Focus();
+                return null;
+            }
+
+            var selectedIP = _authService.Authenticate(enteredPassword);
+            if (selectedIP == null)
+            {
+                MessageBox.Show("Неверный пароль!\nДоступ запрещен.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                textBox1.Clear();
+                textBox1.Focus();
+                return null;
+            }
+
+            _selectedIP = selectedIP;
+            _logService.LogUser($"Пользователь для ручной операции: {selectedIP.Name}");
+            return selectedIP;
+        }
+
+        private DiagnosticLogSelection ShowDiagnosticLogSelectionDialog()
+        {
+            var items = new[]
+            {
+                new SelectionItem<string>("system", "Сведения о системе и статусы служб"),
+                new SelectionItem<string>("hf", "Логи HonestFlow"),
+                new SelectionItem<string>("lm", "Логи ЛМ ЧЗ"),
+                new SelectionItem<string>("esm", "Логи ЕСМ"),
+                new SelectionItem<string>("kkt", "Лог ККТ / АТОЛ")
+            };
+
+            var selected = ShowCheckedSelectionDialog(
+                "Сбор диагностики",
+                "Выберите, какие логи включить:",
+                items,
+                checkAll: true);
+
+            if (selected == null)
+                return null;
+
+            var keys = selected.Select(x => x.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var selection = new DiagnosticLogSelection
+            {
+                IncludeSystemInfo = keys.Contains("system"),
+                IncludeHonestFlow = keys.Contains("hf"),
+                IncludeLm = keys.Contains("lm"),
+                IncludeEsm = keys.Contains("esm"),
+                IncludeKkt = keys.Contains("kkt")
+            };
+
+            if (!selection.HasAnySelection)
+            {
+                MessageBox.Show("Выберите хотя бы одну группу логов.", "Диагностика", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return null;
+            }
+
+            return selection;
+        }
+
+        private IReadOnlyCollection<InstallationComponent> ShowComponentSelectionDialog()
+        {
+            var items = new[]
+            {
+                new SelectionItem<InstallationComponent>(InstallationComponent.LmModule, "ЛМ ЧЗ"),
+                new SelectionItem<InstallationComponent>(InstallationComponent.AtolDriver, "Драйвер АТОЛ"),
+                new SelectionItem<InstallationComponent>(InstallationComponent.Esm, "ЕСМ"),
+                new SelectionItem<InstallationComponent>(InstallationComponent.Controller, "Контроллер ЛМ")
+            };
+
+            var selected = ShowCheckedSelectionDialog(
+                "Ручная переустановка",
+                "Выберите компоненты для переустановки:",
+                items,
+                checkAll: false);
+
+            if (selected == null)
+                return null;
+
+            if (selected.Count == 0)
+            {
+                MessageBox.Show("Выберите хотя бы один компонент.", "Ручная переустановка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return null;
+            }
+
+            return selected.Select(x => x.Value).ToArray();
+        }
+
+        private static List<SelectionItem<T>> ShowCheckedSelectionDialog<T>(
+            string title,
+            string caption,
+            SelectionItem<T>[] items,
+            bool checkAll)
+        {
+            using var form = new Form
+            {
+                Text = title,
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ClientSize = new Size(420, 300)
+            };
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                Padding = new Padding(12)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+
+            var label = new Label
+            {
+                Text = caption,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            var checkedList = new CheckedListBox
+            {
+                Dock = DockStyle.Fill,
+                CheckOnClick = true
+            };
+
+            foreach (var item in items)
+                checkedList.Items.Add(item, checkAll);
+
+            var buttons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.RightToLeft
+            };
+
+            var okButton = new Button
+            {
+                Text = "OK",
+                DialogResult = DialogResult.OK,
+                Width = 90
+            };
+
+            var cancelButton = new Button
+            {
+                Text = "Отмена",
+                DialogResult = DialogResult.Cancel,
+                Width = 90
+            };
+
+            buttons.Controls.Add(okButton);
+            buttons.Controls.Add(cancelButton);
+            layout.Controls.Add(label, 0, 0);
+            layout.Controls.Add(checkedList, 0, 1);
+            layout.Controls.Add(buttons, 0, 2);
+            form.Controls.Add(layout);
+            form.AcceptButton = okButton;
+            form.CancelButton = cancelButton;
+
+            if (form.ShowDialog() != DialogResult.OK)
+                return null;
+
+            return checkedList.CheckedItems
+                .Cast<SelectionItem<T>>()
+                .ToList();
+        }
+
+        private static string GetComponentDisplayName(InstallationComponent component)
+        {
+            return component switch
+            {
+                InstallationComponent.LmModule => "ЛМ ЧЗ",
+                InstallationComponent.AtolDriver => "Драйвер АТОЛ",
+                InstallationComponent.Esm => "ЕСМ",
+                InstallationComponent.Controller => "Контроллер ЛМ",
+                _ => component.ToString()
+            };
+        }
+
+        private sealed class SelectionItem<T>
+        {
+            public SelectionItem(T value, string text)
+            {
+                Value = value;
+                Text = text;
+            }
+
+            public T Value { get; }
+            private string Text { get; }
+
+            public override string ToString() => Text;
         }
 
         private async void BtnRefreshStatus_Click(object sender, EventArgs e)

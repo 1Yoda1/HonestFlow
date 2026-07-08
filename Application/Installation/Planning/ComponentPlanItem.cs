@@ -5,6 +5,7 @@
         public InstallationComponent Component { get; set; }
         public bool NeedInstall { get; set; }
         public bool NeedInitialize { get; set; }
+        public bool ForceReinstall { get; set; }
         public bool HasWork => NeedInstall || NeedInitialize;
         public string DisplayName { get; set; }
         public string StatusText { get; set; }

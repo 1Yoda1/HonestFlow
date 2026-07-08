@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -82,6 +83,58 @@ namespace HonestFlow.Application.Installation
                 _log.LogUser($"Ошибка: {ex.Message}", true);
                 _log.LogDebug($"Ошибка при проверке ЛМ: {ex.Message}\n{ex.StackTrace}");
                 _dialogService.ShowError($"Ошибка: {ex.Message}", "Ошибка");
+                return false;
+            }
+        }
+
+        public async Task<bool> ReinstallSelectedComponents(IPData selectedIP, IReadOnlyCollection<InstallationComponent> components)
+        {
+            if (selectedIP == null)
+                throw new ArgumentNullException(nameof(selectedIP));
+
+            var selectedComponents = components?
+                .Distinct()
+                .ToArray() ?? Array.Empty<InstallationComponent>();
+
+            if (selectedComponents.Length == 0)
+                return false;
+
+            _progress.SetProgress(5, "Подготовка ручной переустановки...");
+
+            try
+            {
+                var versions = LoadVersions();
+                var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
+                var plan = BuildManualReinstallPlan(selectedComponents, selectedIP, effectiveVersions);
+
+                LogPlan(plan);
+
+                _progress.SetProgress(15, "Подготовка установщиков...");
+                if (!await ResolveInstallerPaths(plan, selectedIP, effectiveVersions))
+                    return false;
+
+                _progress.SetProgress(70, "Ручная переустановка компонентов...");
+                bool success = await ExecuteInstallationPlan(plan, selectedIP, effectiveVersions);
+
+                _progress.SetProgress(100, success ? "Ручная переустановка завершена" : "Ручная переустановка завершена с ошибками");
+
+                if (success)
+                {
+                    _log.LogUser("✅ Ручная переустановка завершена");
+                    _dialogService.ShowInformation("Ручная переустановка выбранных компонентов завершена.", "Готово");
+                }
+                else
+                {
+                    _log.LogUser("❌ Ручная переустановка завершена с ошибками", true);
+                }
+
+                return success;
+            }
+            catch (Exception ex)
+            {
+                _log.LogUser($"Ошибка ручной переустановки: {ex.Message}", true);
+                _log.LogDebug($"Ошибка ручной переустановки: {ex.Message}\n{ex.StackTrace}");
+                _dialogService.ShowError($"Ошибка ручной переустановки: {ex.Message}", "Ошибка");
                 return false;
             }
         }
@@ -258,6 +311,76 @@ namespace HonestFlow.Application.Installation
             InstallerFileNameBuilder.FillFileNames(plan, selectedIP, effectiveVersions);
             return plan;
         }
+
+        private InstallationPlan BuildManualReinstallPlan(InstallationComponent[] components, IPData selectedIP, VersionsData versions)
+        {
+            var plan = new InstallationPlan();
+            var selected = new HashSet<InstallationComponent>(components);
+
+            if (selected.Contains(InstallationComponent.LmModule))
+            {
+                string lmVersion = EnsureLmVersionConfigured(versions);
+                plan.Items.Add(CreateManualPlanItem(
+                    InstallationComponent.LmModule,
+                    "ЛМ ЧЗ",
+                    lmVersion));
+            }
+
+            if (selected.Contains(InstallationComponent.AtolDriver))
+            {
+                EnsureComponentVersionConfigured(versions?.AtolDriver, "Драйвер АТОЛ");
+                plan.Items.Add(CreateManualPlanItem(
+                    InstallationComponent.AtolDriver,
+                    "Драйвер АТОЛ",
+                    versions.AtolDriver));
+            }
+
+            if (selected.Contains(InstallationComponent.Esm))
+            {
+                EnsureComponentVersionConfigured(versions?.ESM, "ЕСМ");
+                plan.Items.Add(CreateManualPlanItem(
+                    InstallationComponent.Esm,
+                    "ЕСМ",
+                    versions.ESM));
+            }
+
+            if (selected.Contains(InstallationComponent.Controller))
+            {
+                EnsureComponentVersionConfigured(versions?.Controller, "Контроллер");
+                plan.Items.Add(CreateManualPlanItem(
+                    InstallationComponent.Controller,
+                    "Контроллер",
+                    versions.Controller));
+            }
+
+            InstallerFileNameBuilder.FillFileNames(plan, selectedIP, versions);
+            return plan;
+        }
+
+        private static ComponentPlanItem CreateManualPlanItem(InstallationComponent component, string displayName, string expectedVersion)
+        {
+            return new ComponentPlanItem
+            {
+                Component = component,
+                DisplayName = displayName,
+                NeedInstall = true,
+                ForceReinstall = true,
+                StatusText = "ручная переустановка",
+                ExpectedVersion = expectedVersion
+            };
+        }
+
+        private void EnsureComponentVersionConfigured(string version, string componentName)
+        {
+            if (!string.IsNullOrWhiteSpace(version))
+                return;
+
+            string message = $"Версия компонента \"{componentName}\" не задана в конфигурации.";
+            _log.LogUser($"❌ {message}", true);
+            _log.LogDebug($"Ошибка конфигурации: {message}");
+            throw new InvalidOperationException(message);
+        }
+
         private VersionsData ApplyClientVersionOverrides(IPData selectedIP, VersionsData globalVersions)
         {
             var result = new VersionsData
@@ -429,7 +552,9 @@ namespace HonestFlow.Application.Installation
                     string lmVersion = EnsureLmVersionConfigured(versions);
                     SetComponentProgress(progressStart, progressEnd, 5, "ЛМ ЧЗ: подготовка");
                     var lm = new LmModuleService(item.InstallerPath, lmVersion, _log, _progress, _dialogService, progressStart, progressEnd);
-                    bool lmSuccess = await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
+                    bool lmSuccess = item.ForceReinstall
+                        ? await lm.ReinstallAndInitialize(selectedIP.Token, selectedIP.Inn, "ручная переустановка оператором")
+                        : await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
                     SetComponentProgress(progressStart, progressEnd, 100, lmSuccess ? "ЛМ ЧЗ: готов" : "ЛМ ЧЗ: ошибка");
                     _log.LogUser(lmSuccess ? "✅ ЛМ ЧЗ установлен" : "❌ ЛМ ЧЗ не установлен", !lmSuccess);
                     return lmSuccess;

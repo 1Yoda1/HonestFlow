@@ -34,10 +34,16 @@ namespace HonestFlow.Application.Diagnostics
 
         public DiagnosticArchiveInfo CreateArchiveInfo()
         {
+            return CreateArchiveInfo(DiagnosticLogSelection.Full());
+        }
+
+        public DiagnosticArchiveInfo CreateArchiveInfo(DiagnosticLogSelection selection)
+        {
             _foundLogs.Clear();
             _missingLogs.Clear();
             _copyErrors.Clear();
             _fiscalAddress = null;
+            selection ??= DiagnosticLogSelection.Full();
 
             DateTime collectedAt = DateTime.Now;
             DateTime logCutoff = collectedAt.AddDays(-2);
@@ -55,11 +61,20 @@ namespace HonestFlow.Application.Diagnostics
 
             try
             {
-                CollectHonestFlowLogs(tempRoot, logCutoff);
-                CollectLmLogs(tempRoot, logCutoff);
-                CollectEsmLog(tempRoot, logCutoff);
-                CollectAtolLog(tempRoot, logCutoff);
-                WriteSystemInfo(tempRoot, collectedAt);
+                if (selection.IncludeHonestFlow)
+                    CollectHonestFlowLogs(tempRoot, logCutoff);
+
+                if (selection.IncludeLm)
+                    CollectLmLogs(tempRoot, logCutoff);
+
+                if (selection.IncludeEsm)
+                    CollectEsmLog(tempRoot, logCutoff);
+
+                if (selection.IncludeKkt)
+                    CollectAtolLog(tempRoot, logCutoff);
+
+                if (selection.IncludeSystemInfo)
+                    WriteSystemInfo(tempRoot, collectedAt);
 
                 if (File.Exists(archivePath))
                     File.Delete(archivePath);

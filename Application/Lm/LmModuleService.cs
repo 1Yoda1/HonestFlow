@@ -199,6 +199,19 @@ namespace HonestFlow.Application.Lm
             return await InitializeAndReport(token, $"инициализация при статусе {actualStatus.Status}");
         }
 
+        public async Task<bool> ReinstallAndInitialize(string token, string expectedInn, string reason)
+        {
+            using var operation = Logger.BeginOperation("Ручная переустановка ЛМ ЧЗ", nameof(LmModuleService));
+
+            SetProgress(10, "ЛМ ЧЗ: ручная переустановка");
+            _log.LogUser($" Ручная переустановка ЛМ ЧЗ: {reason}");
+
+            SetProgress(30, "ЛМ ЧЗ: удаление и установка MSI");
+            await _installer.ReinstallExisting(reason);
+
+            return await StartApiAndInitialize(token, "после ручной переустановки");
+        }
+
         private void DetectApiVersion(string lmVersion)
         {
             if (string.IsNullOrEmpty(lmVersion)) return;
