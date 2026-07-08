@@ -196,7 +196,13 @@ namespace HonestFlow
             btnOpenKktDriver.Click += BtnOpenKktDriver_Click;
             btnOpenEsm.Click += BtnOpenEsm_Click;
 
-            Shown += async (s, e) => await RefreshPointStatusAsync();
+            Shown += MainForm_Shown;
+        }
+
+        private async void MainForm_Shown(object sender, EventArgs e)
+        {
+            await RefreshPointStatusAsync();
+            await OfferStartupRuDesktopSetupIfNeeded();
         }
 
         private void BtnOpenKktDriver_Click(object sender, EventArgs e)
@@ -279,19 +285,8 @@ namespace HonestFlow
                 return;
             }
 
-            _selectedIP = selectedIP;
             MessageBox.Show($"Добро пожаловать, {selectedIP.Name}!", "Успешный вход", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-            textBox1.Enabled = false;
-            button2.Text = "Запустить";
-            btnDetails.Visible = true;
-            lblStatus.Text = "Вход выполнен. Можно запускать проверку.";
-
-            _logService.LogUser($"Пользователь: {selectedIP.Name}");
-            _logService.LogDebug($"Авторизован: {selectedIP.Name}, ИНН: {selectedIP.Inn}, Разрядность: {selectedIP.Architecture}");
-            _ruDesktopService.SaveLastAuthorizedClient(selectedIP);
-
-            await OfferRuDesktopPasswordSetupIfNeeded(selectedIP);
+            ApplyAuthorizedClient(selectedIP);
         }
 
         private async Task StartInstallationForAuthorizedUser()
@@ -1248,6 +1243,179 @@ namespace HonestFlow
 
         private bool IsLongOperationRunning => !string.IsNullOrWhiteSpace(_longOperationName);
 
+        private void ApplyAuthorizedClient(IPData selectedIP)
+        {
+            _selectedIP = selectedIP;
+            textBox1.Clear();
+            textBox1.Enabled = false;
+            button2.Text = "Запустить";
+            btnDetails.Visible = true;
+            lblStatus.Text = "Вход выполнен. Можно запускать проверку.";
+
+            _logService.LogUser($"Пользователь: {selectedIP.Name}");
+            _logService.LogDebug($"Авторизован: {selectedIP.Name}, ИНН: {selectedIP.Inn}, Разрядность: {selectedIP.Architecture}");
+            _ruDesktopService.SaveLastAuthorizedClient(selectedIP);
+        }
+
+        private async Task OfferStartupRuDesktopSetupIfNeeded()
+        {
+            if (_selectedIP != null || IsLongOperationRunning)
+                return;
+
+            bool needsSetup = await _ruDesktopService.NeedsInitialPasswordSetup();
+            if (!needsSetup)
+                return;
+
+            LogOperatorAction("RuDesktop: требуется первичная настройка постоянного пароля");
+
+            string enteredPassword = ShowStartupRuDesktopPasswordDialog();
+            if (string.IsNullOrWhiteSpace(enteredPassword))
+            {
+                LogOperatorAction("RuDesktop: первичная настройка пропущена, пароль точки не введен");
+                return;
+            }
+
+            var selectedIP = _authService.Authenticate(enteredPassword);
+            if (selectedIP == null)
+            {
+                LogOperatorAction("RuDesktop: первичная настройка отклонена, неверный пароль точки", isError: true);
+                MessageBox.Show("Неверный пароль точки. RuDesktop не настроен.", "Настройка RuDesktop", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            ApplyAuthorizedClient(selectedIP);
+
+            if (!selectedIP.RuDesktop.Enabled || string.IsNullOrWhiteSpace(selectedIP.RuDesktop.Password))
+            {
+                LogOperatorAction("RuDesktop: первичная настройка отменена, в карточке клиента нет пароля RuDesktop", isError: true);
+                MessageBox.Show(
+                    "В карточке клиента не указан пароль RuDesktop.\nНастройка пропущена.",
+                    "Настройка RuDesktop",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            await ConfigureRuDesktopPasswordFromClient(selectedIP);
+        }
+
+        private string ShowStartupRuDesktopPasswordDialog()
+        {
+            using var form = new Form
+            {
+                Text = "Настройка RuDesktop",
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ClientSize = new Size(430, 180)
+            };
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 4,
+                Padding = new Padding(14)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            var label = new Label
+            {
+                Text = "RuDesktop установлен, но постоянный пароль ещё не настроен.\nВведите пароль точки, чтобы настроить доступ.",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+
+            var passwordLabel = new Label
+            {
+                Text = "Пароль точки",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.BottomLeft
+            };
+
+            var passwordBox = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                UseSystemPasswordChar = true
+            };
+
+            var buttons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.RightToLeft
+            };
+
+            var okButton = new Button
+            {
+                Text = "Настроить",
+                DialogResult = DialogResult.OK,
+                Width = 100
+            };
+
+            var cancelButton = new Button
+            {
+                Text = "Позже",
+                DialogResult = DialogResult.Cancel,
+                Width = 90
+            };
+
+            buttons.Controls.Add(okButton);
+            buttons.Controls.Add(cancelButton);
+            layout.Controls.Add(label, 0, 0);
+            layout.Controls.Add(passwordLabel, 0, 1);
+            layout.Controls.Add(passwordBox, 0, 2);
+            layout.Controls.Add(buttons, 0, 3);
+            form.Controls.Add(layout);
+            form.AcceptButton = okButton;
+            form.CancelButton = cancelButton;
+
+            return form.ShowDialog(this) == DialogResult.OK ? passwordBox.Text : null;
+        }
+
+        private async Task ConfigureRuDesktopPasswordFromClient(IPData selectedIP)
+        {
+            if (!TryBeginLongOperation("настройка RuDesktop"))
+                return;
+
+            try
+            {
+                LogOperatorAction($"RuDesktop: запуск настройки постоянного пароля для клиента {selectedIP.Name}");
+                lblStatus.Visible = true;
+                lblStatus.Text = "Настройка RuDesktop...";
+
+                RuDesktopSetupResult result = await _ruDesktopService.ConfigurePermanentPassword(selectedIP.RuDesktop.Password);
+                if (!result.Success)
+                {
+                    LogOperatorAction($"RuDesktop: не удалось создать постоянный пароль: {result.ErrorMessage}", isError: true);
+                    MessageBox.Show(
+                        $"Не удалось настроить постоянный пароль RuDesktop:\n{result.ErrorMessage}",
+                        "RuDesktop",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                MessageBox.Show(
+                    "Постоянный пароль RuDesktop настроен.\n\n" +
+                    $"ID: {result.Id}\n" +
+                    "Пароль: из карточки клиента\n\n" +
+                    "В лог HonestFlow пароль не записан.",
+                    "RuDesktop",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                lblStatus.Text = "RuDesktop настроен";
+            }
+            finally
+            {
+                EndLongOperation();
+            }
+        }
+
         private async Task OfferRuDesktopPasswordSetupIfNeeded(IPData selectedIP)
         {
             if (!_ruDesktopService.ShouldOfferPasswordSetup(selectedIP))
@@ -1287,42 +1455,7 @@ namespace HonestFlow
                 return;
             }
 
-            if (!TryBeginLongOperation("настройка RuDesktop"))
-                return;
-
-            try
-            {
-                LogOperatorAction($"RuDesktop: запуск настройки постоянного пароля, ID: {ruDesktopId}");
-                lblStatus.Visible = true;
-                lblStatus.Text = "Настройка RuDesktop...";
-
-                RuDesktopSetupResult result = await _ruDesktopService.ConfigurePermanentPassword(selectedIP.RuDesktop.Password);
-                if (!result.Success)
-                {
-                    LogOperatorAction($"RuDesktop: не удалось создать постоянный пароль: {result.ErrorMessage}", isError: true);
-                    MessageBox.Show(
-                        $"Не удалось настроить постоянный пароль RuDesktop:\n{result.ErrorMessage}",
-                        "RuDesktop",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-                    return;
-                }
-
-                MessageBox.Show(
-                    "Постоянный пароль RuDesktop настроен.\n\n" +
-                    $"ID: {result.Id}\n" +
-                    "Пароль: из карточки клиента\n\n" +
-                    "В лог HonestFlow пароль не записан.",
-                    "RuDesktop",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-
-                lblStatus.Text = "RuDesktop настроен";
-            }
-            finally
-            {
-                EndLongOperation();
-            }
+            await ConfigureRuDesktopPasswordFromClient(selectedIP);
         }
 
         private bool EnsureNoLongOperation(string requestedAction)

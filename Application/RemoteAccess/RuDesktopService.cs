@@ -96,6 +96,12 @@ namespace HonestFlow.Application.RemoteAccess
             return LoadState().LastAuthorizedClient;
         }
 
+        public async Task<bool> NeedsInitialPasswordSetup()
+        {
+            var status = await GetStatus();
+            return status.IsInstalled && !status.PasswordConfiguredByHonestFlow;
+        }
+
         public async Task<string> GetId()
         {
             string exePath = FindExecutablePath();
