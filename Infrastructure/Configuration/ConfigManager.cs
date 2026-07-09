@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure.Downloads;
 using HonestFlow.Models;
+using Newtonsoft.Json;
 
 namespace HonestFlow.Infrastructure.Configuration
 {
@@ -22,6 +23,14 @@ namespace HonestFlow.Infrastructure.Configuration
         public static VersionsData LoadVersions() => LocalConfig.LoadVersions();
         public static (bool Success, List<IPData> Ips, VersionsData Versions) LoadRemoteConfig() => RemoteConfig.LoadAll();
         public static VersionsData LoadRemoteVersions() => RemoteConfig.LoadVersions();
+        public static SupportMailSettings LoadSupportMailSettings()
+        {
+            SupportMailSettings localSettings = LoadLocalSupportMailSettings();
+            if (localSettings != null)
+                return localSettings;
+
+            return RemoteConfig.LoadSupportMailSettings();
+        }
 
         public static void InitYandexDiskDownloader()
         {
@@ -95,6 +104,24 @@ namespace HonestFlow.Infrastructure.Configuration
                 return AppPaths.RemoteInstallersCacheFolder;
 
             return AppPaths.BaseFolder;
+        }
+
+        private static SupportMailSettings LoadLocalSupportMailSettings()
+        {
+            try
+            {
+                if (!File.Exists(AppPaths.LocalSupportMailFile))
+                    return null;
+
+                string encryptedJson = File.ReadAllText(AppPaths.LocalSupportMailFile);
+                string json = ObfuscationService.Deobfuscate(encryptedJson);
+                return JsonConvert.DeserializeObject<SupportMailSettings>(json);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogToFile($"Support mail local config loading error: {ex.Message}", true);
+                return null;
+            }
         }
     }
 }

@@ -1,20 +1,17 @@
 using System;
 using System.Net;
 using System.Net.Mail;
+using System.Text;
 using System.Threading.Tasks;
 using HonestFlow.Application.Core;
+using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Models;
+using Newtonsoft.Json;
 
 namespace HonestFlow.Application.RemoteAccess
 {
     public class HelpRequestEmailSender
     {
-        private const string SmtpHost = "smtp.yandex.ru";
-        private const int SmtpPort = 587;
-        private const string SenderEmail = "sdsk@morkovka.tech";
-        private const string SenderPassword = "kppzdcwhpmwvryoh";
-        private const string RecipientEmail = "spi@morkovka.tech";
-
         private readonly ILogService _log;
 
         public HelpRequestEmailSender(ILogService log)
@@ -22,51 +19,107 @@ namespace HonestFlow.Application.RemoteAccess
             _log = log;
         }
 
-        public async Task Send(IPData client, LastAuthorizedClientState lastAuthorizedClient, string ruDesktopId)
+        public async Task Send(HelpRequestData request)
         {
-            string clientName = client?.Name ?? lastAuthorizedClient?.Name;
-            string clientInn = client?.Inn ?? lastAuthorizedClient?.Inn;
-            string clientSource = client != null
-                ? "текущая авторизация"
-                : lastAuthorizedClient != null ? $"последняя авторизация HonestFlow ({lastAuthorizedClient.AuthorizedAt:yyyy-MM-dd HH:mm:ss})" : "не определён";
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            SupportMailSettings settings = ConfigManager.LoadSupportMailSettings();
+            ValidateSettings(settings);
 
             using var message = new MailMessage();
-            message.From = new MailAddress(SenderEmail, "HonestFlow Help");
-            message.To.Add(RecipientEmail);
-            message.Subject = $"HonestFlow: запрос помощи - {clientName ?? Environment.MachineName}";
-            message.Body =
-                "Оператор запросил удалённую помощь из HonestFlow." + Environment.NewLine +
-                $"Клиент: {ValueOrDash(clientName)}" + Environment.NewLine +
-                $"Источник клиента: {clientSource}" + Environment.NewLine +
-                $"ИНН: {MaskInn(clientInn)}" + Environment.NewLine +
-                $"ПК: {Environment.MachineName}" + Environment.NewLine +
-                $"Пользователь Windows: {Environment.UserName}" + Environment.NewLine +
-                $"RuDesktop ID: {ValueOrDash(ruDesktopId)}" + Environment.NewLine +
-                $"Время: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
+            message.From = new MailAddress(settings.SenderEmail, ValueOrDash(settings.SenderDisplayName));
+            message.To.Add(settings.RecipientEmail);
+            message.Subject = BuildSubject(request);
+            message.SubjectEncoding = Encoding.UTF8;
+            message.BodyEncoding = Encoding.UTF8;
+            message.IsBodyHtml = false;
+            message.Body = BuildBody(request);
 
-            using var smtp = new SmtpClient(SmtpHost, SmtpPort)
+            using var smtp = new SmtpClient(settings.SmtpHost, settings.SmtpPort)
             {
-                EnableSsl = true,
-                Credentials = new NetworkCredential(SenderEmail, SenderPassword),
+                EnableSsl = settings.EnableSsl,
+                Credentials = new NetworkCredential(settings.SenderEmail, settings.SenderPassword),
                 DeliveryMethod = SmtpDeliveryMethod.Network,
                 Timeout = 30000
             };
 
             await smtp.SendMailAsync(message);
-            _log?.LogUser($"Запрос помощи отправлен. RuDesktop ID: {ruDesktopId}");
+            _log?.LogUser($"Запрос помощи отправлен: {ValueOrDash(request.ClientName)}, {ValueOrDash(request.InnMasked)}, проблема: {ValueOrDash(request.ProblemType)}");
+        }
+
+        private static void ValidateSettings(SupportMailSettings settings)
+        {
+            if (settings == null)
+                throw new InvalidOperationException("Не найдены настройки почты поддержки support_mail_encrypted.json.");
+
+            if (string.IsNullOrWhiteSpace(settings.SmtpHost))
+                throw new InvalidOperationException("В настройках почты поддержки не указан SmtpHost.");
+
+            if (settings.SmtpPort <= 0)
+                throw new InvalidOperationException("В настройках почты поддержки указан некорректный SmtpPort.");
+
+            if (string.IsNullOrWhiteSpace(settings.SenderEmail))
+                throw new InvalidOperationException("В настройках почты поддержки не указан SenderEmail.");
+
+            if (string.IsNullOrWhiteSpace(settings.SenderPassword))
+                throw new InvalidOperationException("В настройках почты поддержки не указан SenderPassword.");
+
+            if (string.IsNullOrWhiteSpace(settings.RecipientEmail))
+                throw new InvalidOperationException("В настройках почты поддержки не указан RecipientEmail.");
+        }
+
+        private static string BuildSubject(HelpRequestData request)
+        {
+            return $"HF_HELP | {SubjectPart(request.ClientName)} | {SubjectPart(request.InnMasked)} | {SubjectPart(request.MachineName)} | {SubjectPart(request.RequestId)}";
+        }
+
+        private static string BuildBody(HelpRequestData request)
+        {
+            string json = JsonConvert.SerializeObject(request, Formatting.Indented);
+
+            return
+                $"RequestId: {ValueOrDash(request.RequestId)}" + Environment.NewLine +
+                $"ClientName: {ValueOrDash(request.ClientName)}" + Environment.NewLine +
+                $"InnMasked: {ValueOrDash(request.InnMasked)}" + Environment.NewLine +
+                $"MachineName: {ValueOrDash(request.MachineName)}" + Environment.NewLine +
+                $"WindowsUser: {ValueOrDash(request.WindowsUser)}" + Environment.NewLine +
+                $"RuDesktopId: {ValueOrDash(request.RuDesktopId)}" + Environment.NewLine +
+                $"HonestFlowVersion: {ValueOrDash(request.HonestFlowVersion)}" + Environment.NewLine +
+                $"ProblemType: {ValueOrDash(request.ProblemType)}" + Environment.NewLine +
+                $"CreatedAt: {ValueOrDash(request.CreatedAt)}" + Environment.NewLine +
+                Environment.NewLine +
+                "Message:" + Environment.NewLine +
+                ValueOrDash(request.Message) + Environment.NewLine +
+                Environment.NewLine +
+                "```json" + Environment.NewLine +
+                json + Environment.NewLine +
+                "```";
+        }
+
+        private static string SubjectPart(string value)
+        {
+            value = ValueOrDash(value);
+            return value.Replace("\r", " ").Replace("\n", " ").Trim();
         }
 
         private static string ValueOrDash(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
         }
+    }
 
-        private static string MaskInn(string inn)
-        {
-            if (string.IsNullOrWhiteSpace(inn) || inn.Length < 6)
-                return ValueOrDash(inn);
-
-            return inn.Substring(0, 4) + new string('*', Math.Max(0, inn.Length - 6)) + inn.Substring(inn.Length - 2);
-        }
+    public sealed class HelpRequestData
+    {
+        public string RequestId { get; set; }
+        public string ClientName { get; set; }
+        public string InnMasked { get; set; }
+        public string MachineName { get; set; }
+        public string WindowsUser { get; set; }
+        public string RuDesktopId { get; set; }
+        public string HonestFlowVersion { get; set; }
+        public string ProblemType { get; set; }
+        public string Message { get; set; }
+        public string CreatedAt { get; set; }
     }
 }

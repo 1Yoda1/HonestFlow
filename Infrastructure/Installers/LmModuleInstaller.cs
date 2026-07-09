@@ -110,16 +110,18 @@ namespace HonestFlow.Infrastructure.Installers
             Logger.Info($"Папка восстановления ЛМ ЧЗ: {installFolder}", nameof(LmModuleInstaller));
 
             string guid = FindLmModuleGuid();
+            bool uninstallWithPromptExecuted = false;
             if (!string.IsNullOrWhiteSpace(guid))
             {
                 await UninstallWithDatabasePrompt(guid);
+                uninstallWithPromptExecuted = true;
             }
             else
             {
                 Logger.Warning("GUID ЛМ ЧЗ не найден перед восстановлением базы. Продолжаем с очисткой папки и установкой поверх архива.", nameof(LmModuleInstaller));
             }
 
-            if (HasExistingLmDatabase(installFolder))
+            if (uninstallWithPromptExecuted && HasExistingLmDatabase(installFolder))
             {
                 const string warning =
                     "После удаления ЛМ ЧЗ старая база данных и настройки остались на диске. " +
@@ -218,12 +220,20 @@ namespace HonestFlow.Infrastructure.Installers
                 throw new FileNotFoundException("Не найден MSI установщик ЛМ ЧЗ", _installerPath);
 
             string normalizedInstallFolder = EnsureTrailingSlash(Path.GetFullPath(installFolder));
+            string logPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "HonestFlow",
+                "logs",
+                $"lm_restore_install_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath));
+
             Logger.Info($"Установка {Path.GetFileName(_installerPath)} с REINSTALL_FLAG=1 в {normalizedInstallFolder}", nameof(LmModuleInstaller));
+            Logger.Info($"MSI-лог установки ЛМ ЧЗ поверх восстановленной базы: {logPath}", nameof(LmModuleInstaller));
 
             await WaitForLmChildInstallersIdleAsync("перед установкой ЛМ ЧЗ поверх восстановленной базы", 60);
 
             int exitCode = await RunMsiWithRetryAsync(
-                arguments: $"/i \"{_installerPath}\" /qn /norestart APPLICATIONFOLDER=\"{normalizedInstallFolder}\" REINSTALL_FLAG=1",
+                arguments: $"/i \"{_installerPath}\" /qn /norestart /L*v \"{logPath}\" APPLICATIONFOLDER=\"{normalizedInstallFolder}\" REINSTALL_FLAG=1",
                 actionName: "установка ЛМ ЧЗ поверх восстановленной базы",
                 acceptedExitCodes: new[] { MsiSuccess, MsiRestartRequired });
 
@@ -306,9 +316,71 @@ namespace HonestFlow.Infrastructure.Installers
             if (!Directory.Exists(installFolder))
                 throw new InvalidOperationException($"Архив базы ЛМ ЧЗ не содержит ожидаемую папку Regime: {installFolder}");
 
+            NormalizeExtractedRegimeFolder(installFolder);
+            EnsureRegimeEtcForInstaller(installFolder);
+
             string yeniseiData = Path.Combine(installFolder, "yenisei", "data");
             if (!Directory.Exists(yeniseiData))
                 Logger.Warning($"После распаковки не найдена папка базы Yenisei: {yeniseiData}", nameof(LmModuleInstaller));
+        }
+
+        private static void NormalizeExtractedRegimeFolder(string installFolder)
+        {
+            if (HasRegimePayload(installFolder))
+                return;
+
+            string nestedRegimeFolder = Path.Combine(installFolder, "Regime");
+            if (!Directory.Exists(nestedRegimeFolder) || !HasRegimePayload(nestedRegimeFolder))
+                return;
+
+            string parentFolder = Directory.GetParent(installFolder)?.FullName;
+            if (string.IsNullOrWhiteSpace(parentFolder))
+                throw new InvalidOperationException($"Некорректная папка установки ЛМ ЧЗ: {installFolder}");
+
+            string tempFolder = Path.Combine(parentFolder, $".HonestFlow_Regime_{Guid.NewGuid():N}");
+
+            Logger.Warning(
+                $"Архив базы ЛМ ЧЗ содержит вложенную папку Regime. Переносим восстановленную папку через {tempFolder}",
+                nameof(LmModuleInstaller));
+
+            Directory.Move(nestedRegimeFolder, tempFolder);
+            Directory.Delete(installFolder, true);
+            Directory.Move(tempFolder, installFolder);
+
+            if (!HasRegimePayload(installFolder))
+                throw new InvalidOperationException($"Архив базы ЛМ ЧЗ не содержит ожидаемые папки bin/regime/yenisei: {installFolder}");
+        }
+
+        private static bool HasRegimePayload(string folder)
+        {
+            return Directory.Exists(Path.Combine(folder, "bin")) &&
+                   Directory.Exists(Path.Combine(folder, "regime")) &&
+                   Directory.Exists(Path.Combine(folder, "yenisei"));
+        }
+
+        private static void EnsureRegimeEtcForInstaller(string installFolder)
+        {
+            string expectedEtc = Path.Combine(installFolder, "regime", "etc");
+            string expectedLocalIni = Path.Combine(expectedEtc, "local.ini");
+            if (File.Exists(expectedLocalIni))
+                return;
+
+            string rootEtc = Path.Combine(installFolder, "etc");
+            string rootLocalIni = Path.Combine(rootEtc, "local.ini");
+            if (!File.Exists(rootLocalIni))
+                return;
+
+            Logger.Warning(
+                $"Архив базы ЛМ ЧЗ содержит etc в корне. Подготавливаем {expectedEtc} для MSI.",
+                nameof(LmModuleInstaller));
+
+            Directory.CreateDirectory(expectedEtc);
+
+            foreach (string filePath in Directory.EnumerateFiles(rootEtc))
+            {
+                string targetPath = Path.Combine(expectedEtc, Path.GetFileName(filePath));
+                File.Copy(filePath, targetPath, true);
+            }
         }
 
         private static bool HasExistingLmDatabase(string installFolder)

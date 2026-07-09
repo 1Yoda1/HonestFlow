@@ -12,9 +12,11 @@ namespace HonestFlow.Infrastructure.Configuration
     {
         private const string IpsFileName = "ips_encrypted.json";
         private const string VersionsFileName = "versions.json";
+        private const string SupportMailFileName = "support_mail_encrypted.json";
 
         private List<IPData> _cachedIps;
         private VersionsData _cachedVersions;
+        private SupportMailSettings _cachedSupportMailSettings;
 
         public (bool Success, List<IPData> Ips, VersionsData Versions) LoadAll()
         {
@@ -45,6 +47,28 @@ namespace HonestFlow.Infrastructure.Configuration
 
             var result = LoadAll();
             return result.Success ? result.Versions : new VersionsData();
+        }
+
+        public SupportMailSettings LoadSupportMailSettings()
+        {
+            if (_cachedSupportMailSettings != null)
+                return _cachedSupportMailSettings;
+
+            try
+            {
+                using var client = YandexDiskDownloader.CreateClient(TimeSpan.FromSeconds(30));
+
+                string encryptedJson = DownloadPublicTextFile(client, SupportMailFileName);
+                string json = ObfuscationService.Deobfuscate(encryptedJson);
+
+                _cachedSupportMailSettings = JsonConvert.DeserializeObject<SupportMailSettings>(json);
+                return _cachedSupportMailSettings;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogToFile($"Support mail remote config loading error: {ex.Message}", true);
+                return null;
+            }
         }
 
         private static string DownloadPublicTextFile(HttpClient client, string fileName)

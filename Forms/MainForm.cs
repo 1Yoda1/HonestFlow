@@ -1105,16 +1105,8 @@ namespace HonestFlow
             btnRuDesktopAction.Click -= BtnRefreshStatus_Click;
             btnRuDesktopAction.Click -= BtnRequestHelp_Click;
 
-            if (status.Level == NodeLevel.Ok || status.Level == NodeLevel.Warning)
-            {
-                btnRuDesktopAction.Text = "Запросить помощь";
-                btnRuDesktopAction.Click += BtnRequestHelp_Click;
-            }
-            else
-            {
-                btnRuDesktopAction.Text = "Подробнее";
-                btnRuDesktopAction.Click += ShowNodeDetails_Click;
-            }
+            btnRuDesktopAction.Text = "Запросить помощь";
+            btnRuDesktopAction.Click += BtnRequestHelp_Click;
         }
 
         private static void SetNode(Label circle, Button actionButton, Color color, string text)
@@ -1140,6 +1132,13 @@ namespace HonestFlow
             if (!EnsureNoLongOperation("запрос помощи"))
                 return;
 
+            HelpRequestDialogResult helpRequest = ShowHelpRequestDialog();
+            if (helpRequest == null)
+            {
+                LogOperatorAction("запрос помощи отменен оператором");
+                return;
+            }
+
             try
             {
                 btnRuDesktopAction.Enabled = false;
@@ -1148,37 +1147,29 @@ namespace HonestFlow
 
                 string ruDesktopId = await _ruDesktopService.GetId();
                 if (string.IsNullOrWhiteSpace(ruDesktopId))
-                {
-                    LogOperatorAction("запрос помощи отменен: не удалось получить RuDesktop ID", isError: true);
-                    MessageBox.Show(
-                        "Не удалось получить RuDesktop ID. Проверьте, что RuDesktop установлен и запущен.",
-                        "Запрос помощи",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-                    return;
-                }
+                    LogOperatorAction("RuDesktop ID для заявки помощи не получен", isError: true);
 
                 LastAuthorizedClientState lastClient = _selectedIP == null
                     ? _ruDesktopService.GetLastAuthorizedClient()
                     : null;
 
-                await _helpRequestEmailSender.Send(_selectedIP, lastClient, ruDesktopId);
+                HelpRequestData request = BuildHelpRequestData(helpRequest, _selectedIP, lastClient, ruDesktopId);
+                await _helpRequestEmailSender.Send(request);
 
                 MessageBox.Show(
-                    "Запрос помощи отправлен.\n\n" +
-                    $"RuDesktop ID: {ruDesktopId}",
+                    "Заявка отправлена.",
                     "Запрос помощи",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
 
-                lblStatus.Text = "Запрос помощи отправлен";
+                lblStatus.Text = "Заявка помощи отправлена";
             }
             catch (Exception ex)
             {
                 LogOperatorAction($"не удалось отправить запрос помощи: {ex.Message}", isError: true);
                 _logService.LogDebug($"Ошибка отправки запроса помощи: {ex}");
                 MessageBox.Show(
-                    $"Не удалось отправить запрос помощи:\n{ex.Message}",
+                    $"Не удалось отправить заявку:\n{ex.Message}",
                     "Запрос помощи",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
@@ -1188,6 +1179,148 @@ namespace HonestFlow
             {
                 btnRuDesktopAction.Enabled = true;
             }
+        }
+
+        private HelpRequestData BuildHelpRequestData(
+            HelpRequestDialogResult helpRequest,
+            IPData selectedClient,
+            LastAuthorizedClientState lastClient,
+            string ruDesktopId)
+        {
+            string clientName = selectedClient?.Name ?? lastClient?.Name;
+            string clientInn = selectedClient?.Inn ?? lastClient?.Inn;
+
+            return new HelpRequestData
+            {
+                RequestId = BuildHelpRequestId(),
+                ClientName = ValueOrDash(clientName),
+                InnMasked = MaskInn(clientInn),
+                MachineName = Environment.MachineName,
+                WindowsUser = Environment.UserName,
+                RuDesktopId = ValueOrDash(ruDesktopId),
+                HonestFlowVersion = System.Windows.Forms.Application.ProductVersion,
+                ProblemType = ValueOrDash(helpRequest.ProblemType),
+                Message = ValueOrDash(helpRequest.Message),
+                CreatedAt = DateTimeOffset.Now.ToString("o")
+            };
+        }
+
+        private static string BuildHelpRequestId()
+        {
+            return $"{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}".Substring(0, 20).ToUpperInvariant();
+        }
+
+        private static HelpRequestDialogResult ShowHelpRequestDialog()
+        {
+            using var form = new Form
+            {
+                Text = "Запросить помощь",
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ShowInTaskbar = false,
+                ClientSize = new Size(460, 310)
+            };
+
+            var typeLabel = new Label
+            {
+                Text = "Тип проблемы:",
+                Location = new Point(16, 18),
+                AutoSize = true
+            };
+
+            var problemTypeBox = new ComboBox
+            {
+                Location = new Point(16, 42),
+                Width = 428,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            problemTypeBox.Items.AddRange(new object[]
+            {
+                "Не запускается",
+                "Ошибка в документе",
+                "Нужна настройка",
+                "Не работает обмен",
+                "Другое"
+            });
+            problemTypeBox.SelectedIndex = 0;
+
+            var messageLabel = new Label
+            {
+                Text = "Сообщение:",
+                Location = new Point(16, 82),
+                AutoSize = true
+            };
+
+            var messageBox = new TextBox
+            {
+                Location = new Point(16, 106),
+                Width = 428,
+                Height = 140,
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical
+            };
+
+            var okButton = new Button
+            {
+                Text = "Отправить",
+                DialogResult = DialogResult.OK,
+                Location = new Point(254, 264),
+                Width = 90
+            };
+
+            var cancelButton = new Button
+            {
+                Text = "Отмена",
+                DialogResult = DialogResult.Cancel,
+                Location = new Point(354, 264),
+                Width = 90
+            };
+
+            form.Controls.Add(typeLabel);
+            form.Controls.Add(problemTypeBox);
+            form.Controls.Add(messageLabel);
+            form.Controls.Add(messageBox);
+            form.Controls.Add(okButton);
+            form.Controls.Add(cancelButton);
+            form.AcceptButton = okButton;
+            form.CancelButton = cancelButton;
+
+            return form.ShowDialog() == DialogResult.OK
+                ? new HelpRequestDialogResult
+                {
+                    ProblemType = problemTypeBox.Text,
+                    Message = messageBox.Text
+                }
+                : null;
+        }
+
+        private static string MaskInn(string inn)
+        {
+            if (string.IsNullOrWhiteSpace(inn))
+                return "-";
+
+            inn = inn.Trim();
+            if (inn.Length <= 4)
+                return new string('*', inn.Length);
+
+            int left = Math.Min(2, inn.Length);
+            int right = Math.Min(2, inn.Length - left);
+            return inn.Substring(0, left) +
+                   new string('*', Math.Max(0, inn.Length - left - right)) +
+                   inn.Substring(inn.Length - right);
+        }
+
+        private static string ValueOrDash(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+        }
+
+        private sealed class HelpRequestDialogResult
+        {
+            public string ProblemType { get; set; }
+            public string Message { get; set; }
         }
 
         private static void ShowNodeDetails(NodeStatus status)
