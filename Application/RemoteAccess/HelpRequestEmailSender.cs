@@ -86,6 +86,7 @@ namespace HonestFlow.Application.RemoteAccess
                 $"WindowsUser: {ValueOrDash(request.WindowsUser)}" + Environment.NewLine +
                 $"RuDesktopId: {ValueOrDash(request.RuDesktopId)}" + Environment.NewLine +
                 $"HonestFlowVersion: {ValueOrDash(request.HonestFlowVersion)}" + Environment.NewLine +
+                $"FiscalAddress: {ValueOrDash(request.FiscalAddress)}" + Environment.NewLine +
                 $"ProblemType: {ValueOrDash(request.ProblemType)}" + Environment.NewLine +
                 $"CreatedAt: {ValueOrDash(request.CreatedAt)}" + Environment.NewLine +
                 Environment.NewLine +
@@ -118,6 +119,7 @@ namespace HonestFlow.Application.RemoteAccess
         public string WindowsUser { get; set; }
         public string RuDesktopId { get; set; }
         public string HonestFlowVersion { get; set; }
+        public string FiscalAddress { get; set; }
         public string ProblemType { get; set; }
         public string Message { get; set; }
         public string CreatedAt { get; set; }

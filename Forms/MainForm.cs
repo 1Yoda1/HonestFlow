@@ -1132,6 +1132,9 @@ namespace HonestFlow
             if (!EnsureNoLongOperation("запрос помощи"))
                 return;
 
+            if (!await EnsureRuDesktopPasswordConfiguredForHelpRequest())
+                return;
+
             HelpRequestDialogResult helpRequest = ShowHelpRequestDialog();
             if (helpRequest == null)
             {
@@ -1145,9 +1148,7 @@ namespace HonestFlow
                 lblStatus.Visible = true;
                 lblStatus.Text = "Отправка запроса помощи...";
 
-                string ruDesktopId = await _ruDesktopService.GetId();
-                if (string.IsNullOrWhiteSpace(ruDesktopId))
-                    LogOperatorAction("RuDesktop ID для заявки помощи не получен", isError: true);
+                string ruDesktopId = await TryGetRuDesktopIdForHelpRequest();
 
                 LastAuthorizedClientState lastClient = _selectedIP == null
                     ? _ruDesktopService.GetLastAuthorizedClient()
@@ -1181,6 +1182,107 @@ namespace HonestFlow
             }
         }
 
+        private async Task<bool> EnsureRuDesktopPasswordConfiguredForHelpRequest()
+        {
+            try
+            {
+                RuDesktopStatus status = await _ruDesktopService.GetStatus();
+                if (status.IsInstalled && status.PasswordConfiguredByHonestFlow)
+                    return true;
+
+                if (!status.IsInstalled)
+                {
+                    LogOperatorAction("запрос помощи заблокирован: RuDesktop не найден на этом компьютере", isError: true);
+                    MessageBox.Show(
+                        "RuDesktop не найден на этом компьютере.\n\n" +
+                        "Запрос помощи доступен после настройки RuDesktop.",
+                        "Запрос помощи",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return false;
+                }
+
+                LogOperatorAction("запрос помощи: требуется настройка постоянного пароля RuDesktop");
+                IPData selectedClient = ResolveClientForRuDesktopSetup();
+                if (selectedClient == null)
+                    return false;
+
+                await ConfigureRuDesktopPasswordFromClient(selectedClient);
+                status = await _ruDesktopService.GetStatus();
+                return status.IsInstalled && status.PasswordConfiguredByHonestFlow;
+            }
+            catch (Exception ex)
+            {
+                LogOperatorAction($"запрос помощи заблокирован: не удалось проверить RuDesktop ({ex.Message})", isError: true);
+                MessageBox.Show(
+                    $"Не удалось проверить состояние RuDesktop:\n{ex.Message}",
+                    "Запрос помощи",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+
+            return false;
+        }
+
+        private IPData ResolveClientForRuDesktopSetup()
+        {
+            if (_selectedIP != null)
+                return _selectedIP;
+
+            string enteredPassword = ShowStartupRuDesktopPasswordDialog();
+            if (string.IsNullOrWhiteSpace(enteredPassword))
+            {
+                LogOperatorAction("запрос помощи: настройка RuDesktop отменена, пароль точки не введен");
+                return null;
+            }
+
+            IPData selectedClient = _authService.Authenticate(enteredPassword);
+            if (selectedClient == null)
+            {
+                LogOperatorAction("запрос помощи: настройка RuDesktop отклонена, неверный пароль точки", isError: true);
+                MessageBox.Show("Неверный пароль точки. Запрос помощи не отправлен.", "Запрос помощи", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return null;
+            }
+
+            ApplyAuthorizedClient(selectedClient);
+
+            if (!selectedClient.RuDesktop.Enabled || string.IsNullOrWhiteSpace(selectedClient.RuDesktop.Password))
+            {
+                LogOperatorAction("запрос помощи: настройка RuDesktop невозможна, в карточке клиента нет пароля RuDesktop", isError: true);
+                MessageBox.Show(
+                    "В карточке клиента не указан пароль RuDesktop.\nЗапрос помощи не отправлен.",
+                    "Запрос помощи",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return null;
+            }
+
+            return selectedClient;
+        }
+
+        private async Task<string> TryGetRuDesktopIdForHelpRequest()
+        {
+            try
+            {
+                string ruDesktopId = await _ruDesktopService.GetId();
+                if (!string.IsNullOrWhiteSpace(ruDesktopId))
+                    return ruDesktopId;
+            }
+            catch (Exception ex)
+            {
+                _logService.LogDebug($"RuDesktop ID для заявки помощи не получен: {ex.Message}");
+            }
+
+            string lastKnownId = _ruDesktopService.GetLastKnownId();
+            LogOperatorAction(
+                string.IsNullOrWhiteSpace(lastKnownId)
+                    ? "RuDesktop ID для заявки помощи не получен, заявка будет отправлена без ID"
+                    : "RuDesktop ID для заявки помощи взят из последнего сохраненного состояния",
+                isError: string.IsNullOrWhiteSpace(lastKnownId));
+
+            return lastKnownId;
+        }
+
         private HelpRequestData BuildHelpRequestData(
             HelpRequestDialogResult helpRequest,
             IPData selectedClient,
@@ -1199,6 +1301,7 @@ namespace HonestFlow
                 WindowsUser = Environment.UserName,
                 RuDesktopId = ValueOrDash(ruDesktopId),
                 HonestFlowVersion = System.Windows.Forms.Application.ProductVersion,
+                FiscalAddress = ValueOrDash(helpRequest.FiscalAddress),
                 ProblemType = ValueOrDash(helpRequest.ProblemType),
                 Message = ValueOrDash(helpRequest.Message),
                 CreatedAt = DateTimeOffset.Now.ToString("o")
@@ -1212,6 +1315,9 @@ namespace HonestFlow
 
         private static HelpRequestDialogResult ShowHelpRequestDialog()
         {
+            string fiscalAddress = KktFiscalAddressService.TryFindAddress();
+            bool addressFound = !string.IsNullOrWhiteSpace(fiscalAddress);
+
             using var form = new Form
             {
                 Text = "Запросить помощь",
@@ -1220,7 +1326,7 @@ namespace HonestFlow
                 MinimizeBox = false,
                 MaximizeBox = false,
                 ShowInTaskbar = false,
-                ClientSize = new Size(460, 310)
+                ClientSize = new Size(460, 390)
             };
 
             var typeLabel = new Label
@@ -1238,24 +1344,47 @@ namespace HonestFlow
             };
             problemTypeBox.Items.AddRange(new object[]
             {
-                "Не запускается",
-                "Ошибка в документе",
-                "Нужна настройка",
-                "Не работает обмен",
+                "Ошибка проверки кода маркировки",
+                "Ошибка ККТ",
+                "Ошибка Кассового ПО",
                 "Другое"
             });
             problemTypeBox.SelectedIndex = 0;
 
+            var addressLabel = new Label
+            {
+                Text = "Адрес точки:",
+                Location = new Point(16, 82),
+                AutoSize = true
+            };
+
+            var addressBox = new TextBox
+            {
+                Location = new Point(16, 106),
+                Width = 428,
+                Text = addressFound ? fiscalAddress : string.Empty
+            };
+
+            var addressHintLabel = new Label
+            {
+                Text = addressFound
+                    ? "Адрес найден в логе ККТ, проверьте его перед отправкой."
+                    : "Адрес не удалось найти в логе ККТ. Введите адрес вручную, пожалуйста.",
+                Location = new Point(16, 132),
+                Size = new Size(428, 34),
+                ForeColor = addressFound ? Color.FromArgb(71, 85, 105) : Color.FromArgb(180, 83, 9)
+            };
+
             var messageLabel = new Label
             {
                 Text = "Сообщение:",
-                Location = new Point(16, 82),
+                Location = new Point(16, 174),
                 AutoSize = true
             };
 
             var messageBox = new TextBox
             {
-                Location = new Point(16, 106),
+                Location = new Point(16, 198),
                 Width = 428,
                 Height = 140,
                 Multiline = true,
@@ -1266,7 +1395,7 @@ namespace HonestFlow
             {
                 Text = "Отправить",
                 DialogResult = DialogResult.OK,
-                Location = new Point(254, 264),
+                Location = new Point(254, 344),
                 Width = 90
             };
 
@@ -1274,12 +1403,15 @@ namespace HonestFlow
             {
                 Text = "Отмена",
                 DialogResult = DialogResult.Cancel,
-                Location = new Point(354, 264),
+                Location = new Point(354, 344),
                 Width = 90
             };
 
             form.Controls.Add(typeLabel);
             form.Controls.Add(problemTypeBox);
+            form.Controls.Add(addressLabel);
+            form.Controls.Add(addressBox);
+            form.Controls.Add(addressHintLabel);
             form.Controls.Add(messageLabel);
             form.Controls.Add(messageBox);
             form.Controls.Add(okButton);
@@ -1291,6 +1423,7 @@ namespace HonestFlow
                 ? new HelpRequestDialogResult
                 {
                     ProblemType = problemTypeBox.Text,
+                    FiscalAddress = addressBox.Text,
                     Message = messageBox.Text
                 }
                 : null;
@@ -1320,6 +1453,7 @@ namespace HonestFlow
         private sealed class HelpRequestDialogResult
         {
             public string ProblemType { get; set; }
+            public string FiscalAddress { get; set; }
             public string Message { get; set; }
         }
 

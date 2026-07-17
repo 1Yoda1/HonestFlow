@@ -109,7 +109,7 @@ namespace HonestFlow.Application.Diagnostics
                 AddMissing($"HonestFlow *.log: {logsFolder}");
 
             foreach (string file in files)
-                TryCopyRecentLog(file, Path.Combine(targetFolder, Path.GetFileName(file)), "HonestFlow", cutoff);
+                TryCopyKnownLog(file, Path.Combine(targetFolder, Path.GetFileName(file)), "HonestFlow");
         }
 
         private void CollectLmLogs(string tempRoot, DateTime cutoff)
@@ -175,9 +175,9 @@ namespace HonestFlow.Application.Diagnostics
 
         private void CollectAtolLog(string tempRoot, DateTime cutoff)
         {
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string atolLogPath = Path.Combine(appData, "ATOL", "drivers10", "logs", "fptr10.log");
+            string atolLogPath = KktFiscalAddressService.GetDefaultAtolLogPath();
             string targetFolder = Path.Combine(tempRoot, "Diagnostics", "KKT");
+            _fiscalAddress = KktFiscalAddressService.TryFindAddress(atolLogPath);
 
             TryCopyKnownLog(
                 atolLogPath,
@@ -456,28 +456,9 @@ namespace HonestFlow.Application.Diagnostics
 
         private void CaptureFiscalAddress(string line)
         {
-            string address = TryExtractFiscalAddress(line);
+            string address = KktFiscalAddressService.TryExtractFiscalAddress(line);
             if (!string.IsNullOrWhiteSpace(address))
                 _fiscalAddress = address;
-        }
-
-        private static string TryExtractFiscalAddress(string line)
-        {
-            if (string.IsNullOrWhiteSpace(line) ||
-                line.IndexOf("address", StringComparison.OrdinalIgnoreCase) < 0)
-            {
-                return null;
-            }
-
-            Match escaped = Regex.Match(line, @"\\\""address\\\""\s*:\s*\\\""(?<address>[^\\\""]+)\\\""");
-            if (escaped.Success)
-                return escaped.Groups["address"].Value.Trim();
-
-            Match plain = Regex.Match(line, @"""address""\s*:\s*""(?<address>[^""]+)""");
-            if (plain.Success)
-                return plain.Groups["address"].Value.Trim();
-
-            return null;
         }
 
         private void WriteSystemInfo(string tempRoot, DateTime collectedAt)

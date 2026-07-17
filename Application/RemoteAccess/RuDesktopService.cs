@@ -96,6 +96,11 @@ namespace HonestFlow.Application.RemoteAccess
             return LoadState().LastAuthorizedClient;
         }
 
+        public string GetLastKnownId()
+        {
+            return LoadState().LastKnownId;
+        }
+
         public async Task<bool> NeedsInitialPasswordSetup()
         {
             var status = await GetStatus();
