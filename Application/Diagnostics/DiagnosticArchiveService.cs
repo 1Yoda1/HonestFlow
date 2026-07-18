@@ -10,21 +10,32 @@ using System.Text.RegularExpressions;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Application.Core;
+using HonestFlow.Application.DeviceIdentity;
+using HonestFlow.Infrastructure.DeviceIdentity;
 using Microsoft.Win32;
+using System.Threading;
+using HonestFlow.Application.Licensing;
 
 namespace HonestFlow.Application.Diagnostics
 {
     public class DiagnosticArchiveService
     {
         private readonly ILogService _log;
+        private readonly IDeviceIdentityService _deviceIdentityService;
         private readonly List<string> _foundLogs = new();
         private readonly List<string> _missingLogs = new();
         private readonly List<string> _copyErrors = new();
         private string _fiscalAddress;
 
         public DiagnosticArchiveService(ILogService log)
+            : this(log, new FileDeviceIdentityService(new DpapiDeviceIdentityStateProtector()))
+        {
+        }
+
+        public DiagnosticArchiveService(ILogService log, IDeviceIdentityService deviceIdentityService)
         {
             _log = log ?? throw new ArgumentNullException(nameof(log));
+            _deviceIdentityService = deviceIdentityService ?? throw new ArgumentNullException(nameof(deviceIdentityService));
         }
 
         public string CreateArchive()
@@ -467,6 +478,12 @@ namespace HonestFlow.Application.Diagnostics
 
             sb.AppendLine("HonestFlow diagnostics");
             sb.AppendLine("======================");
+            DeviceIdentityResult deviceIdentity = _deviceIdentityService
+                .GetOrCreateAsync(CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            sb.AppendLine($"DeviceId HonestFlow: {(deviceIdentity.IsAvailable ? deviceIdentity.DeviceId : "unavailable")}");
+            AppendLicenseObservation(sb, LicenseObservationSnapshotStore.Instance.Current);
             sb.AppendLine($"Дата и время сбора диагностики: {collectedAt:yyyy-MM-dd HH:mm:ss}");
             sb.AppendLine($"Имя компьютера: {Environment.MachineName}");
             sb.AppendLine($"Пользователь Windows: {Environment.UserName}");
@@ -490,6 +507,32 @@ namespace HonestFlow.Application.Diagnostics
             string diagnosticsRoot = Path.Combine(tempRoot, "Diagnostics");
             Directory.CreateDirectory(diagnosticsRoot);
             File.WriteAllText(Path.Combine(diagnosticsRoot, "system_info.txt"), sb.ToString(), Encoding.UTF8);
+        }
+
+        private static void AppendLicenseObservation(
+            StringBuilder sb,
+            LicenseObservationSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                sb.AppendLine("License observation: not performed");
+                return;
+            }
+
+            sb.AppendLine($"License mode: {snapshot.EnforcementMode}");
+            sb.AppendLine($"License source: {snapshot.ManifestSource?.ToString() ?? "None"}");
+            sb.AppendLine($"License remote status: {snapshot.RemoteStatus}");
+            sb.AppendLine($"License cache status: {snapshot.CacheStatus?.ToString() ?? "None"}");
+            sb.AppendLine($"License decision: {snapshot.Decision}");
+            sb.AppendLine($"License technical code: {snapshot.TechnicalCode}");
+            sb.AppendLine($"License message: {snapshot.Message}");
+            sb.AppendLine($"License client id: {snapshot.ClientId ?? "n/a"}");
+            sb.AppendLine($"License device id: {snapshot.DeviceId ?? "n/a"}");
+            sb.AppendLine($"License observed at UTC: {snapshot.ObservedAtUtc:O}");
+            sb.AppendLine($"License last successful online check UTC: {snapshot.LastSuccessfulOnlineCheckUtc?.ToString("O") ?? "n/a"}");
+            sb.AppendLine($"License offline grace ends UTC: {snapshot.OfflineGraceEndsAtUtc?.ToString("O") ?? "n/a"}");
+            sb.AppendLine($"License minimum HonestFlow version: {snapshot.MinimumRequiredVersion?.ToString() ?? "n/a"}");
+            sb.AppendLine($"License features: {(snapshot.Features.Count == 0 ? "none" : string.Join(",", snapshot.Features))}");
         }
 
         private static void AppendServiceStatus(StringBuilder sb, string serviceName)

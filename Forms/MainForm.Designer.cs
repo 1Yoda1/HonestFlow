@@ -16,7 +16,9 @@
         {
             this.rootLayout = new System.Windows.Forms.TableLayoutPanel();
             this.panelHeader = new System.Windows.Forms.Panel();
+            this.headerLayout = new System.Windows.Forms.TableLayoutPanel();
             this.labelTitle = new System.Windows.Forms.Label();
+            this.lblAuthorizedClient = new System.Windows.Forms.Label();
             this.lblHeaderStatus = new System.Windows.Forms.Label();
 
             this.mainLayout = new System.Windows.Forms.TableLayoutPanel();
@@ -27,6 +29,7 @@
             this.label1 = new System.Windows.Forms.Label();
             this.textBox1 = new System.Windows.Forms.TextBox();
             this.button2 = new System.Windows.Forms.Button();
+            this.btnStartInstallation = new System.Windows.Forms.Button();
             this.btnCheckWithoutPassword = new System.Windows.Forms.Button();
             this.btnDiagnostics = new System.Windows.Forms.Button();
             this.btnReinstallComponents = new System.Windows.Forms.Button();
@@ -82,6 +85,7 @@
 
             this.rootLayout.SuspendLayout();
             this.panelHeader.SuspendLayout();
+            this.headerLayout.SuspendLayout();
             this.mainLayout.SuspendLayout();
             this.panelLeft.SuspendLayout();
             this.leftLayout.SuspendLayout();
@@ -106,21 +110,42 @@
 
             // panelHeader
             this.panelHeader.BackColor = System.Drawing.Color.FromArgb(20, 31, 51);
-            this.panelHeader.Controls.Add(this.labelTitle);
-            this.panelHeader.Controls.Add(this.lblHeaderStatus);
+            this.panelHeader.Controls.Add(this.headerLayout);
             this.panelHeader.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panelHeader.Padding = new System.Windows.Forms.Padding(22, 0, 22, 0);
 
+            // headerLayout
+            this.headerLayout.ColumnCount = 3;
+            this.headerLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 280F));
+            this.headerLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.headerLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 300F));
+            this.headerLayout.Controls.Add(this.labelTitle, 0, 0);
+            this.headerLayout.Controls.Add(this.lblAuthorizedClient, 1, 0);
+            this.headerLayout.Controls.Add(this.lblHeaderStatus, 2, 0);
+            this.headerLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.headerLayout.RowCount = 1;
+            this.headerLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+
             // labelTitle
-            this.labelTitle.Dock = System.Windows.Forms.DockStyle.Left;
+            this.labelTitle.Dock = System.Windows.Forms.DockStyle.Fill;
             this.labelTitle.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold);
             this.labelTitle.ForeColor = System.Drawing.Color.White;
             this.labelTitle.Size = new System.Drawing.Size(300, 64);
             this.labelTitle.Text = "HonestFlow";
             this.labelTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
+            // lblAuthorizedClient
+            this.lblAuthorizedClient.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lblAuthorizedClient.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
+            this.lblAuthorizedClient.ForeColor = System.Drawing.Color.FromArgb(203, 213, 225);
+            this.lblAuthorizedClient.Location = new System.Drawing.Point(300, 0);
+            this.lblAuthorizedClient.Name = "lblAuthorizedClient";
+            this.lblAuthorizedClient.Size = new System.Drawing.Size(270, 64);
+            this.lblAuthorizedClient.Text = "Продавец не авторизован";
+            this.lblAuthorizedClient.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+
             // lblHeaderStatus
-            this.lblHeaderStatus.Dock = System.Windows.Forms.DockStyle.Right;
+            this.lblHeaderStatus.Dock = System.Windows.Forms.DockStyle.Fill;
             this.lblHeaderStatus.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
             this.lblHeaderStatus.ForeColor = System.Drawing.Color.FromArgb(251, 191, 36);
             this.lblHeaderStatus.Size = new System.Drawing.Size(330, 64);
@@ -149,28 +174,27 @@
             this.leftLayout.ColumnCount = 1;
             this.leftLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.leftLayout.Controls.Add(this.lblAuthTitle, 0, 0);
-            this.leftLayout.Controls.Add(this.label1, 0, 1);
-            this.leftLayout.Controls.Add(this.textBox1, 0, 2);
-            this.leftLayout.Controls.Add(this.button2, 0, 3);
+            this.leftLayout.Controls.Add(this.button2, 0, 1);
+            this.leftLayout.Controls.Add(this.btnStartInstallation, 0, 2);
+            this.leftLayout.Controls.Add(this.btnMaintenance, 0, 3);
             this.leftLayout.Controls.Add(this.btnCheckWithoutPassword, 0, 4);
-            this.leftLayout.Controls.Add(this.btnOpenKktDriver, 0, 5);
-            this.leftLayout.Controls.Add(this.btnOpenEsm, 0, 6);
-            this.leftLayout.Controls.Add(this.btnDiagnostics, 0, 7);
-            this.leftLayout.Controls.Add(this.btnMaintenance, 0, 8);
-            this.leftLayout.Controls.Add(this.btnDetails, 0, 10);
+            this.leftLayout.Controls.Add(this.btnDiagnostics, 0, 5);
+            this.leftLayout.Controls.Add(this.btnOpenKktDriver, 0, 6);
+            this.leftLayout.Controls.Add(this.btnOpenEsm, 0, 7);
+            this.leftLayout.Controls.Add(this.btnDetails, 0, 8);
             this.leftLayout.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftLayout.RowCount = 12;
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
-            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 24F));
-            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 34F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
-            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 38F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 0F));
+            this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 0F));
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
 
             // lblAuthTitle
@@ -184,7 +208,7 @@
             this.label1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.label1.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
             this.label1.ForeColor = System.Drawing.Color.FromArgb(20, 31, 51);
-            this.label1.Text = "Пароль доступа";
+            this.label1.Text = "Пароль продавца";
             this.label1.TextAlign = System.Drawing.ContentAlignment.BottomLeft;
 
             // textBox1
@@ -194,8 +218,12 @@
             this.textBox1.UseSystemPasswordChar = true;
 
             // button2
-            ConfigureButton(this.button2, "Войти", true);
+            ConfigureButton(this.button2, "Войти как продавец", true);
             this.button2.Click += new System.EventHandler(this.Button2_Click);
+
+            // btnStartInstallation
+            ConfigureButton(this.btnStartInstallation, "🔒 Запустить установку", true);
+            this.btnStartInstallation.Visible = false;
 
             // btnCheckWithoutPassword
             ConfigureButton(this.btnCheckWithoutPassword, "Проверить без пароля", false);
@@ -338,6 +366,7 @@
 
             this.rootLayout.ResumeLayout(false);
             this.panelHeader.ResumeLayout(false);
+            this.headerLayout.ResumeLayout(false);
             this.mainLayout.ResumeLayout(false);
             this.panelLeft.ResumeLayout(false);
             this.leftLayout.ResumeLayout(false);
@@ -356,7 +385,9 @@
 
         private System.Windows.Forms.TableLayoutPanel rootLayout;
         private System.Windows.Forms.Panel panelHeader;
+        private System.Windows.Forms.TableLayoutPanel headerLayout;
         private System.Windows.Forms.Label labelTitle;
+        private System.Windows.Forms.Label lblAuthorizedClient;
         private System.Windows.Forms.Label lblHeaderStatus;
 
         private System.Windows.Forms.TableLayoutPanel mainLayout;
@@ -367,6 +398,7 @@
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.TextBox textBox1;
         private System.Windows.Forms.Button button2;
+        private System.Windows.Forms.Button btnStartInstallation;
         private System.Windows.Forms.Button btnCheckWithoutPassword;
         private System.Windows.Forms.Button btnDiagnostics;
         private System.Windows.Forms.Button btnReinstallComponents;

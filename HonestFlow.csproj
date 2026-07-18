@@ -11,19 +11,19 @@
 		<AssemblyName>HonestFlow</AssemblyName>
 		<RootNamespace>HonestFlow</RootNamespace>
 
-		<!-- Для одного EXE -->
-		<SelfContained>true</SelfContained>
+		<!-- Framework-dependent EXE: .NET Runtime устанавливается отдельно -->
+		<SelfContained>false</SelfContained>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
-		<PublishSingleFile>true</PublishSingleFile>
+		<PublishSingleFile>false</PublishSingleFile>
 		<PublishTrimmed>false</PublishTrimmed>
-		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+		<IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
 
 		<!-- Версии и информация -->
-		<AssemblyVersion>2.4.1.1</AssemblyVersion>
-		<FileVersion>2.4.1.1</FileVersion>
-		<Version>2.4.1.1</Version>
-		<InformationalVersion>2.4.1.1</InformationalVersion>
+		<AssemblyVersion>2.4.2.0</AssemblyVersion>
+		<FileVersion>2.4.2.0</FileVersion>
+		<Version>2.4.2.0</Version>
+		<InformationalVersion>2.4.2.0</InformationalVersion>
 		<Authors>Pavel Shadrov</Authors>
 		<Company>OOO "Morkovka"</Company>
 		<Product>Honest Flow</Product>
@@ -37,8 +37,14 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <Compile Remove="HonestFlow.Tests\**\*.cs" />
+	  <Compile Remove="HonestFlow.LicenseSigning\**\*.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 		<PackageReference Include="Newtonsoft.Json.Bson" Version="1.0.3" />
+		<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="6.0.0" />
 	</ItemGroup>
 
 </Project>

@@ -8,15 +8,20 @@ using HonestFlow.Application.Diagnostics;
 using HonestFlow.Application.Installation;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Application.Lm;
+using HonestFlow.Application.Licensing;
 using HonestFlow.Application.PointStatus;
 using HonestFlow.Application.RemoteAccess;
+using HonestFlow.Application.Security;
 using HonestFlow.Application.Ui;
+using HonestFlow.Infrastructure.Licensing;
+using HonestFlow.Models.Licensing;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -46,6 +51,13 @@ namespace HonestFlow
         private bool _statusRefreshRunning;
         private bool _serviceActionRunning;
         private string _longOperationName;
+        private LicenseObservationSnapshot _lastPresentedLicenseSnapshot;
+        private readonly ILicenseObservationSnapshotStore _licenseSnapshotStore;
+        private readonly ILicenseAccessPolicy _licenseAccessPolicy;
+        private readonly ToolTip _licenseToolTip = new();
+        private readonly DeviceRegistrationRequestService _deviceRegistrationRequestService = new();
+        private readonly DeviceRegistrationCoordinator _deviceRegistrationCoordinator;
+        private readonly IEngineerAccessService _engineerAccessService;
 
         private static readonly Color StatusGreen = Color.FromArgb(34, 197, 94);
         private static readonly Color StatusYellow = Color.FromArgb(251, 191, 36);
@@ -79,6 +91,16 @@ namespace HonestFlow
             _serviceControlService = new WindowsServiceControlService();
             _externalApplicationLauncher = new ExternalApplicationLauncher();
             _windowIconService = new WindowIconService(_logService);
+            _deviceRegistrationCoordinator = new DeviceRegistrationCoordinator(
+                _deviceRegistrationRequestService,
+                new SmtpDeviceRegistrationRequestSender(),
+                new DpapiDeviceRegistrationDeliveryStateStore());
+            _engineerAccessService = new EngineerAccessService();
+            _licenseSnapshotStore = LicenseObservationSnapshotStore.Instance;
+            LicenseEnforcementMode licenseMode = LicenseRuntimeConfiguration.FromEnvironment().EnforcementMode;
+            _licenseAccessPolicy = new LicenseAccessPolicy(licenseMode, _licenseSnapshotStore);
+            _licenseSnapshotStore.SnapshotChanged += LicenseSnapshotChanged;
+            FormClosed += (_, _) => _licenseSnapshotStore.SnapshotChanged -= LicenseSnapshotChanged;
 
             startup ??= new ApplicationStartupService(_logService, _progressService, _dialogService).Start();
             _useRemoteConfigMode = startup.UseRemoteConfigMode;
@@ -91,6 +113,7 @@ namespace HonestFlow
 
             InitializeUiState();
             WireUiEvents();
+            ApplyLicenseAccessToUi();
             _windowIconService.ApplyExecutableIcon(this);
         }
 
@@ -170,10 +193,21 @@ namespace HonestFlow
 
             textBox1.Clear();
             textBox1.UseSystemPasswordChar = true;
-            button2.Text = "Войти";
+            textBox1.Visible = false;
+            label1.Visible = false;
+            lblAuthTitle.Text = "Доступ к точке";
+            label1.Text = "Пароль продавца";
+            button2.Text = "Войти как продавец";
+            button2.Visible = true;
+            leftLayout.RowStyles[1].Height = 40;
+            leftLayout.RowStyles[2].Height = 0;
+            leftLayout.RowStyles[3].Height = 0;
+            btnStartInstallation.Visible = false;
+            btnMaintenance.Visible = false;
 
             lblStatus.Text = "Ожидание запуска проверки";
             lblHeaderStatus.Text = "● Ожидание проверки";
+            lblAuthorizedClient.Text = "Продавец не авторизован";
             lblCloudNode.Text = "Связь с облаком";
             SetNodeChecking();
         }
@@ -192,6 +226,7 @@ namespace HonestFlow
             btnReinstallComponents.Click += BtnReinstallComponents_Click;
             btnRestoreLmDatabase.Click += BtnRestoreLmDatabase_Click;
             btnMaintenance.Click += BtnMaintenance_Click;
+            btnStartInstallation.Click += BtnStartInstallation_Click;
 
             btnOpenKktDriver.Click += BtnOpenKktDriver_Click;
             btnOpenEsm.Click += BtnOpenEsm_Click;
@@ -201,8 +236,8 @@ namespace HonestFlow
 
         private async void MainForm_Shown(object sender, EventArgs e)
         {
+            await PromptSellerLoginAsync();
             await RefreshPointStatusAsync();
-            await OfferStartupRuDesktopSetupIfNeeded();
         }
 
         private void BtnOpenKktDriver_Click(object sender, EventArgs e)
@@ -218,6 +253,9 @@ namespace HonestFlow
         private void OpenExternalApplication(Action open, string title)
         {
             LogOperatorAction($"открытие внешнего приложения: {title}");
+
+            if (!EnsureLicenseAccess(LicenseFeature.ManualTools, $"открытие {title}"))
+                return;
 
             if (!EnsureNoLongOperation($"открытие {title}"))
                 return;
@@ -254,9 +292,18 @@ namespace HonestFlow
 
         private async void Button2_Click(object sender, EventArgs e)
         {
+            await PromptSellerLoginAsync();
+        }
+
+        private async Task PromptSellerLoginAsync()
+        {
             if (_selectedIP != null)
+                return;
+
+            using var loginForm = new SellerLoginForm();
+            if (loginForm.ShowDialog(this) != DialogResult.OK)
             {
-                await StartInstallationForAuthorizedUser();
+                lblStatus.Text = "Вход продавца не выполнен. Доступен диагностический режим.";
                 return;
             }
 
@@ -265,28 +312,56 @@ namespace HonestFlow
             if (!EnsureNoLongOperation("вход"))
                 return;
 
-            string enteredPassword = textBox1.Text;
+            string enteredPassword = loginForm.Password;
 
-            if (string.IsNullOrWhiteSpace(enteredPassword))
-            {
-                LogOperatorAction("вход отменен: пароль не введен", isError: true);
-                MessageBox.Show("Введите пароль!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                textBox1.Focus();
-                return;
-            }
-
-            var selectedIP = _authService.Authenticate(enteredPassword);
+            LicenseAuthenticationResult authentication = await AuthenticateWithLicenseAsync(enteredPassword);
+            var selectedIP = authentication.Client;
             if (selectedIP == null)
             {
                 LogOperatorAction("вход отклонен: неверный пароль", isError: true);
                 MessageBox.Show("Неверный пароль!\nДоступ запрещен.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                textBox1.Clear();
-                textBox1.Focus();
                 return;
             }
 
-            MessageBox.Show($"Добро пожаловать, {selectedIP.Name}!", "Успешный вход", MessageBoxButtons.OK, MessageBoxIcon.Information);
             ApplyAuthorizedClient(selectedIP);
+        }
+
+        private async void BtnStartInstallation_Click(object sender, EventArgs e)
+        {
+            await StartInstallationForAuthorizedUser();
+        }
+
+        private async Task<LicenseAuthenticationResult> AuthenticateWithLicenseAsync(string password)
+        {
+            if (_authService is not ILicenseAuthenticatingAuthService licenseAuth)
+            {
+                IPData client = _authService.Authenticate(password);
+                return new LicenseAuthenticationResult(client, _licenseSnapshotStore.Current);
+            }
+
+            using var progressForm = new LicenseCheckProgressForm();
+            var progress = new Progress<LicenseAuthenticationProgress>(progressForm.Report);
+            progressForm.Show(this);
+            progressForm.BringToFront();
+
+            try
+            {
+                LicenseAuthenticationResult result = await licenseAuth.AuthenticateAsync(
+                    password,
+                    progress,
+                    CancellationToken.None);
+                if (result.Client != null)
+                {
+                    progressForm.Complete(result);
+                    await Task.Delay(650);
+                }
+
+                return result;
+            }
+            finally
+            {
+                progressForm.Close();
+            }
         }
 
         private async Task StartInstallationForAuthorizedUser()
@@ -314,7 +389,10 @@ namespace HonestFlow
                 return;
             }
 
-            if (!TryBeginLongOperation("проверка и установка компонентов"))
+            if (!TryBeginLongOperation(
+                "проверка и установка компонентов",
+                LicenseFeature.Install,
+                requiresEngineerAccess: true))
                 return;
 
             progressBar.Visible = true;
@@ -349,7 +427,7 @@ namespace HonestFlow
         {
             LogOperatorAction("нажата кнопка сбора диагностики");
 
-            if (!TryBeginLongOperation("сбор диагностики"))
+            if (!TryBeginLongOperation("сбор диагностики", LicenseFeature.Diagnostics))
                 return;
 
             DiagnosticArchiveInfo archiveInfo = null;
@@ -389,6 +467,12 @@ namespace HonestFlow
 
                     lblStatus.Text = "Архив диагностики собран";
                     progressBar.Value = 100;
+                    return;
+                }
+
+                if (!EnsureLicenseAccess(LicenseFeature.SendLogs, "отправка диагностики"))
+                {
+                    lblStatus.Text = "Архив диагностики собран локально";
                     return;
                 }
 
@@ -442,6 +526,12 @@ namespace HonestFlow
         {
             LogOperatorAction("открыто меню обслуживания точки");
 
+            if (!EnsureLicenseAccess(LicenseFeature.Repair, "открытие меню обслуживания"))
+                return;
+
+            if (!EnsureEngineerAccess("открытие меню обслуживания"))
+                return;
+
             var action = ShowMaintenanceActionDialog();
             if (action == null)
             {
@@ -488,6 +578,9 @@ namespace HonestFlow
                 return;
             }
 
+            if (!EnsureEngineerAccess("ручная переустановка компонентов"))
+                return;
+
             var components = ShowComponentSelectionDialog();
             if (components == null || components.Count == 0)
             {
@@ -510,7 +603,10 @@ namespace HonestFlow
                 return;
             }
 
-            if (!TryBeginLongOperation("ручная переустановка компонентов"))
+            if (!TryBeginLongOperation(
+                "ручная переустановка компонентов",
+                LicenseFeature.Repair,
+                requiresEngineerAccess: true))
                 return;
 
             try
@@ -572,7 +668,10 @@ namespace HonestFlow
                 return;
             }
 
-            if (!TryBeginLongOperation("восстановление базы ЛМ ЧЗ"))
+            if (!TryBeginLongOperation(
+                "восстановление базы ЛМ ЧЗ",
+                LicenseFeature.Repair,
+                requiresEngineerAccess: true))
                 return;
 
             try
@@ -894,6 +993,8 @@ namespace HonestFlow
         private async void BtnRefreshStatus_Click(object sender, EventArgs e)
         {
             LogOperatorAction("запрошено ручное обновление статусов точки");
+            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "обновление статусов"))
+                return;
             await RefreshPointStatusAsync();
         }
 
@@ -949,7 +1050,7 @@ namespace HonestFlow
                 }
             }
 
-            if (!TryBeginLongOperation("управление службами"))
+            if (!TryBeginLongOperation("управление службами", LicenseFeature.AutoFix))
                 return;
 
             try
@@ -991,6 +1092,9 @@ namespace HonestFlow
 
         private async Task RefreshPointStatusAsync(bool allowDuringLongOperation = false)
         {
+            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "проверка состояния точки"))
+                return;
+
             if (!allowDuringLongOperation && IsLongOperationRunning)
             {
                 LogOperatorAction($"обновление статусов пропущено: выполняется операция \"{_longOperationName}\"");
@@ -1051,6 +1155,7 @@ namespace HonestFlow
             {
                 btnCheckWithoutPassword.Enabled = !IsLongOperationRunning;
                 _statusRefreshRunning = false;
+                ApplyLicenseAccessToUi();
             }
         }
 
@@ -1118,6 +1223,9 @@ namespace HonestFlow
 
         private void ShowNodeDetails_Click(object sender, EventArgs e)
         {
+            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "просмотр состояния точки"))
+                return;
+
             if (sender is Button button && button.Tag is NodeStatus status)
             {
                 LogOperatorAction($"открыты детали состояния: {status.ShortText}");
@@ -1128,6 +1236,9 @@ namespace HonestFlow
         private async void BtnRequestHelp_Click(object sender, EventArgs e)
         {
             LogOperatorAction("нажата кнопка запроса помощи");
+
+            if (!EnsureLicenseAccess(LicenseFeature.SendLogs, "запрос помощи"))
+                return;
 
             if (!EnsureNoLongOperation("запрос помощи"))
                 return;
@@ -1179,6 +1290,7 @@ namespace HonestFlow
             finally
             {
                 btnRuDesktopAction.Enabled = true;
+                ApplyLicenseAccessToUi();
             }
         }
 
@@ -1467,6 +1579,9 @@ namespace HonestFlow
         {
             LogOperatorAction("открытие журнала выполнения");
 
+            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "открытие журнала"))
+                return;
+
             try
             {
                 string logPath = Logger.GetLogPath();
@@ -1515,13 +1630,28 @@ namespace HonestFlow
             _selectedIP = selectedIP;
             textBox1.Clear();
             textBox1.Enabled = false;
-            button2.Text = "Запустить";
+            button2.Enabled = false;
+            button2.Visible = false;
+            leftLayout.RowStyles[1].Height = 0;
+            leftLayout.RowStyles[2].Height = 40;
+            leftLayout.RowStyles[3].Height = 40;
+            btnStartInstallation.Text = selectedIP.EngineerAccess == null
+                ? "Запустить установку"
+                : "🔒 Запустить установку";
+            btnStartInstallation.Visible = true;
+            btnMaintenance.Visible = true;
+            btnMaintenance.Text = selectedIP.EngineerAccess == null
+                ? "Обслуживание точки"
+                : "🔒 Обслуживание точки";
             btnDetails.Visible = true;
-            lblStatus.Text = "Вход выполнен. Можно запускать проверку.";
+            lblStatus.Text = "Лицензия проверена. Активен режим продавца.";
+            lblAuthorizedClient.Text = "Авторизован: " + selectedIP.Name;
 
             _logService.LogUser($"Пользователь: {selectedIP.Name}");
             _logService.LogDebug($"Авторизован: {selectedIP.Name}, ИНН: {selectedIP.Inn}, Разрядность: {selectedIP.Architecture}");
             _ruDesktopService.SaveLastAuthorizedClient(selectedIP);
+            ApplyLicenseAccessToUi();
+            HandleLicenseSnapshot(_licenseSnapshotStore.Current);
         }
 
         private async Task OfferStartupRuDesktopSetupIfNeeded()
@@ -1645,7 +1775,7 @@ namespace HonestFlow
 
         private async Task ConfigureRuDesktopPasswordFromClient(IPData selectedIP)
         {
-            if (!TryBeginLongOperation("настройка RuDesktop"))
+            if (!TryBeginLongOperation("настройка RuDesktop", LicenseFeature.ManualTools))
                 return;
 
             try
@@ -1736,14 +1866,131 @@ namespace HonestFlow
             return false;
         }
 
-        private bool TryBeginLongOperation(string operationName)
+        private bool TryBeginLongOperation(
+            string operationName,
+            LicenseFeature? requiredFeature = null,
+            bool requiresEngineerAccess = false)
         {
+            if (requiredFeature.HasValue && !EnsureLicenseAccess(requiredFeature.Value, operationName))
+                return false;
+
+            if (requiresEngineerAccess && !EnsureEngineerAccess(operationName))
+                return false;
+
             if (!EnsureNoLongOperation(operationName))
                 return false;
 
             _longOperationName = operationName;
             SetLongOperationControlsEnabled(false);
             return true;
+        }
+
+        private bool EnsureEngineerAccess(string operationName)
+        {
+            EngineerAccessResult access = _engineerAccessService.CheckAccess(_selectedIP);
+            if (access.IsAllowed)
+            {
+                if (access.TechnicalCode == "ENGINEER_PASSWORD_NOT_CONFIGURED_LEGACY_ALLOWED")
+                {
+                    Logger.Warning(
+                        $"Event=EngineerAccessLegacyAllowed Operation={operationName}",
+                        nameof(MainForm));
+                }
+                return true;
+            }
+
+            if (!access.PasswordRequired)
+            {
+                LogEngineerAccessDenied(operationName, access);
+                return false;
+            }
+
+            string password = ShowEngineerPasswordDialog(operationName);
+            if (password == null)
+                return false;
+
+            access = _engineerAccessService.Unlock(_selectedIP, password);
+            if (!access.IsAllowed)
+            {
+                LogEngineerAccessDenied(operationName, access);
+                return false;
+            }
+
+            Logger.Info(
+                $"Event=EngineerAccessGranted TechnicalCode={access.TechnicalCode}",
+                nameof(MainForm));
+            ApplyLicenseAccessToUi();
+            Logger.Info(
+                $"Event=EngineerUiRefreshed InstallEnabled={btnStartInstallation.Enabled} " +
+                $"MaintenanceEnabled={btnMaintenance.Enabled}",
+                nameof(MainForm));
+            return true;
+        }
+
+        private void LogEngineerAccessDenied(string operationName, EngineerAccessResult access)
+        {
+            Logger.Warning(
+                $"Event=EngineerAccessDenied TechnicalCode={access.TechnicalCode}",
+                nameof(MainForm));
+            LogOperatorAction(
+                $"{operationName} отклонено инженерной политикой (код: {access.TechnicalCode})",
+                isError: true);
+            MessageBox.Show(
+                access.Message,
+                "Инженерный доступ",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+
+        private string ShowEngineerPasswordDialog(string operationName)
+        {
+            using var form = new Form
+            {
+                Text = "Режим инженера",
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ClientSize = new Size(430, 180)
+            };
+            var description = new Label
+            {
+                Left = 20,
+                Top = 18,
+                Width = 390,
+                Height = 45,
+                Text = "Операция: " + operationName + "\nВведите пароль инженера."
+            };
+            var passwordBox = new TextBox
+            {
+                Left = 20,
+                Top = 72,
+                Width = 390,
+                UseSystemPasswordChar = true
+            };
+            var ok = new Button
+            {
+                Left = 230,
+                Top = 122,
+                Width = 85,
+                Height = 32,
+                Text = "Открыть",
+                DialogResult = DialogResult.OK
+            };
+            var cancel = new Button
+            {
+                Left = 325,
+                Top = 122,
+                Width = 85,
+                Height = 32,
+                Text = "Отмена",
+                DialogResult = DialogResult.Cancel
+            };
+            form.Controls.AddRange(new Control[] { description, passwordBox, ok, cancel });
+            form.AcceptButton = ok;
+            form.CancelButton = cancel;
+            form.Shown += (_, _) => passwordBox.Focus();
+            return form.ShowDialog(this) == DialogResult.OK ? passwordBox.Text : null;
         }
 
         private void EndLongOperation()
@@ -1757,7 +2004,8 @@ namespace HonestFlow
             bool authEnabled = enabled && _selectedIP == null;
 
             textBox1.Enabled = authEnabled;
-            button2.Enabled = enabled;
+            button2.Enabled = authEnabled;
+            btnStartInstallation.Enabled = enabled;
             btnCheckWithoutPassword.Enabled = enabled;
             btnDiagnostics.Enabled = enabled;
             btnMaintenance.Enabled = enabled;
@@ -1767,6 +2015,9 @@ namespace HonestFlow
             btnOpenEsm.Enabled = enabled;
 
             SetNodeActionButtonsEnabled(enabled);
+
+            if (enabled)
+                ApplyLicenseAccessToUi();
         }
 
         private void SetNodeActionButtonsEnabled(bool enabled)
@@ -1778,6 +2029,219 @@ namespace HonestFlow
             btnCloudAction.Enabled = enabled;
             btnRuDesktopAction.Enabled = enabled;
         }
+
+        private bool EnsureLicenseAccess(LicenseFeature feature, string operationName)
+        {
+            LicenseAccessResult access = _licenseAccessPolicy.Check(feature);
+            if (access.IsAllowed)
+                return true;
+
+            Logger.Warning(
+                $"Event=LicenseOperationDenied Feature={feature} TechnicalCode={access.TechnicalCode}",
+                nameof(MainForm));
+            LogOperatorAction($"{operationName} заблокировано лицензией (код: {access.TechnicalCode})", isError: true);
+            MessageBox.Show(
+                access.Message,
+                "Функция недоступна",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return false;
+        }
+
+        private void ApplyLicenseAccessToUi()
+        {
+            if (IsDisposed || IsLongOperationRunning)
+                return;
+
+            SetFeatureAvailability(btnDiagnostics, LicenseFeature.Diagnostics);
+            SetFeatureAvailability(btnCheckWithoutPassword, LicenseFeature.Diagnostics);
+            SetFeatureAvailability(btnDetails, LicenseFeature.Diagnostics);
+            SetFeatureAvailability(btnMaintenance, LicenseFeature.Repair);
+            SetFeatureAvailability(btnReinstallComponents, LicenseFeature.Repair);
+            SetFeatureAvailability(btnRestoreLmDatabase, LicenseFeature.Repair);
+            SetFeatureAvailability(btnOpenKktDriver, LicenseFeature.ManualTools);
+            SetFeatureAvailability(btnOpenEsm, LicenseFeature.ManualTools);
+
+            if (_selectedIP != null)
+                SetFeatureAvailability(btnStartInstallation, LicenseFeature.Install);
+
+            ApplyNodeLicenseAccess(btnLmAction);
+            ApplyNodeLicenseAccess(btnControllerAction);
+            ApplyNodeLicenseAccess(btnEsmAction);
+            ApplyNodeLicenseAccess(btnKktAction);
+            ApplyNodeLicenseAccess(btnCloudAction);
+            SetFeatureAvailability(btnRuDesktopAction, LicenseFeature.SendLogs);
+        }
+
+        private void ApplyNodeLicenseAccess(Button button)
+        {
+            LicenseFeature feature = button.Tag is NodeStatus status && status.CanManageServices
+                ? LicenseFeature.AutoFix
+                : LicenseFeature.Diagnostics;
+            SetFeatureAvailability(button, feature);
+        }
+
+        private void SetFeatureAvailability(Control control, LicenseFeature feature)
+        {
+            LicenseAccessResult access = _licenseAccessPolicy.Check(feature);
+            control.Enabled = access.IsAllowed;
+            _licenseToolTip.SetToolTip(control, access.IsAllowed ? string.Empty : access.Message);
+        }
+
+        private void LicenseSnapshotChanged(LicenseObservationSnapshot snapshot)
+        {
+            if (IsDisposed || Disposing)
+                return;
+
+            try
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => LicenseSnapshotChanged(snapshot)));
+                    return;
+                }
+
+                ApplyLicenseAccessToUi();
+                HandleLicenseSnapshot(snapshot);
+            }
+            catch (InvalidOperationException)
+            {
+                // Окно уже закрывается; решение сохранено в snapshot store и в журнале.
+            }
+        }
+
+        private void HandleLicenseSnapshot(LicenseObservationSnapshot snapshot)
+        {
+            if (snapshot?.Decision == LicenseDecision.DeviceNotRegistered && _selectedIP != null)
+                _ = SendDeviceRegistrationRequestSafelyAsync(snapshot);
+
+            PresentLicenseDecision(snapshot);
+        }
+
+        private void PresentLicenseDecision(LicenseObservationSnapshot snapshot)
+        {
+            if (snapshot == null ||
+                snapshot.EnforcementMode != LicenseEnforcementMode.Enforced ||
+                _selectedIP == null ||
+                ReferenceEquals(snapshot, _lastPresentedLicenseSnapshot))
+            {
+                return;
+            }
+
+            _lastPresentedLicenseSnapshot = snapshot;
+            switch (snapshot.Decision)
+            {
+                case LicenseDecision.Allowed:
+                    lblStatus.Text = "Лицензия проверена. Доступные функции применены.";
+                    return;
+
+                case LicenseDecision.DeviceNotRegistered:
+                    ShowUnregisteredDevice(snapshot);
+                    return;
+
+                case LicenseDecision.ClientDisabled:
+                    ShowLicenseWarning("Клиент отключён", "Лицензия клиента отключена. Доступны диагностика и отправка логов.");
+                    return;
+
+                case LicenseDecision.DeviceDisabled:
+                    ShowLicenseWarning("Устройство отключено", "Это устройство отключено в лицензии. Доступны диагностика и отправка логов.");
+                    return;
+
+                case LicenseDecision.VersionTooOld:
+                    string minimumVersion = snapshot.MinimumRequiredVersion?.ToString() ?? "указанной в лицензии";
+                    ShowLicenseWarning(
+                        "Требуется обязательное обновление",
+                        $"Текущая версия HonestFlow устарела. Обновите программу до версии {minimumVersion} или новее. До обновления доступны только диагностические функции.");
+                    return;
+
+                case LicenseDecision.OfflineGraceExpired:
+                    string lastCheck = snapshot.LastSuccessfulOnlineCheckUtc.HasValue
+                        ? snapshot.LastSuccessfulOnlineCheckUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")
+                        : "неизвестно";
+                    ShowLicenseWarning(
+                        "Истёк автономный период",
+                        $"Offline grace period истёк. Последняя успешная онлайн-проверка: {lastCheck}. Доступны диагностика и отправка логов.");
+                    return;
+
+                case LicenseDecision.InvalidLicenseState:
+                    ShowLicenseWarning(
+                        "Диагностический режим",
+                        "Состояние лицензии не удалось надёжно определить. HonestFlow продолжит работу в безопасном диагностическом режиме.");
+                    return;
+
+                default:
+                    ShowLicenseWarning(
+                        "Ограниченный режим",
+                        string.IsNullOrWhiteSpace(snapshot.Message)
+                            ? "Лицензия не разрешает изменяющие систему операции. Доступны диагностические функции."
+                            : snapshot.Message);
+                    return;
+            }
+        }
+
+        private void ShowUnregisteredDevice(LicenseObservationSnapshot snapshot)
+        {
+            string clientId = string.IsNullOrWhiteSpace(snapshot.ClientId) ? "не указан" : snapshot.ClientId;
+            string deviceId = string.IsNullOrWhiteSpace(snapshot.DeviceId) ? "не удалось получить" : snapshot.DeviceId;
+            DialogResult copy = MessageBox.Show(
+                $"Устройство не зарегистрировано в лицензии.\n\nClientId: {clientId}\nDeviceId: {deviceId}\n\nСкопировать заявку на регистрацию?",
+                "Устройство не зарегистрировано",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (copy == DialogResult.Yes &&
+                !string.IsNullOrWhiteSpace(snapshot.ClientId) &&
+                !string.IsNullOrWhiteSpace(snapshot.DeviceId))
+            {
+                string request = _deviceRegistrationRequestService.Create(
+                    snapshot.ClientId,
+                    snapshot.DeviceId,
+                    Environment.MachineName,
+                    GetHonestFlowVersion(),
+                    DateTimeOffset.UtcNow);
+                Clipboard.SetText(request);
+                lblStatus.Text = "Заявка на регистрацию устройства скопирована.";
+            }
+        }
+
+        private async Task SendDeviceRegistrationRequestSafelyAsync(
+            LicenseObservationSnapshot snapshot)
+        {
+            DeviceRegistrationDeliveryStatus status = await _deviceRegistrationCoordinator.TrySendAsync(
+                snapshot,
+                Environment.MachineName,
+                GetHonestFlowVersion(),
+                CancellationToken.None);
+
+            if (IsDisposed || Disposing || status != DeviceRegistrationDeliveryStatus.Sent)
+                return;
+
+            try
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(new Action(() => lblStatus.Text =
+                        "Заявка регистрации устройства автоматически отправлена."));
+                }
+                else
+                {
+                    lblStatus.Text = "Заявка регистрации устройства автоматически отправлена.";
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+
+        private void ShowLicenseWarning(string title, string message)
+        {
+            lblStatus.Visible = true;
+            lblStatus.Text = message;
+            MessageBox.Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        private static string GetHonestFlowVersion() =>
+            typeof(MainForm).Assembly.GetName().Version?.ToString() ?? "unknown";
 
         private void LogOperatorAction(string action, bool isError = false)
         {

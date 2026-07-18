@@ -362,3 +362,14 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 *.txt
+
+# HonestFlow local licensing and secret material
+*.pem
+*.key
+*.pfx
+*.p12
+*.dat
+licenses.json
+licenses.json.sig
+**/keys/
+**/secrets/

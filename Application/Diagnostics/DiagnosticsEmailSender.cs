@@ -1,5 +1,7 @@
 using HonestFlow.Application.Core;
 using HonestFlow.Application.RemoteAccess;
+using HonestFlow.Infrastructure.Configuration;
+using HonestFlow.Models;
 using System;
 using System.Net;
 using System.Net.Mail;
@@ -9,11 +11,6 @@ namespace HonestFlow.Application.Diagnostics
 {
     public sealed class DiagnosticsEmailSender
     {
-        private const string SmtpHost = "smtp.yandex.ru";
-        private const int SmtpPort = 587;
-        private const string SenderEmail = "sdsk@morkovka.tech";
-        private const string SenderPassword = "kppzdcwhpmwvryoh";
-        private const string RecipientEmail = "spi@morkovka.tech";
         public const int SendAttempts = 3;
 
         private readonly ILogService _log;
@@ -55,9 +52,12 @@ namespace HonestFlow.Application.Diagnostics
 
         private async Task Send(string archivePath, string fiscalAddress)
         {
+            SupportMailSettings settings = ConfigManager.LoadSupportMailSettings();
+            ValidateSettings(settings);
+
             using var message = new MailMessage();
-            message.From = new MailAddress(SenderEmail, "HonestFlow Diagnostics");
-            message.To.Add(RecipientEmail);
+            message.From = new MailAddress(settings.SenderEmail, "HonestFlow Diagnostics");
+            message.To.Add(settings.RecipientEmail);
             message.Subject = $"HonestFlow диагностика {Environment.MachineName} {DateTime.Now:yyyy-MM-dd HH:mm}";
             string ruDesktopId = await _ruDesktopService.GetId() ?? "не найден";
             message.Body =
@@ -69,15 +69,31 @@ namespace HonestFlow.Application.Diagnostics
                 $"Время: {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
             message.Attachments.Add(new Attachment(archivePath));
 
-            using var client = new SmtpClient(SmtpHost, SmtpPort)
+            using var client = new SmtpClient(settings.SmtpHost, settings.SmtpPort)
             {
-                EnableSsl = true,
-                Credentials = new NetworkCredential(SenderEmail, SenderPassword),
+                EnableSsl = settings.EnableSsl,
+                Credentials = new NetworkCredential(settings.SenderEmail, settings.SenderPassword),
                 DeliveryMethod = SmtpDeliveryMethod.Network,
                 Timeout = 30000
             };
 
             await client.SendMailAsync(message);
+        }
+
+        private static void ValidateSettings(SupportMailSettings settings)
+        {
+            if (settings == null)
+                throw new InvalidOperationException("Настройки почты поддержки недоступны.");
+
+            if (string.IsNullOrWhiteSpace(settings.SmtpHost) || settings.SmtpPort <= 0)
+                throw new InvalidOperationException("Некорректно настроен SMTP почты поддержки.");
+
+            if (string.IsNullOrWhiteSpace(settings.SenderEmail) ||
+                string.IsNullOrWhiteSpace(settings.SenderPassword) ||
+                string.IsNullOrWhiteSpace(settings.RecipientEmail))
+            {
+                throw new InvalidOperationException("Не заполнены реквизиты почты поддержки.");
+            }
         }
 
         private static string FormatAddress(string fiscalAddress)

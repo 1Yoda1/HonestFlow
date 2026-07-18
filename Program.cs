@@ -6,6 +6,9 @@ using HonestFlow.Application.Core;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Updates;
+using HonestFlow.Infrastructure.DeviceIdentity;
+using System.Threading;
+using HonestFlow.Infrastructure.Licensing;
 
 namespace HonestFlow
 {
@@ -39,6 +42,10 @@ namespace HonestFlow
                     Logger.Initialize();
                     Logger.Info("Application startup", nameof(Program));
 
+                    var deviceIdentityService = new FileDeviceIdentityService(
+                        new DpapiDeviceIdentityStateProtector());
+                    await deviceIdentityService.GetOrCreateAsync(CancellationToken.None);
+
                     startupProgress.SetProgress(8, "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u043c \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 HonestFlow...");
                     var updater = new SelfUpdateService(new WinFormsDialogService(_startupForm));
                     bool updateStarted = await updater.CheckDownloadAndRunUpdateIfNeeded();
@@ -57,6 +64,8 @@ namespace HonestFlow
                             startupProgress,
                             new WinFormsDialogService(_startupForm))
                         .Start());
+
+                    startup.AuthService = LicenseObservationBootstrap.WrapAuthService(startup.AuthService);
 
                     startupProgress.SetProgress(92, "\u041e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u043c \u0433\u043b\u0430\u0432\u043d\u043e\u0435 \u043e\u043a\u043d\u043e...");
                     var mainForm = new MainForm(startup);
