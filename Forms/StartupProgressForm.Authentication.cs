@@ -77,6 +77,14 @@ namespace HonestFlow
             _authenticationMessage.ForeColor = Color.FromArgb(22, 163, 74);
         }
 
+        public void ShowPreparationStatus(string message, bool isError)
+        {
+            _authenticationMessage.Text = message;
+            _authenticationMessage.ForeColor = isError
+                ? Color.FromArgb(220, 38, 38)
+                : Color.FromArgb(37, 99, 235);
+        }
+
         private void ConfigureAuthenticationPanel()
         {
             _authenticationPanel.SetBounds(22, 154, 416, 170);

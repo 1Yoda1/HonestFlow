@@ -11,6 +11,7 @@ using System.Threading;
 using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Application.Auth;
 using HonestFlow.Models;
+using HonestFlow.Application.Prerequisites;
 
 namespace HonestFlow
 {
@@ -71,6 +72,8 @@ namespace HonestFlow
 
                     startup.AuthorizedClient = await AuthenticateSellerAtStartupAsync(startup.AuthService);
                     startup.SellerAuthenticationHandled = true;
+                    if (startup.AuthorizedClient != null)
+                        await PrepareDotNet10Async(logService);
 
                     startupProgress.SetProgress(92, "\u041e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u043c \u0433\u043b\u0430\u0432\u043d\u043e\u0435 \u043e\u043a\u043d\u043e...");
                     var mainForm = new MainForm(startup);
@@ -148,6 +151,30 @@ namespace HonestFlow
                         errorMessage = "Не удалось проверить доступ. Повторите попытку.";
                     }
                 }
+            }
+
+            private async Task PrepareDotNet10Async(ILogService logService)
+            {
+                var installer = new DotNetDesktopRuntimeInstaller(logService);
+                var progress = new Progress<DotNetRuntimeInstallProgress>(value =>
+                {
+                    _startupForm.SetProgress(value.Percent, value.Message);
+                    _startupForm.ShowPreparationStatus(value.Message, isError: false);
+                });
+
+                DotNetRuntimeInstallResult result = await installer.EnsureInstalledAsync(
+                    progress,
+                    CancellationToken.None);
+                Logger.Info(
+                    $"Event=DotNet10Preparation Status={result.Status} " +
+                    $"ExitCode={result.ExitCode?.ToString() ?? "None"}",
+                    nameof(Program));
+
+                _startupForm.SetProgress(100, result.Message);
+                _startupForm.ShowPreparationStatus(result.Message, isError: !result.IsSuccess);
+
+                if (result.Status != DotNetRuntimeInstallStatus.AlreadyInstalled)
+                    await Task.Delay(result.IsSuccess ? 700 : 1800);
             }
         }
 
