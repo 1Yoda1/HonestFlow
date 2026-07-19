@@ -26,6 +26,7 @@ namespace HonestFlow.Application.Diagnostics
         private readonly List<string> _missingLogs = new();
         private readonly List<string> _copyErrors = new();
         private string _fiscalAddress;
+        private string _pointAddress;
 
         public DiagnosticArchiveService(ILogService log)
             : this(log, new FileDeviceIdentityService(new DpapiDeviceIdentityStateProtector()))
@@ -50,10 +51,18 @@ namespace HonestFlow.Application.Diagnostics
 
         public DiagnosticArchiveInfo CreateArchiveInfo(DiagnosticLogSelection selection)
         {
+            return CreateArchiveInfo(selection, null);
+        }
+
+        public DiagnosticArchiveInfo CreateArchiveInfo(
+            DiagnosticLogSelection selection,
+            string pointAddress)
+        {
             _foundLogs.Clear();
             _missingLogs.Clear();
             _copyErrors.Clear();
             _fiscalAddress = null;
+            _pointAddress = string.IsNullOrWhiteSpace(pointAddress) ? null : pointAddress.Trim();
             selection ??= DiagnosticLogSelection.Full();
 
             DateTime collectedAt = DateTime.Now;
@@ -93,7 +102,9 @@ namespace HonestFlow.Application.Diagnostics
                 ZipFile.CreateFromDirectory(tempRoot, archivePath, CompressionLevel.Optimal, false);
                 _log.LogUser($"Диагностический архив создан: {archivePath}");
 
-                return new DiagnosticArchiveInfo(archivePath, _fiscalAddress);
+                return new DiagnosticArchiveInfo(
+                    archivePath,
+                    _pointAddress ?? _fiscalAddress);
             }
             finally
             {
@@ -484,6 +495,7 @@ namespace HonestFlow.Application.Diagnostics
                 .GetResult();
             sb.AppendLine($"DeviceId HonestFlow: {(deviceIdentity.IsAvailable ? deviceIdentity.DeviceId : "unavailable")}");
             AppendLicenseObservation(sb, LicenseObservationSnapshotStore.Instance.Current);
+            sb.AppendLine($"Point address: {ValueOrFallback(_pointAddress ?? _fiscalAddress, "not specified")}");
             sb.AppendLine($"Дата и время сбора диагностики: {collectedAt:yyyy-MM-dd HH:mm:ss}");
             sb.AppendLine($"Имя компьютера: {Environment.MachineName}");
             sb.AppendLine($"Пользователь Windows: {Environment.UserName}");
@@ -528,6 +540,7 @@ namespace HonestFlow.Application.Diagnostics
             sb.AppendLine($"License message: {snapshot.Message}");
             sb.AppendLine($"License client id: {snapshot.ClientId ?? "n/a"}");
             sb.AppendLine($"License device id: {snapshot.DeviceId ?? "n/a"}");
+            sb.AppendLine($"License point address: {snapshot.PointAddress ?? "n/a"}");
             sb.AppendLine($"License observed at UTC: {snapshot.ObservedAtUtc:O}");
             sb.AppendLine($"License last successful online check UTC: {snapshot.LastSuccessfulOnlineCheckUtc?.ToString("O") ?? "n/a"}");
             sb.AppendLine($"License offline grace ends UTC: {snapshot.OfflineGraceEndsAtUtc?.ToString("O") ?? "n/a"}");

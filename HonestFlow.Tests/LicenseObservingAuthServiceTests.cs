@@ -51,12 +51,51 @@ namespace HonestFlow.Tests
             Assert.False(observer.WasCalled);
         }
 
+        [Fact]
+        public async Task RefreshLicenseAsync_ObservesExistingClientWithoutPasswordAuthentication()
+        {
+            var client = new IPData { ClientId = "client-1", Name = "Client" };
+            var snapshot = new LicenseObservationSnapshot
+            {
+                ClientId = client.ClientId,
+                Decision = LicenseDecision.Allowed
+            };
+            var observer = new StubObserver(snapshot);
+            var auth = new CountingAuth(client);
+            var service = new LicenseObservingAuthService(auth, observer);
+            var stages = new List<LicenseAuthenticationStage>();
+
+            LicenseObservationSnapshot result = await service.RefreshLicenseAsync(
+                client,
+                new InlineProgress(value => stages.Add(value.Stage)),
+                CancellationToken.None);
+
+            Assert.Same(snapshot, result);
+            Assert.True(observer.WasCalled);
+            Assert.Equal(0, auth.AuthenticateCalls);
+            Assert.Contains(LicenseAuthenticationStage.CheckingDeviceAndLicense, stages);
+            Assert.Contains(LicenseAuthenticationStage.Completed, stages);
+        }
+
         private sealed class StubAuth : IAuthService
         {
             private readonly IPData _client;
             public StubAuth(IPData client) => _client = client;
             public void LoadIpList() { }
             public IPData Authenticate(string password) => _client;
+        }
+
+        private sealed class CountingAuth : IAuthService
+        {
+            private readonly IPData _client;
+            public CountingAuth(IPData client) => _client = client;
+            public int AuthenticateCalls { get; private set; }
+            public void LoadIpList() { }
+            public IPData Authenticate(string password)
+            {
+                AuthenticateCalls++;
+                return _client;
+            }
         }
 
         private sealed class StubObserver : ILicenseObservationService

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure.Configuration;
 using Newtonsoft.Json.Linq;
@@ -17,9 +18,11 @@ namespace HonestFlow.Infrastructure.Downloads
         private Dictionary<string, (string Url, long Size)> _cachedAssets = null;
         private readonly object _cacheLock = new object();
 
-        public YandexDiskDownloader()
+        public YandexDiskDownloader(string cacheFolder = null)
         {
-            _cacheFolder = AppPaths.YandexDiskCacheFolder;
+            _cacheFolder = string.IsNullOrWhiteSpace(cacheFolder)
+                ? AppPaths.YandexDiskCacheFolder
+                : cacheFolder;
             _publicKey = ConfigManager.GetYandexPublicKey();
 
             if (!Directory.Exists(_cacheFolder))
@@ -73,7 +76,9 @@ namespace HonestFlow.Infrastructure.Downloads
             string downloadUrl,
             string destinationPath,
             IProgress<int> progress,
-            long expectedBytes)
+            long expectedBytes,
+            long maximumBytes = long.MaxValue,
+            CancellationToken cancellationToken = default)
         {
             string temporaryPath = destinationPath + ".download";
 
@@ -84,10 +89,16 @@ namespace HonestFlow.Infrastructure.Downloads
 
                 using var client = CreateClient(TimeSpan.FromMinutes(10));
 
-                using var response = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                using var response = await client.GetAsync(
+                    downloadUrl,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken);
                 response.EnsureSuccessStatusCode();
 
                 var totalBytes = response.Content.Headers.ContentLength ?? -1;
+                if (totalBytes > maximumBytes)
+                    throw new InvalidDataException($"Response is too large: {totalBytes} bytes.");
+
                 using var contentStream = await response.Content.ReadAsStreamAsync();
                 await using var fileStream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 8192, true);
 
@@ -95,10 +106,12 @@ namespace HonestFlow.Infrastructure.Downloads
                 long totalRead = 0;
                 int bytesRead;
 
-                while ((bytesRead = await contentStream.ReadAsync(buffer)) > 0)
+                while ((bytesRead = await contentStream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
                 {
                     await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead));
                     totalRead += bytesRead;
+                    if (totalRead > maximumBytes)
+                        throw new InvalidDataException($"Response exceeded {maximumBytes} bytes.");
 
                     if (totalBytes > 0 && progress != null)
                     {
@@ -146,18 +159,26 @@ namespace HonestFlow.Infrastructure.Downloads
             string destinationPath,
             IProgress<int> progress,
             long expectedBytes,
-            int maxRetries = 3)
+            int maxRetries = 3,
+            long maximumBytes = long.MaxValue,
+            CancellationToken cancellationToken = default)
         {
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
                 Logger.LogToFile($"Download attempt {attempt}/{maxRetries}: {Path.GetFileName(destinationPath)}");
 
-                bool success = await DownloadFile(downloadUrl, destinationPath, progress, expectedBytes);
+                bool success = await DownloadFile(
+                    downloadUrl,
+                    destinationPath,
+                    progress,
+                    expectedBytes,
+                    maximumBytes,
+                    cancellationToken);
                 if (success)
                     return true;
 
                 if (attempt < maxRetries)
-                    await Task.Delay(2000 * attempt);
+                    await Task.Delay(2000 * attempt, cancellationToken);
             }
 
             Logger.LogToFile($"Failed to download after {maxRetries} attempts: {Path.GetFileName(destinationPath)}", true);

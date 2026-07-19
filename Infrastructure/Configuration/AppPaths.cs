@@ -62,12 +62,16 @@ namespace HonestFlow.Infrastructure.Configuration
         public static string DeviceIdentityFolder => Path.Combine(ProgramDataFolder, "device-identity");
         public static string DeviceIdentityFile => Path.Combine(DeviceIdentityFolder, "device-identity.dpapi");
         public static string RuDesktopStateFile => Path.Combine(ProgramDataFolder, "rudesktop_state.json");
+        public static string RuDesktopInstallerCacheFolder => Path.Combine(ProgramDataFolder, "rudesktop-installer");
+        public static string RuDesktopInstallerLogFile => Path.Combine(LogsFolder, "rudesktop-msi-install.log");
+        public static string PointAddressFile => Path.Combine(ProgramDataFolder, "point-address.json");
 
         public static void EnsureRuntimeFolders()
         {
             Directory.CreateDirectory(ProgramDataFolder);
             Directory.CreateDirectory(LogsFolder);
             Directory.CreateDirectory(DiagnosticsFolder);
+            Directory.CreateDirectory(RuDesktopInstallerCacheFolder);
         }
     }
 

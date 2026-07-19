@@ -99,7 +99,8 @@ namespace HonestFlow.Application.Licensing
                     "LICENSE_DEVICE_DISABLED",
                     client,
                     null,
-                    minimumVersion);
+                    minimumVersion,
+                    device.Address);
             }
 
             if (context.CurrentHonestFlowVersion < minimumVersion)
@@ -110,7 +111,8 @@ namespace HonestFlow.Application.Licensing
                     "LICENSE_VERSION_TOO_OLD",
                     client,
                     null,
-                    minimumVersion);
+                    minimumVersion,
+                    device.Address);
             }
 
             if (nowUtc > manifest.ValidUntilUtc)
@@ -121,7 +123,8 @@ namespace HonestFlow.Application.Licensing
                     "LICENSE_MANIFEST_EXPIRED",
                     client,
                     GetOfflineGraceEnd(context, client),
-                    minimumVersion);
+                    minimumVersion,
+                    device.Address);
             }
 
             DateTimeOffset? graceEndUtc = null;
@@ -138,7 +141,8 @@ namespace HonestFlow.Application.Licensing
                         "LICENSE_OFFLINE_GRACE_EXPIRED",
                         client,
                         graceEndUtc,
-                        minimumVersion);
+                        minimumVersion,
+                        device.Address);
                 }
             }
 
@@ -148,7 +152,8 @@ namespace HonestFlow.Application.Licensing
                 "Лицензия действительна.",
                 "LICENSE_ALLOWED",
                 graceEndUtc,
-                minimumVersion);
+                minimumVersion,
+                device.Address);
         }
 
         private bool TryValidateContext(
@@ -198,7 +203,8 @@ namespace HonestFlow.Application.Licensing
             string technicalCode,
             ClientLicense client,
             DateTimeOffset? graceEndUtc,
-            Version minimumVersion)
+            Version minimumVersion,
+            string pointAddress = null)
         {
             return new LicenseDecisionResult(
                 decision,
@@ -206,7 +212,8 @@ namespace HonestFlow.Application.Licensing
                 message,
                 technicalCode,
                 graceEndUtc,
-                minimumVersion);
+                minimumVersion,
+                pointAddress);
         }
 
         private IReadOnlyCollection<LicenseFeature> GetDeniedFeatures(ClientLicense client)

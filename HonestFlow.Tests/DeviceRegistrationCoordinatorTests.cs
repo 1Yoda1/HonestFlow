@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Licensing;
+using Newtonsoft.Json;
 using Xunit;
 
 namespace HonestFlow.Tests
@@ -17,7 +18,7 @@ namespace HonestFlow.Tests
             LicenseObservationSnapshot snapshot = UnregisteredSnapshot();
 
             DeviceRegistrationDeliveryStatus first = await coordinator.TrySendAsync(
-                snapshot, "PC", "2.4.2.0", CancellationToken.None);
+                snapshot, "PC", "ул. Ленина, 10", "2.4.2.0", CancellationToken.None);
             DeviceRegistrationDeliveryStatus second = await coordinator.TrySendAsync(
                 snapshot, "PC", "2.4.2.0", CancellationToken.None);
 
@@ -26,6 +27,9 @@ namespace HonestFlow.Tests
             Assert.Equal(1, sender.SendCalls);
             Assert.Equal(1, state.MarkCalls);
             Assert.DoesNotContain("password", sender.LastRequest ?? string.Empty);
+            Assert.Equal(
+                "ул. Ленина, 10",
+                JsonConvert.DeserializeObject<DeviceRegistrationRequest>(sender.LastRequest).Address);
         }
 
         [Fact]

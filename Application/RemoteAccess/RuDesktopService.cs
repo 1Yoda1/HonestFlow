@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Core;
 using HonestFlow.Infrastructure;
@@ -19,6 +20,9 @@ namespace HonestFlow.Application.RemoteAccess
     {
         private const int CommandTimeoutSeconds = 15;
         private static readonly Regex IdRegex = new(@"\b\d{6,}\b", RegexOptions.Compiled);
+        private static readonly Regex ExecutablePathRegex = new(
+            "^(?:\"(?<path>[^\"]+\\.exe)\"|(?<path>.+?\\.exe))(?:\\s|$)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly ILogService _log;
 
@@ -55,6 +59,12 @@ namespace HonestFlow.Application.RemoteAccess
             }
 
             var state = LoadState();
+            if (state.SuppressPasswordSetupPrompt)
+            {
+                _log.LogDebug("RuDesktop: предложение настройки пропущено локальным выбором пользователя");
+                return false;
+            }
+
             string passwordFingerprint = GetPasswordFingerprint(selectedIP.RuDesktop.Password);
             if (state.PasswordConfiguredByHonestFlow &&
                 string.Equals(state.PasswordFingerprint, passwordFingerprint, StringComparison.OrdinalIgnoreCase))
@@ -101,6 +111,58 @@ namespace HonestFlow.Application.RemoteAccess
             return LoadState().LastKnownId;
         }
 
+        public void ResetLocalConfigurationAfterInstallation()
+        {
+            var state = LoadState();
+            ResetInstallationDependentState(state);
+            SaveState(state);
+            _log.LogDebug("RuDesktop: локальные признаки прежней установки сброшены после MSI");
+        }
+
+        public static void ResetInstallationDependentState(RuDesktopLocalState state)
+        {
+            if (state == null)
+                throw new ArgumentNullException(nameof(state));
+
+            state.LastKnownId = null;
+            state.PasswordConfiguredByHonestFlow = false;
+            state.PasswordFingerprint = null;
+            state.PasswordConfiguredAt = null;
+            state.SuppressPasswordSetupPrompt = false;
+        }
+
+        public async Task<RuDesktopStatus> WaitForReady(
+            TimeSpan timeout,
+            TimeSpan pollInterval,
+            CancellationToken cancellationToken = default)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(timeout);
+            RuDesktopStatus lastStatus = null;
+
+            do
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                lastStatus = await GetStatus();
+                if (lastStatus.InstallationState == RuDesktopInstallationState.Ready &&
+                    !string.IsNullOrWhiteSpace(lastStatus.Id))
+                {
+                    return lastStatus;
+                }
+
+                if (DateTime.UtcNow >= deadline)
+                    break;
+
+                await Task.Delay(pollInterval, cancellationToken);
+            }
+            while (true);
+
+            return lastStatus ?? new RuDesktopStatus
+            {
+                InstallationState = RuDesktopInstallationState.CheckFailed,
+                ErrorMessage = "Состояние RuDesktop не удалось получить."
+            };
+        }
+
         public async Task<bool> NeedsInitialPasswordSetup()
         {
             var status = await GetStatus();
@@ -141,21 +203,56 @@ namespace HonestFlow.Application.RemoteAccess
                 status.IsInstalled = !string.IsNullOrWhiteSpace(exePath);
 
                 var service = GetServiceStatus();
+                if (!string.IsNullOrWhiteSpace(service.ErrorMessage))
+                    throw new InvalidOperationException(service.ErrorMessage);
+
                 status.ServiceInstalled = service.Installed;
                 status.ServiceRunning = service.Running;
+                status.InstallationState = ClassifyInstallationState(
+                    status.IsInstalled,
+                    status.ServiceInstalled,
+                    status.ServiceRunning);
 
                 if (status.IsInstalled)
                     status.Id = await GetId();
 
                 var state = LoadState();
+                if (status.InstallationState == RuDesktopInstallationState.NotInstalled &&
+                    (!string.IsNullOrWhiteSpace(state.LastKnownId) ||
+                     state.PasswordConfiguredByHonestFlow ||
+                     !string.IsNullOrWhiteSpace(state.PasswordFingerprint) ||
+                     state.PasswordConfiguredAt.HasValue ||
+                     state.SuppressPasswordSetupPrompt))
+                {
+                    ResetInstallationDependentState(state);
+                    SaveState(state);
+                }
+
                 status.PasswordConfiguredByHonestFlow = state.PasswordConfiguredByHonestFlow;
             }
             catch (Exception ex)
             {
+                status.InstallationState = RuDesktopInstallationState.CheckFailed;
                 status.ErrorMessage = ex.Message;
             }
 
             return status;
+        }
+
+        public static RuDesktopInstallationState ClassifyInstallationState(
+            bool executableFound,
+            bool serviceInstalled,
+            bool serviceRunning)
+        {
+            if (!executableFound && !serviceInstalled)
+                return RuDesktopInstallationState.NotInstalled;
+
+            if (!executableFound || !serviceInstalled)
+                return RuDesktopInstallationState.Damaged;
+
+            return serviceRunning
+                ? RuDesktopInstallationState.Ready
+                : RuDesktopInstallationState.ServiceStopped;
         }
 
         public async Task<RuDesktopSetupResult> ConfigurePermanentPassword(string password)
@@ -240,6 +337,10 @@ namespace HonestFlow.Application.RemoteAccess
 
         private static string FindExecutablePath()
         {
+            string servicePath = FindExecutablePathFromServiceRegistry();
+            if (!string.IsNullOrWhiteSpace(servicePath))
+                return servicePath;
+
             string registryPath = FindExecutablePathInRegistry();
             if (!string.IsNullOrWhiteSpace(registryPath))
                 return registryPath;
@@ -288,7 +389,28 @@ namespace HonestFlow.Application.RemoteAccess
             return null;
         }
 
-        private static (bool Installed, bool Running) GetServiceStatus()
+        private static string FindExecutablePathFromServiceRegistry()
+        {
+            using var serviceKey = Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Services\RuDesktop");
+            string imagePath = serviceKey?.GetValue("ImagePath") as string;
+            string executablePath = TryExtractExecutablePath(imagePath);
+            return !string.IsNullOrWhiteSpace(executablePath) && File.Exists(executablePath)
+                ? executablePath
+                : null;
+        }
+
+        private static string TryExtractExecutablePath(string commandLine)
+        {
+            if (string.IsNullOrWhiteSpace(commandLine))
+                return null;
+
+            string expanded = Environment.ExpandEnvironmentVariables(commandLine.Trim());
+            Match match = ExecutablePathRegex.Match(expanded);
+            return match.Success ? match.Groups["path"].Value.Trim() : null;
+        }
+
+        private static (bool Installed, bool Running, string ErrorMessage) GetServiceStatus()
         {
             try
             {
@@ -308,24 +430,41 @@ namespace HonestFlow.Application.RemoteAccess
 
                 using var process = Process.Start(startInfo);
                 if (process == null)
-                    return (false, false);
+                    return (false, false, "Не удалось запустить проверку службы RuDesktop.");
 
-                string output = process.StandardOutput.ReadToEnd().Trim();
-                process.StandardError.ReadToEnd();
+                Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+                Task<string> errorTask = process.StandardError.ReadToEndAsync();
                 if (!process.WaitForExit(5000))
                 {
-                    process.Kill();
-                    return (false, false);
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(2000);
+                    return (false, false, "Проверка службы RuDesktop превысила допустимое время.");
+                }
+
+                string output = outputTask.GetAwaiter().GetResult().Trim();
+                string error = errorTask.GetAwaiter().GetResult().Trim();
+
+                if (process.ExitCode != 0)
+                {
+                    // Windows PowerShell returns exit code 1 with no output when
+                    // Get-Service cannot find the requested service. That is a
+                    // valid "not installed" result, not a probe failure.
+                    if (string.IsNullOrWhiteSpace(output) && string.IsNullOrWhiteSpace(error))
+                        return (false, false, null);
+
+                    return (false, false, string.IsNullOrWhiteSpace(error)
+                        ? "Не удалось проверить службу RuDesktop."
+                        : error);
                 }
 
                 if (string.IsNullOrWhiteSpace(output))
-                    return (false, false);
+                    return (false, false, null);
 
-                return (true, string.Equals(output, "Running", StringComparison.OrdinalIgnoreCase));
+                return (true, string.Equals(output, "Running", StringComparison.OrdinalIgnoreCase), null);
             }
-            catch
+            catch (Exception ex)
             {
-                return (false, false);
+                return (false, false, $"Не удалось проверить службу RuDesktop: {ex.Message}");
             }
         }
 

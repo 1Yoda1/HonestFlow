@@ -38,6 +38,8 @@
             this.btnOpenKktDriver = new System.Windows.Forms.Button();
             this.btnOpenEsm = new System.Windows.Forms.Button();
             this.btnDetails = new System.Windows.Forms.Button();
+            this.btnRateApplication = new System.Windows.Forms.Button();
+            this.lblRatingThanks = new System.Windows.Forms.Label();
 
             this.panelNodes = new System.Windows.Forms.Panel();
             this.nodesLayout = new System.Windows.Forms.TableLayoutPanel();
@@ -76,6 +78,7 @@
             this.panelBottom = new System.Windows.Forms.Panel();
             this.bottomLayout = new System.Windows.Forms.TableLayoutPanel();
             this.lblStatus = new System.Windows.Forms.Label();
+            this.btnRefreshLicense = new System.Windows.Forms.Button();
             this.progressBar = new System.Windows.Forms.ProgressBar();
 
             this.listBox1 = new System.Windows.Forms.ListBox();
@@ -175,6 +178,7 @@
             this.leftLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.leftLayout.Controls.Add(this.lblAuthTitle, 0, 0);
             this.leftLayout.Controls.Add(this.button2, 0, 1);
+            this.leftLayout.Controls.Add(this.btnRefreshLicense, 0, 1);
             this.leftLayout.Controls.Add(this.btnStartInstallation, 0, 2);
             this.leftLayout.Controls.Add(this.btnMaintenance, 0, 3);
             this.leftLayout.Controls.Add(this.btnCheckWithoutPassword, 0, 4);
@@ -182,6 +186,8 @@
             this.leftLayout.Controls.Add(this.btnOpenKktDriver, 0, 6);
             this.leftLayout.Controls.Add(this.btnOpenEsm, 0, 7);
             this.leftLayout.Controls.Add(this.btnDetails, 0, 8);
+            this.leftLayout.Controls.Add(this.btnRateApplication, 0, 9);
+            this.leftLayout.Controls.Add(this.lblRatingThanks, 0, 10);
             this.leftLayout.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftLayout.RowCount = 12;
             this.leftLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 40F));
@@ -251,6 +257,19 @@
             // btnDetails
             ConfigureButton(this.btnDetails, "Журнал выполнения", false);
             this.btnDetails.Click += new System.EventHandler(this.BtnDetails_Click);
+
+            // btnRateApplication
+            ConfigureButton(this.btnRateApplication, "❤ Оценить HonestFlow", false);
+            this.btnRateApplication.ForeColor = System.Drawing.Color.FromArgb(190, 24, 93);
+            this.btnRateApplication.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(244, 114, 182);
+
+            // lblRatingThanks
+            this.lblRatingThanks.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.lblRatingThanks.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
+            this.lblRatingThanks.ForeColor = System.Drawing.Color.FromArgb(190, 24, 93);
+            this.lblRatingThanks.Text = "Спасибо <3";
+            this.lblRatingThanks.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.lblRatingThanks.Visible = false;
 
             // panelNodes
             this.panelNodes.BackColor = System.Drawing.Color.White;
@@ -335,6 +354,10 @@
             this.lblStatus.Text = "Ожидание запуска проверки";
             this.lblStatus.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
+            // btnRefreshLicense
+            ConfigureButton(this.btnRefreshLicense, "↻ Обновить лицензию", false);
+            this.btnRefreshLicense.Text = "↻ Обновить лицензию";
+
             // progressBar
             this.progressBar.Dock = System.Windows.Forms.DockStyle.Fill;
             this.progressBar.Margin = new System.Windows.Forms.Padding(0, 4, 0, 2);
@@ -407,6 +430,8 @@
         private System.Windows.Forms.Button btnOpenKktDriver;
         private System.Windows.Forms.Button btnOpenEsm;
         private System.Windows.Forms.Button btnDetails;
+        private System.Windows.Forms.Button btnRateApplication;
+        private System.Windows.Forms.Label lblRatingThanks;
 
         private System.Windows.Forms.Panel panelNodes;
         private System.Windows.Forms.TableLayoutPanel nodesLayout;
@@ -445,6 +470,7 @@
         private System.Windows.Forms.Panel panelBottom;
         private System.Windows.Forms.TableLayoutPanel bottomLayout;
         private System.Windows.Forms.Label lblStatus;
+        private System.Windows.Forms.Button btnRefreshLicense;
         private System.Windows.Forms.ProgressBar progressBar;
 
         private System.Windows.Forms.ListBox listBox1;

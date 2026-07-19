@@ -213,6 +213,7 @@ namespace HonestFlow.Application.Licensing
                 ObservedAtUtc = observedAtUtc,
                 ClientId = client?.ClientId,
                 DeviceId = deviceId,
+                PointAddress = decision.PointAddress,
                 LastSuccessfulOnlineCheckUtc = lastOnlineCheckUtc?.ToUniversalTime(),
                 EnforcementMode = _mode,
                 ManifestSource = source,

@@ -83,7 +83,17 @@ namespace HonestFlow.Models.Licensing
             for (int deviceIndex = 0; deviceIndex < devices.Count; deviceIndex++)
             {
                 LicensedDevice device = devices[deviceIndex];
-                if (device == null || string.IsNullOrWhiteSpace(device.DeviceId))
+                if (device == null)
+                    continue;
+
+                if (device.Address != null && device.Address.Trim().Length > 500)
+                {
+                    errors.Add(new LicenseValidationError(
+                        $"{clientPath}.Devices[{deviceIndex}].Address",
+                        "Point address must not exceed 500 characters."));
+                }
+
+                if (string.IsNullOrWhiteSpace(device.DeviceId))
                     continue;
 
                 if (duplicateDeviceIds.Contains(device.DeviceId.Trim()))

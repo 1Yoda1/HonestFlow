@@ -7,7 +7,9 @@ using HonestFlow.Infrastructure;
 
 namespace HonestFlow.Application.Auth
 {
-    public sealed class LicenseObservingAuthService : ILicenseAuthenticatingAuthService
+    public sealed class LicenseObservingAuthService :
+        ILicenseAuthenticatingAuthService,
+        ILicenseObservationRefresher
     {
         private readonly IAuthService _inner;
         private readonly ILicenseObservationService _observationService;
@@ -57,6 +59,29 @@ namespace HonestFlow.Application.Auth
                 LicenseAuthenticationStage.Completed,
                 client.Name));
             return new LicenseAuthenticationResult(client, snapshot);
+        }
+
+        public async Task<LicenseObservationSnapshot> RefreshLicenseAsync(
+            IPData client,
+            IProgress<LicenseAuthenticationProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            if (client == null)
+                throw new ArgumentNullException(nameof(client));
+
+            progress?.Report(new LicenseAuthenticationProgress(
+                LicenseAuthenticationStage.ClientResolved,
+                client.Name));
+            progress?.Report(new LicenseAuthenticationProgress(
+                LicenseAuthenticationStage.CheckingDeviceAndLicense,
+                client.Name));
+            LicenseObservationSnapshot snapshot = await _observationService.ObserveAsync(
+                client,
+                cancellationToken);
+            progress?.Report(new LicenseAuthenticationProgress(
+                LicenseAuthenticationStage.Completed,
+                client.Name));
+            return snapshot;
         }
 
         private async System.Threading.Tasks.Task ObserveSafelyAsync(IPData client)

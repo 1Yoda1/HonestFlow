@@ -15,6 +15,7 @@ namespace HonestFlow.Tests
                 " client-1 ",
                 " device-1 ",
                 " PC-1 ",
+                " ул. Ленина, 10 ",
                 " 2.4.2.0 ",
                 localTime);
 
@@ -25,6 +26,7 @@ namespace HonestFlow.Tests
             Assert.Equal("client-1", request.ClientId);
             Assert.Equal("device-1", request.DeviceId);
             Assert.Equal("PC-1", request.DeviceName);
+            Assert.Equal("ул. Ленина, 10", request.Address);
             Assert.Equal("2.4.2.0", request.HonestFlowVersion);
             Assert.Equal(TimeSpan.Zero, request.RequestedAtUtc.Offset);
         }

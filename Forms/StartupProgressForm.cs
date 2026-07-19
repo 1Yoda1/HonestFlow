@@ -4,7 +4,7 @@ using System.Windows.Forms;
 
 namespace HonestFlow
 {
-    public class StartupProgressForm : Form
+    public partial class StartupProgressForm : Form
     {
         private readonly Label _titleLabel;
         private readonly Label _statusLabel;
@@ -57,6 +57,7 @@ namespace HonestFlow
             Controls.Add(_titleLabel);
             Controls.Add(_statusLabel);
             Controls.Add(_progressBar);
+            ConfigureAuthenticationPanel();
 
             ResumeLayout(false);
         }

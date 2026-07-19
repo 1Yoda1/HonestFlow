@@ -9,6 +9,8 @@ using HonestFlow.Infrastructure.Updates;
 using HonestFlow.Infrastructure.DeviceIdentity;
 using System.Threading;
 using HonestFlow.Infrastructure.Licensing;
+using HonestFlow.Application.Auth;
+using HonestFlow.Models;
 
 namespace HonestFlow
 {
@@ -67,6 +69,9 @@ namespace HonestFlow
 
                     startup.AuthService = LicenseObservationBootstrap.WrapAuthService(startup.AuthService);
 
+                    startup.AuthorizedClient = await AuthenticateSellerAtStartupAsync(startup.AuthService);
+                    startup.SellerAuthenticationHandled = true;
+
                     startupProgress.SetProgress(92, "\u041e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u043c \u0433\u043b\u0430\u0432\u043d\u043e\u0435 \u043e\u043a\u043d\u043e...");
                     var mainForm = new MainForm(startup);
                     mainForm.FormClosed += (sender, args) =>
@@ -95,6 +100,53 @@ namespace HonestFlow
                         MessageBoxIcon.Error);
 
                     ExitThread();
+                }
+            }
+
+            private async Task<IPData> AuthenticateSellerAtStartupAsync(IAuthService authService)
+            {
+                string errorMessage = null;
+                while (true)
+                {
+                    string password = await _startupForm.RequestSellerPasswordAsync(errorMessage);
+                    if (password == null)
+                        return null;
+
+                    try
+                    {
+                        IPData client;
+                        if (authService is ILicenseAuthenticatingAuthService licenseAuth)
+                        {
+                            var progress = new Progress<LicenseAuthenticationProgress>(
+                                _startupForm.ReportLicenseAuthentication);
+                            LicenseAuthenticationResult result = await licenseAuth.AuthenticateAsync(
+                                password,
+                                progress,
+                                CancellationToken.None);
+                            client = result.Client;
+                        }
+                        else
+                        {
+                            client = authService.Authenticate(password);
+                        }
+
+                        if (client == null)
+                        {
+                            errorMessage = "Неверный пароль продавца. Попробуйте ещё раз.";
+                            continue;
+                        }
+
+                        _startupForm.ShowAuthenticationSuccess(client.Name);
+                        await Task.Delay(450);
+                        return client;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning(
+                            $"Event=StartupSellerAuthentication Status=Failed ErrorType={ex.GetType().Name}",
+                            nameof(Program));
+                        errorMessage = "Не удалось проверить доступ. Повторите попытку.";
+                    }
                 }
             }
         }

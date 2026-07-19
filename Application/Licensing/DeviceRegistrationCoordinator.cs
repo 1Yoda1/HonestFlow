@@ -28,6 +28,21 @@ namespace HonestFlow.Application.Licensing
             string honestFlowVersion,
             CancellationToken cancellationToken)
         {
+            return await TrySendAsync(
+                snapshot,
+                deviceName,
+                null,
+                honestFlowVersion,
+                cancellationToken);
+        }
+
+        public async Task<DeviceRegistrationDeliveryStatus> TrySendAsync(
+            LicenseObservationSnapshot snapshot,
+            string deviceName,
+            string pointAddress,
+            string honestFlowVersion,
+            CancellationToken cancellationToken)
+        {
             if (snapshot == null ||
                 snapshot.Decision != LicenseDecision.DeviceNotRegistered ||
                 string.IsNullOrWhiteSpace(snapshot.ClientId) ||
@@ -41,29 +56,33 @@ namespace HonestFlow.Application.Licensing
                 await _gate.WaitAsync(cancellationToken);
                 try
                 {
-                if (await _stateStore.WasSentAsync(
+                    if (await _stateStore.WasSentAsync(
                         snapshot.ClientId,
                         snapshot.DeviceId,
                         cancellationToken))
-                {
-                    return DeviceRegistrationDeliveryStatus.AlreadySent;
-                }
+                    {
+                        Logger.Info(
+                            "Event=DeviceRegistrationRequestDelivery Status=AlreadySent",
+                            nameof(DeviceRegistrationCoordinator));
+                        return DeviceRegistrationDeliveryStatus.AlreadySent;
+                    }
 
-                string request = _requestService.Create(
-                    snapshot.ClientId,
-                    snapshot.DeviceId,
-                    deviceName,
-                    honestFlowVersion,
-                    DateTimeOffset.UtcNow);
-                await _sender.SendAsync(request, cancellationToken);
-                await _stateStore.MarkSentAsync(
-                    snapshot.ClientId,
-                    snapshot.DeviceId,
-                    cancellationToken);
-                Logger.Info(
-                    "Event=DeviceRegistrationRequestDelivery Status=Sent",
-                    nameof(DeviceRegistrationCoordinator));
-                return DeviceRegistrationDeliveryStatus.Sent;
+                    string request = _requestService.Create(
+                        snapshot.ClientId,
+                        snapshot.DeviceId,
+                        deviceName,
+                        pointAddress,
+                        honestFlowVersion,
+                        DateTimeOffset.UtcNow);
+                    await _sender.SendAsync(request, cancellationToken);
+                    await _stateStore.MarkSentAsync(
+                        snapshot.ClientId,
+                        snapshot.DeviceId,
+                        cancellationToken);
+                    Logger.Info(
+                        "Event=DeviceRegistrationRequestDelivery Status=Sent",
+                        nameof(DeviceRegistrationCoordinator));
+                    return DeviceRegistrationDeliveryStatus.Sent;
                 }
                 finally
                 {

@@ -174,6 +174,18 @@ namespace HonestFlow.Tests
             return new LicenseDecisionService(policy, () => NowUtc);
         }
 
+        [Fact]
+        public void Decide_ReturnsAddressOfMatchedDevice()
+        {
+            LicenseDecisionContext context = CreateValidContext();
+            context.Manifest.Clients[0].Devices[0].Address = "ул. Ленина, 10";
+
+            LicenseDecisionResult result = CreateService().Decide(context);
+
+            Assert.Equal(LicenseDecision.Allowed, result.Decision);
+            Assert.Equal("ул. Ленина, 10", result.PointAddress);
+        }
+
         private static LicenseDecisionContext CreateValidContext()
         {
             return new LicenseDecisionContext

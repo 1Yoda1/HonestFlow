@@ -12,7 +12,8 @@ namespace HonestFlow.Application.Licensing
             string message,
             string technicalCode,
             DateTimeOffset? offlineGraceEndsAtUtc,
-            Version minimumRequiredVersion)
+            Version minimumRequiredVersion,
+            string pointAddress = null)
         {
             Decision = decision;
             Features = features ?? Array.Empty<LicenseFeature>();
@@ -20,6 +21,7 @@ namespace HonestFlow.Application.Licensing
             TechnicalCode = technicalCode;
             OfflineGraceEndsAtUtc = offlineGraceEndsAtUtc;
             MinimumRequiredVersion = minimumRequiredVersion;
+            PointAddress = pointAddress;
         }
 
         public LicenseDecision Decision { get; }
@@ -28,6 +30,7 @@ namespace HonestFlow.Application.Licensing
         public string TechnicalCode { get; }
         public DateTimeOffset? OfflineGraceEndsAtUtc { get; }
         public Version MinimumRequiredVersion { get; }
+        public string PointAddress { get; }
         public bool IsAllowed => Decision == LicenseDecision.Allowed;
     }
 }

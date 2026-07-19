@@ -54,8 +54,39 @@ namespace HonestFlow.Application.PointStatus
                     statusText: "Ошибка проверки");
             }
 
-            if (!status.IsInstalled)
-                return new NodeStatus(NodeLevel.Error, "Не найден", "RuDesktop не найден на этом компьютере", statusText: "Не установлен");
+            if (status.InstallationState == RuDesktopInstallationState.NotInstalled)
+            {
+                return new NodeStatus(
+                    NodeLevel.Error,
+                    "Не найден",
+                    "RuDesktop не найден на этом компьютере",
+                    statusText: "Не установлен",
+                    actionKind: NodeActionKind.InstallRuDesktop);
+            }
+
+            if (status.InstallationState == RuDesktopInstallationState.Damaged)
+            {
+                string details = status.IsInstalled
+                    ? "Найден файл RuDesktop, но служба RuDesktop отсутствует"
+                    : "Найдена служба RuDesktop, но исполняемый файл недоступен";
+                return new NodeStatus(
+                    NodeLevel.Error,
+                    "Повреждён",
+                    details,
+                    statusText: "Требуется переустановка",
+                    actionKind: NodeActionKind.ReinstallRuDesktop);
+            }
+
+            if (status.InstallationState == RuDesktopInstallationState.ServiceStopped)
+            {
+                return new NodeStatus(
+                    NodeLevel.Warning,
+                    "Служба остановлена",
+                    "RuDesktop установлен, но его служба остановлена",
+                    services: new[] { new ServiceSnapshot("RuDesktop", "Stopped") },
+                    statusText: "Служба остановлена",
+                    actionKind: NodeActionKind.ManageServices);
+            }
 
             if (string.IsNullOrWhiteSpace(status.Id))
             {
@@ -63,7 +94,8 @@ namespace HonestFlow.Application.PointStatus
                     NodeLevel.Warning,
                     "ID не получен",
                     $"RuDesktop установлен\nСлужба: {FormatServiceStatus(status)}\nID: не удалось получить",
-                    statusText: "ID не получен");
+                    statusText: "ID не получен",
+                    actionKind: NodeActionKind.RequestRuDesktopHelp);
             }
 
             var level = status.ServiceInstalled && !status.ServiceRunning
@@ -75,7 +107,8 @@ namespace HonestFlow.Application.PointStatus
                 level,
                 "Запросить помощь",
                 $"RuDesktop установлен\nID: {status.Id}\nСлужба: {FormatServiceStatus(status)}\nПароль HonestFlow: {passwordText}",
-                statusText: $"ID: {status.Id}\n{passwordText}");
+                statusText: $"ID: {status.Id}\n{passwordText}",
+                actionKind: NodeActionKind.RequestRuDesktopHelp);
         }
 
         private NodeStatus CheckLmStatus(ServiceSnapshot[] services)

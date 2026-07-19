@@ -13,6 +13,9 @@ namespace HonestFlow.Infrastructure.Licensing
 {
     public sealed class DpapiDeviceRegistrationDeliveryStateStore : IDeviceRegistrationDeliveryStateStore
     {
+        // v2 intentionally invalidates the old one-time marker because registration
+        // requests now carry the point address and must be delivered once again.
+        private const string DeliveryKeyVersion = "v2-point-address";
         private static readonly byte[] Entropy =
             Encoding.UTF8.GetBytes("HonestFlow.DeviceRegistrationDelivery.v1");
         private readonly string _path;
@@ -113,7 +116,10 @@ namespace HonestFlow.Infrastructure.Licensing
         private static string BuildEntryKey(string clientId, string deviceId)
         {
             using SHA256 sha256 = SHA256.Create();
-            byte[] bytes = Encoding.UTF8.GetBytes((clientId ?? string.Empty) + "\n" + (deviceId ?? string.Empty));
+            byte[] bytes = Encoding.UTF8.GetBytes(
+                DeliveryKeyVersion + "\n" +
+                (clientId ?? string.Empty) + "\n" +
+                (deviceId ?? string.Empty));
             return Convert.ToBase64String(sha256.ComputeHash(bytes));
         }
     }

@@ -13,5 +13,7 @@ namespace HonestFlow.Application.Bootstrap
         public VersionsData RemoteVersions { get; set; }
         public IAuthService AuthService { get; set; }
         public IInstallationService InstallationService { get; set; }
+        public IPData AuthorizedClient { get; set; }
+        public bool SellerAuthenticationHandled { get; set; }
     }
 }
