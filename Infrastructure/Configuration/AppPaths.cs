@@ -17,42 +17,43 @@ namespace HonestFlow.Infrastructure.Configuration
         public static string YandexPublicKeyFile => Path.Combine(BaseFolder, "yandex_public_key.txt");
         public static string YandexPublicUrlFile => Path.Combine(BaseFolder, "yandex_public_url.txt");
         public static string DistrFolder => Path.Combine(BaseFolder, "Distr");
-        public static string YandexDiskCacheFolder => Path.Combine(BaseFolder, "YandexDiskCache");
+        public static string LegacyYandexDiskCacheFolder => Path.Combine(BaseFolder, "YandexDiskCache");
         public static string LegacyRemoteCacheFolder => Path.Combine(BaseFolder, "Git" + "HubCache");
+        public static string InstallerCacheFolder => Path.Combine(ProgramDataFolder, "cache", "installers");
+        public static string LegacyInstallerCacheLocationsFile =>
+            Path.Combine(ProgramDataFolder, "cache", "legacy-installer-locations.json");
+        public static string YandexDiskCacheFolder => InstallerCacheFolder;
         public static string RemoteInstallersCacheFolder
         {
             get
             {
-                if (Directory.Exists(YandexDiskCacheFolder) && Directory.EnumerateFiles(YandexDiskCacheFolder).Any())
-                    return YandexDiskCacheFolder;
+                foreach (string folder in EnumerateInstallerCacheReadFolders())
+                {
+                    if (ContainsFiles(folder))
+                        return folder;
+                }
 
-                if (Directory.Exists(LegacyRemoteCacheFolder) && Directory.EnumerateFiles(LegacyRemoteCacheFolder).Any())
-                    return LegacyRemoteCacheFolder;
-
-                return YandexDiskCacheFolder;
+                return InstallerCacheFolder;
             }
         }
 
         public static string ResolveRemoteInstallerPath(string fileName)
         {
-            string yandexPath = Path.Combine(YandexDiskCacheFolder, fileName);
-            if (File.Exists(yandexPath))
-                return yandexPath;
+            ValidateInstallerFileName(fileName);
+            foreach (string folder in EnumerateInstallerCacheReadFolders())
+            {
+                string candidate = Path.Combine(folder, fileName);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
 
-            string legacyPath = Path.Combine(LegacyRemoteCacheFolder, fileName);
-            if (File.Exists(legacyPath))
-                return legacyPath;
-
-            return yandexPath;
+            return Path.Combine(InstallerCacheFolder, fileName);
         }
 
         public static string GetRemoteInstallerDownloadPath(string fileName)
         {
-            string existingPath = ResolveRemoteInstallerPath(fileName);
-            if (File.Exists(existingPath))
-                return existingPath;
-
-            return Path.Combine(YandexDiskCacheFolder, fileName);
+            ValidateInstallerFileName(fileName);
+            return Path.Combine(InstallerCacheFolder, fileName);
         }
 
         public static string ProgramDataFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "HonestFlow");
@@ -72,8 +73,47 @@ namespace HonestFlow.Infrastructure.Configuration
             Directory.CreateDirectory(ProgramDataFolder);
             Directory.CreateDirectory(LogsFolder);
             Directory.CreateDirectory(DiagnosticsFolder);
+            Directory.CreateDirectory(InstallerCacheFolder);
             Directory.CreateDirectory(RuDesktopInstallerCacheFolder);
             Directory.CreateDirectory(DotNetRuntimeCacheFolder);
+        }
+
+        private static System.Collections.Generic.IEnumerable<string> EnumerateInstallerCacheReadFolders()
+        {
+            yield return InstallerCacheFolder;
+            yield return LegacyYandexDiskCacheFolder;
+            yield return LegacyRemoteCacheFolder;
+
+            foreach (string folder in new InstallerCacheLocationStore().ReadLocations())
+            {
+                if (!string.Equals(folder, InstallerCacheFolder, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(folder, LegacyYandexDiskCacheFolder, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(folder, LegacyRemoteCacheFolder, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return folder;
+                }
+            }
+        }
+
+        private static bool ContainsFiles(string folder)
+        {
+            try
+            {
+                return Directory.Exists(folder) && Directory.EnumerateFiles(folder).Any();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void ValidateInstallerFileName(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName) ||
+                !string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal))
+            {
+                throw new ArgumentException("Ожидалось только имя файла установщика.", nameof(fileName));
+            }
         }
     }
 

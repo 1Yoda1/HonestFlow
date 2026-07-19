@@ -9,6 +9,7 @@ using HonestFlow.Infrastructure.Updates;
 using HonestFlow.Infrastructure.DeviceIdentity;
 using System.Threading;
 using HonestFlow.Infrastructure.Licensing;
+using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Application.Auth;
 using HonestFlow.Models;
 using HonestFlow.Application.Prerequisites;
@@ -44,6 +45,15 @@ namespace HonestFlow
                 {
                     Logger.Initialize();
                     Logger.Info("Application startup", nameof(Program));
+                    int registeredLegacyCaches = new InstallerCacheLocationStore()
+                        .RegisterLocations(new[]
+                        {
+                            AppPaths.LegacyYandexDiskCacheFolder,
+                            AppPaths.LegacyRemoteCacheFolder
+                        });
+                    Logger.Info(
+                        $"Event=InstallerCacheLocations Registered={registeredLegacyCaches}",
+                        nameof(Program));
 
                     var deviceIdentityService = new FileDeviceIdentityService(
                         new DpapiDeviceIdentityStateProtector());

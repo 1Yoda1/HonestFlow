@@ -187,7 +187,16 @@ namespace HonestFlow.Infrastructure.Downloads
 
         public bool IsFileCached(string fileName, long expectedBytes)
         {
-            string path = AppPaths.ResolveRemoteInstallerPath(fileName);
+            string path = Path.Combine(_cacheFolder, fileName);
+            if (!File.Exists(path) &&
+                string.Equals(
+                    Path.GetFullPath(_cacheFolder).TrimEnd(Path.DirectorySeparatorChar),
+                    Path.GetFullPath(AppPaths.InstallerCacheFolder).TrimEnd(Path.DirectorySeparatorChar),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                path = AppPaths.ResolveRemoteInstallerPath(fileName);
+            }
+
             if (!File.Exists(path))
                 return false;
 
