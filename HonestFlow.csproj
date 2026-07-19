@@ -11,12 +11,12 @@
 		<AssemblyName>HonestFlow</AssemblyName>
 		<RootNamespace>HonestFlow</RootNamespace>
 
-		<!-- Framework-dependent EXE: .NET Runtime устанавливается отдельно -->
+		<!-- Один компактный EXE для безопасной замены текущим updater; .NET 6 уже установлен на рабочих точках -->
 		<SelfContained>false</SelfContained>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
-		<PublishSingleFile>false</PublishSingleFile>
+		<PublishSingleFile>true</PublishSingleFile>
 		<PublishTrimmed>false</PublishTrimmed>
-		<IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
 
 		<!-- Версии и информация -->
