@@ -38,6 +38,61 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public void Decide_OperatorDeviceAllowsAllFeaturesForAnyClient()
+        {
+            LicenseDecisionContext context = CreateValidContext();
+            context.ClientId = "another-client";
+            context.CurrentHonestFlowVersion = new Version(1, 0);
+            context.Manifest.OperatorDevices = new List<OperatorDevice>
+            {
+                new OperatorDevice
+                {
+                    DeviceId = context.DeviceId.ToUpperInvariant(),
+                    Name = "Owner workstation",
+                    Enabled = true
+                }
+            };
+
+            LicenseDecisionResult result = CreateService().Decide(context);
+
+            Assert.Equal(LicenseDecision.Allowed, result.Decision);
+            Assert.Equal("LICENSE_OPERATOR_DEVICE_ALLOWED", result.TechnicalCode);
+            Assert.Equal(
+                Enum.GetValues(typeof(LicenseFeature)).Length,
+                result.Features.Distinct().Count());
+        }
+
+        [Fact]
+        public void Decide_DisabledOperatorDeviceUsesNormalClientRules()
+        {
+            LicenseDecisionContext context = CreateValidContext();
+            context.ClientId = "another-client";
+            context.Manifest.OperatorDevices = new List<OperatorDevice>
+            {
+                new OperatorDevice { DeviceId = context.DeviceId, Enabled = false }
+            };
+
+            LicenseDecisionResult result = CreateService().Decide(context);
+
+            Assert.Equal(LicenseDecision.ClientNotFound, result.Decision);
+        }
+
+        [Fact]
+        public void Decide_OperatorDeviceDoesNotBypassManifestExpiration()
+        {
+            LicenseDecisionContext context = CreateValidContext();
+            context.Manifest.ValidUntilUtc = NowUtc.AddMinutes(-1);
+            context.Manifest.OperatorDevices = new List<OperatorDevice>
+            {
+                new OperatorDevice { DeviceId = context.DeviceId, Enabled = true }
+            };
+
+            LicenseDecisionResult result = CreateService().Decide(context);
+
+            Assert.Equal(LicenseDecision.ManifestExpired, result.Decision);
+        }
+
+        [Fact]
         public void Decide_ReturnsClientDisabled()
         {
             LicenseDecisionContext context = CreateValidContext();

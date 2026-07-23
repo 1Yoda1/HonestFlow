@@ -23,6 +23,7 @@ namespace HonestFlow.Models.Licensing
             set => _validUntilUtc = value.ToUniversalTime();
         }
 
+        public List<OperatorDevice> OperatorDevices { get; set; } = new();
         public List<ClientLicense> Clients { get; set; } = new();
     }
 }

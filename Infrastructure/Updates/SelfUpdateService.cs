@@ -44,13 +44,10 @@ namespace HonestFlow.Infrastructure.Updates
                 if (latestVersion <= currentVersion)
                     return false;
 
-                bool shouldUpdate = _dialogService.Confirm(
-                    $"Доступна новая версия HonestFlow: {latestVersion}\n\nОбновить сейчас?",
-                    "Обновление HonestFlow",
-                    UserDialogIcon.Information);
-
-                if (!shouldUpdate)
-                    return false;
+                _dialogService.ShowInformation(
+                    $"Доступна обязательная версия HonestFlow: {latestVersion}.\n\n" +
+                    "Приложение сейчас скачает и установит обновление.",
+                    "Обновление HonestFlow");
 
                 string updateRoot = Path.Combine(AppPaths.ProgramDataFolder, "update");
                 Directory.CreateDirectory(updateRoot);

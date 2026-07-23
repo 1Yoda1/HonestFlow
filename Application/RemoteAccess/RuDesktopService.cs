@@ -23,6 +23,9 @@ namespace HonestFlow.Application.RemoteAccess
         private static readonly Regex ExecutablePathRegex = new(
             "^(?:\"(?<path>[^\"]+\\.exe)\"|(?<path>.+?\\.exe))(?:\\s|$)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex ServiceStateRegex = new(
+            @"^\s*[^:\r\n]+:\s*(?<state>[1-7])(?:\s|$)",
+            RegexOptions.Compiled | RegexOptions.Multiline);
 
         private readonly ILogService _log;
 
@@ -410,11 +413,12 @@ namespace HonestFlow.Application.RemoteAccess
             return match.Success ? match.Groups["path"].Value.Trim() : null;
         }
 
-        private static (bool Installed, bool Running, string ErrorMessage) GetServiceStatus()
+        private (bool Installed, bool Running, string ErrorMessage) GetServiceStatus()
         {
             try
             {
-                var startInfo = new ProcessStartInfo("powershell.exe")
+                string serviceControllerPath = Path.Combine(Environment.SystemDirectory, "sc.exe");
+                var startInfo = new ProcessStartInfo(serviceControllerPath)
                 {
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
@@ -422,15 +426,12 @@ namespace HonestFlow.Application.RemoteAccess
                     CreateNoWindow = true
                 };
 
-                startInfo.ArgumentList.Add("-NoProfile");
-                startInfo.ArgumentList.Add("-ExecutionPolicy");
-                startInfo.ArgumentList.Add("Bypass");
-                startInfo.ArgumentList.Add("-Command");
-                startInfo.ArgumentList.Add("Get-Service -Name RuDesktop -ErrorAction SilentlyContinue | ForEach-Object { [Console]::WriteLine($_.Status) }");
+                startInfo.ArgumentList.Add("query");
+                startInfo.ArgumentList.Add("RuDesktop");
 
                 using var process = Process.Start(startInfo);
                 if (process == null)
-                    return (false, false, "Не удалось запустить проверку службы RuDesktop.");
+                    return GetServiceStatusFallback("Не удалось запустить проверку службы RuDesktop.");
 
                 Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
                 Task<string> errorTask = process.StandardError.ReadToEndAsync();
@@ -438,7 +439,7 @@ namespace HonestFlow.Application.RemoteAccess
                 {
                     process.Kill(entireProcessTree: true);
                     process.WaitForExit(2000);
-                    return (false, false, "Проверка службы RuDesktop превысила допустимое время.");
+                    return GetServiceStatusFallback("Проверка службы RuDesktop превысила допустимое время.");
                 }
 
                 string output = outputTask.GetAwaiter().GetResult().Trim();
@@ -446,26 +447,64 @@ namespace HonestFlow.Application.RemoteAccess
 
                 if (process.ExitCode != 0)
                 {
-                    // Windows PowerShell returns exit code 1 with no output when
-                    // Get-Service cannot find the requested service. That is a
-                    // valid "not installed" result, not a probe failure.
-                    if (string.IsNullOrWhiteSpace(output) && string.IsNullOrWhiteSpace(error))
+                    string combined = output + Environment.NewLine + error;
+                    if (process.ExitCode == 1060 || combined.IndexOf("1060", StringComparison.Ordinal) >= 0)
                         return (false, false, null);
 
-                    return (false, false, string.IsNullOrWhiteSpace(error)
-                        ? "Не удалось проверить службу RuDesktop."
+                    return GetServiceStatusFallback(string.IsNullOrWhiteSpace(error)
+                        ? $"sc.exe завершил проверку службы RuDesktop с кодом {process.ExitCode}."
                         : error);
                 }
 
-                if (string.IsNullOrWhiteSpace(output))
-                    return (false, false, null);
+                Match stateMatch = ServiceStateRegex.Match(output);
+                if (stateMatch.Success && int.TryParse(stateMatch.Groups["state"].Value, out int state))
+                    return (true, state == 4, null);
 
-                return (true, string.Equals(output, "Running", StringComparison.OrdinalIgnoreCase), null);
+                return GetServiceStatusFallback("sc.exe не вернул состояние службы RuDesktop.");
             }
             catch (Exception ex)
             {
-                return (false, false, $"Не удалось проверить службу RuDesktop: {ex.Message}");
+                return GetServiceStatusFallback($"Не удалось проверить службу RuDesktop: {ex.Message}");
             }
+        }
+
+        private (bool Installed, bool Running, string ErrorMessage) GetServiceStatusFallback(string probeError)
+        {
+            bool serviceRegistered = false;
+            bool processRunning = false;
+
+            try
+            {
+                using var serviceKey = Registry.LocalMachine.OpenSubKey(
+                    @"SYSTEM\CurrentControlSet\Services\RuDesktop");
+                serviceRegistered = serviceKey != null;
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug($"RuDesktop: резервная проверка регистрации службы не удалась: {ex.Message}");
+            }
+
+            try
+            {
+                Process[] processes = Process.GetProcessesByName("rudesktop");
+                processRunning = processes.Length > 0;
+                foreach (Process process in processes)
+                    process.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug($"RuDesktop: резервная проверка процесса не удалась: {ex.Message}");
+            }
+
+            if (serviceRegistered || processRunning)
+            {
+                _log.LogDebug(
+                    $"RuDesktop: основная проверка службы не удалась ({probeError}); " +
+                    $"использован резервный результат: registered={serviceRegistered}, processRunning={processRunning}");
+                return (true, processRunning, null);
+            }
+
+            return (false, false, probeError);
         }
 
         private static RuDesktopLocalState LoadState()

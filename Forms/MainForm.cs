@@ -16,6 +16,7 @@ using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Application.Security;
 using HonestFlow.Application.Ui;
 using HonestFlow.Infrastructure.Licensing;
+using HonestFlow.Infrastructure.Api;
 using HonestFlow.Models.Licensing;
 using System;
 using System.Collections.Generic;
@@ -23,6 +24,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -52,6 +54,7 @@ namespace HonestFlow
         private readonly WindowIconService _windowIconService;
         private readonly IUserDialogService _dialogService;
         private PointStatusService _pointStatusService;
+        private PointStatusResult _lastPointStatusResult;
         private bool _statusRefreshRunning;
         private bool _serviceActionRunning;
         private string _longOperationName;
@@ -65,6 +68,7 @@ namespace HonestFlow
         private readonly IEngineerAccessService _engineerAccessService;
         private readonly IPData _startupAuthorizedClient;
         private readonly bool _startupAuthenticationHandled;
+        private readonly CancellationTokenSource _lifetimeCancellation = new();
 
         private static readonly Color StatusGreen = Color.FromArgb(34, 197, 94);
         private static readonly Color StatusYellow = Color.FromArgb(251, 191, 36);
@@ -110,7 +114,11 @@ namespace HonestFlow
             LicenseEnforcementMode licenseMode = LicenseRuntimeConfiguration.FromEnvironment().EnforcementMode;
             _licenseAccessPolicy = new LicenseAccessPolicy(licenseMode, _licenseSnapshotStore);
             _licenseSnapshotStore.SnapshotChanged += LicenseSnapshotChanged;
-            FormClosed += (_, _) => _licenseSnapshotStore.SnapshotChanged -= LicenseSnapshotChanged;
+            FormClosed += (_, _) =>
+            {
+                _lifetimeCancellation.Cancel();
+                _licenseSnapshotStore.SnapshotChanged -= LicenseSnapshotChanged;
+            };
 
             startup ??= new ApplicationStartupService(_logService, _progressService, _dialogService).Start();
             _useRemoteConfigMode = startup.UseRemoteConfigMode;
@@ -167,9 +175,10 @@ namespace HonestFlow
             nodeLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
             statusTextLabel.Dock = System.Windows.Forms.DockStyle.Fill;
-            statusTextLabel.Font = new System.Drawing.Font("Segoe UI", 9F);
+            statusTextLabel.AutoEllipsis = true;
+            statusTextLabel.Font = new System.Drawing.Font("Segoe UI", 9.25F);
             statusTextLabel.ForeColor = System.Drawing.Color.FromArgb(51, 65, 85);
-            statusTextLabel.Padding = new System.Windows.Forms.Padding(6, 0, 0, 0);
+            statusTextLabel.Padding = new System.Windows.Forms.Padding(8, 4, 8, 4);
             statusTextLabel.Text = "Ожидание";
             statusTextLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
@@ -180,7 +189,7 @@ namespace HonestFlow
             statusCircle.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
 
             actionButton.Dock = System.Windows.Forms.DockStyle.Fill;
-            actionButton.Margin = new System.Windows.Forms.Padding(10, 8, 10, 8);
+            actionButton.Margin = new System.Windows.Forms.Padding(8, 14, 8, 14);
             actionButton.BackColor = System.Drawing.Color.White;
             actionButton.Cursor = System.Windows.Forms.Cursors.Hand;
             actionButton.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
@@ -235,6 +244,7 @@ namespace HonestFlow
             btnCheckWithoutPassword.Text = "Обновить статусы";
             btnCheckWithoutPassword.Click -= BtnDiagnostics_Click;
             btnCheckWithoutPassword.Click += BtnRefreshStatus_Click;
+            btnPointStatusDetails.Click += ShowPointStatusDetails_Click;
 
             btnDiagnostics.Text = "Собрать диагностику";
             btnDiagnostics.Visible = true;
@@ -1262,7 +1272,7 @@ namespace HonestFlow
 
             try
             {
-                var result = await Task.Run(() => _pointStatusService.Check());
+                var result = await _pointStatusService.CheckAsync(_lifetimeCancellation.Token);
 
                 if (!allowDuringLongOperation && IsLongOperationRunning)
                 {
@@ -1276,6 +1286,9 @@ namespace HonestFlow
                 ApplyNodeStatus(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, result.Kkt, "ККТ");
                 ApplyNodeStatus(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, result.Cloud, "Облако");
                 ApplyRuDesktopStatus(result.RuDesktop);
+                _lastPointStatusResult = result;
+                _diagnosticArchiveService.SetPointStatusReport(BuildPointStatusDebugReport(result));
+                btnPointStatusDetails.Enabled = true;
 
                 bool hasRed = new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud, result.RuDesktop }
                     .Any(x => x.Level == NodeLevel.Error);
@@ -1307,6 +1320,8 @@ namespace HonestFlow
 
         private void SetNodeChecking()
         {
+            _lastPointStatusResult = null;
+            btnPointStatusDetails.Enabled = false;
             SetNodeChecking(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, "ЛМ ЧЗ");
             SetNodeChecking(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, "Контроллер");
             SetNodeChecking(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, "ЕСМ");
@@ -1326,6 +1341,8 @@ namespace HonestFlow
             actionButton.Click -= BtnRefreshStatus_Click;
             actionButton.Click -= BtnRequestHelp_Click;
             actionButton.Click -= BtnRuDesktopInstallationPending_Click;
+            actionButton.Click -= RecoverLmServices_Click;
+            actionButton.Click -= InitializeLm_Click;
             actionButton.Click += BtnRefreshStatus_Click;
         }
 
@@ -1349,7 +1366,119 @@ namespace HonestFlow
             actionButton.Click -= ServiceAction_Click;
             actionButton.Click -= BtnRequestHelp_Click;
             actionButton.Click -= BtnRuDesktopInstallationPending_Click;
-            actionButton.Click += status.CanManageServices ? ServiceAction_Click : ShowNodeDetails_Click;
+            actionButton.Click -= RecoverLmServices_Click;
+            actionButton.Click -= InitializeLm_Click;
+            actionButton.Click += status.ActionKind switch
+            {
+                NodeActionKind.RecoverLmServices => RecoverLmServices_Click,
+                NodeActionKind.InitializeLm => InitializeLm_Click,
+                _ => status.CanManageServices ? ServiceAction_Click : BtnRefreshStatus_Click
+            };
+        }
+
+        private async void RecoverLmServices_Click(object sender, EventArgs e)
+        {
+            if (!TryBeginLongOperation("восстановление служб ЛМ ЧЗ", LicenseFeature.AutoFix))
+                return;
+
+            try
+            {
+                lblStatus.Text = "Запускаем службу Regime...";
+                await Task.Run(() => _serviceControlService.StartService("regime"));
+
+                lblStatus.Text = "Ожидаем запуск Yenisei через Regime...";
+                await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
+
+                if (!_serviceControlService.IsServiceRunning("yenisei"))
+                {
+                    lblStatus.Text = "Yenisei не запустилась автоматически. Запускаем...";
+                    await Task.Run(() => _serviceControlService.StartService("yenisei"));
+                }
+
+                lblStatus.Text = "Ожидаем готовность API ЛМ ЧЗ...";
+                await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
+                await RefreshPointStatusAsync(allowDuringLongOperation: true);
+            }
+            catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Не удалось восстановить службы ЛМ ЧЗ:\n{ex.Message}",
+                    "ЛМ ЧЗ",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                EndLongOperation();
+            }
+        }
+
+        private async void InitializeLm_Click(object sender, EventArgs e)
+        {
+            if (_selectedIP == null || string.IsNullOrWhiteSpace(_selectedIP.Token))
+            {
+                MessageBox.Show(
+                    "Для инициализации ЛМ ЧЗ требуется авторизованная точка с настроенным токеном.\nОбратитесь к администратору.",
+                    "ЛМ ЧЗ",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            DialogResult confirmation = MessageBox.Show(
+                "Инициализировать ЛМ ЧЗ для выбранной точки?\n\n" +
+                "Будет выполнен локальный запрос POST /api/v2/init. Токен не будет показан в журнале.",
+                "Инициализация ЛМ ЧЗ",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (confirmation != DialogResult.Yes ||
+                !TryBeginLongOperation("инициализация ЛМ ЧЗ", LicenseFeature.AutoFix))
+            {
+                return;
+            }
+
+            try
+            {
+                lblStatus.Text = "Инициализируем ЛМ ЧЗ...";
+                using var api = new LmApiClient(enableDetailedLogging: false);
+                ApiSimpleResponse result = await api.InitializeFull(_selectedIP.Token);
+                if (!result.IsSuccess)
+                {
+                    MessageBox.Show(
+                        $"ЛМ ЧЗ не удалось инициализировать: HTTP {(int)result.StatusCode}.",
+                        "Инициализация ЛМ ЧЗ",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                lblStatus.Text = "Инициализация отправлена. Ожидаем изменение статуса...";
+                await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
+                await RefreshPointStatusAsync(allowDuringLongOperation: true);
+                MessageBox.Show(
+                    "Запрос инициализации выполнен. Актуальный результат показан в строке «ЛМ ЧЗ».",
+                    "Инициализация ЛМ ЧЗ",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Ошибка инициализации ЛМ ЧЗ:\n{ex.Message}",
+                    "Инициализация ЛМ ЧЗ",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                EndLongOperation();
+            }
         }
 
         private void ApplyRuDesktopStatus(NodeStatus status)
@@ -1374,7 +1503,7 @@ namespace HonestFlow
                     btnRuDesktopAction.Click += BtnRequestHelp_Click;
                     break;
                 default:
-                    btnRuDesktopAction.Click += ShowNodeDetails_Click;
+                    btnRuDesktopAction.Click += BtnRefreshStatus_Click;
                     break;
             }
         }
@@ -1499,6 +1628,140 @@ namespace HonestFlow
             }
         }
 
+        private void ShowPointStatusDetails_Click(object sender, EventArgs e)
+        {
+            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "просмотр состояния точки"))
+                return;
+
+            if (_lastPointStatusResult == null)
+                return;
+
+            LogOperatorAction("открыт общий отладочный снимок состояния точки");
+            string report = BuildPointStatusDebugReport(_lastPointStatusResult);
+
+            using var dialog = new Form
+            {
+                Text = "Подробнее — состояние точки",
+                StartPosition = FormStartPosition.CenterParent,
+                Size = new Size(820, 650),
+                MinimumSize = new Size(680, 480),
+                ShowIcon = false,
+                ShowInTaskbar = false,
+                MaximizeBox = true,
+                MinimizeBox = false
+            };
+            var textBox = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Multiline = true,
+                ReadOnly = true,
+                ScrollBars = ScrollBars.Both,
+                WordWrap = false,
+                BackColor = Color.White,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font("Consolas", 10F),
+                Text = report
+            };
+            var titleLabel = new Label
+            {
+                AutoSize = true,
+                Font = new Font("Segoe UI Semibold", 14F),
+                ForeColor = Color.FromArgb(30, 41, 59),
+                Location = new Point(18, 12),
+                Text = "Состояние всех узлов"
+            };
+            var subtitleLabel = new Label
+            {
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9F),
+                ForeColor = Color.FromArgb(100, 116, 139),
+                Location = new Point(20, 42),
+                Text = "Исходные статусы, принятые решения и доступные действия"
+            };
+            var header = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 72,
+                BackColor = Color.FromArgb(248, 250, 252)
+            };
+            header.Controls.Add(titleLabel);
+            header.Controls.Add(subtitleLabel);
+            var closeButton = new Button
+            {
+                Text = "Закрыть",
+                DialogResult = DialogResult.OK,
+                Dock = DockStyle.Right,
+                Width = 120,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(37, 99, 235),
+                ForeColor = Color.White
+            };
+            closeButton.FlatAppearance.BorderSize = 0;
+            var footer = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = 54,
+                Padding = new Padding(0, 8, 0, 4),
+                BackColor = Color.FromArgb(248, 250, 252)
+            };
+            footer.Controls.Add(closeButton);
+            dialog.Controls.Add(textBox);
+            dialog.Controls.Add(header);
+            dialog.Controls.Add(footer);
+            dialog.AcceptButton = closeButton;
+            dialog.CancelButton = closeButton;
+            dialog.ShowDialog(this);
+        }
+
+        private static string BuildPointStatusDebugReport(PointStatusResult result)
+        {
+            var report = new StringBuilder();
+            report.AppendLine("ОТЛАДОЧНЫЙ СНИМОК СОСТОЯНИЯ ТОЧКИ");
+            report.AppendLine($"Сформирован: {DateTime.Now:dd.MM.yyyy HH:mm:ss}");
+            report.AppendLine("Чувствительные идентификаторы ККТ и токены намеренно не выводятся.");
+
+            AppendNodeDebug(report, "ЛМ ЧЗ", result.Lm);
+            AppendNodeDebug(report, "Контроллер", result.Controller);
+            AppendNodeDebug(report, "ЕСМ", result.Esm);
+            AppendNodeDebug(report, "ККТ", result.Kkt);
+            AppendNodeDebug(report, "Облако", result.Cloud);
+            AppendNodeDebug(report, "RuDesktop", result.RuDesktop);
+            return report.ToString();
+        }
+
+        private static void AppendNodeDebug(StringBuilder report, string name, NodeStatus status)
+        {
+            report.AppendLine();
+            report.AppendLine(new string('=', 72));
+            report.AppendLine(name);
+            report.AppendLine(new string('-', 72));
+            if (status == null)
+            {
+                report.AppendLine("Данные отсутствуют.");
+                return;
+            }
+
+            report.AppendLine($"Уровень: {status.Level}");
+            report.AppendLine($"Короткий статус: {status.ShortText}");
+            report.AppendLine($"Текст в интерфейсе: {ValueOrDash(status.StatusText)}");
+            report.AppendLine($"Доступное действие: {status.ActionText}");
+            report.AppendLine("Службы:");
+            if (status.Services.Count == 0)
+            {
+                report.AppendLine("  — источник не содержит Windows-служб");
+            }
+            else
+            {
+                foreach (ServiceSnapshot service in status.Services)
+                    report.AppendLine($"  — {service.ServiceName}: {service.State}");
+            }
+
+            report.AppendLine("Исходные данные и расчёт:");
+            report.AppendLine(string.IsNullOrWhiteSpace(status.Details)
+                ? "  — подробности отсутствуют"
+                : status.Details);
+        }
+
         private async void BtnRequestHelp_Click(object sender, EventArgs e)
         {
             LogOperatorAction("нажата кнопка запроса помощи");
@@ -1512,6 +1775,18 @@ namespace HonestFlow
             if (!await EnsureRuDesktopPasswordConfiguredForHelpRequest())
                 return;
 
+            string ruDesktopId = await TryGetRuDesktopIdForHelpRequest();
+            if (string.IsNullOrWhiteSpace(ruDesktopId))
+            {
+                MessageBox.Show(
+                    "RuDesktop не выдал ID, поэтому запрос помощи сейчас отправить нельзя.\n\n" +
+                    "Проверьте, что служба RuDesktop запущена, подождите немного и нажмите «Обновить».",
+                    "Запрос помощи",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             HelpRequestDialogResult helpRequest = ShowHelpRequestDialog();
             if (helpRequest == null)
             {
@@ -1524,8 +1799,6 @@ namespace HonestFlow
                 btnRuDesktopAction.Enabled = false;
                 lblStatus.Visible = true;
                 lblStatus.Text = "Отправка запроса помощи...";
-
-                string ruDesktopId = await TryGetRuDesktopIdForHelpRequest();
 
                 LastAuthorizedClientState lastClient = _selectedIP == null
                     ? _ruDesktopService.GetLastAuthorizedClient()
@@ -1850,7 +2123,18 @@ namespace HonestFlow
         private static void ShowNodeDetails(NodeStatus status)
         {
             if (!string.IsNullOrWhiteSpace(status?.Details))
-                MessageBox.Show(status.Details, "Состояние точки", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            {
+                MessageBoxIcon icon = status.Level switch
+                {
+                    NodeLevel.Error => MessageBoxIcon.Warning,
+                    NodeLevel.Warning => MessageBoxIcon.Information,
+                    _ => MessageBoxIcon.Information
+                };
+                string title = status.Level == NodeLevel.Error
+                    ? "Требуется внимание"
+                    : "Подробности проверки";
+                MessageBox.Show(status.Details, title, MessageBoxButtons.OK, icon);
+            }
         }
 
         private void BtnDetails_Click(object sender, EventArgs e)
@@ -2309,6 +2593,7 @@ namespace HonestFlow
         {
             btnLmAction.Enabled = enabled;
             btnControllerAction.Enabled = enabled;
+            btnPointStatusDetails.Enabled = enabled && _lastPointStatusResult != null;
             btnEsmAction.Enabled = enabled;
             btnKktAction.Enabled = enabled;
             btnCloudAction.Enabled = enabled;
@@ -2352,6 +2637,7 @@ namespace HonestFlow
 
             ApplyNodeLicenseAccess(btnLmAction);
             ApplyNodeLicenseAccess(btnControllerAction);
+            SetFeatureAvailability(btnPointStatusDetails, LicenseFeature.Diagnostics);
             ApplyNodeLicenseAccess(btnEsmAction);
             ApplyNodeLicenseAccess(btnKktAction);
             ApplyNodeLicenseAccess(btnCloudAction);
@@ -2376,7 +2662,10 @@ namespace HonestFlow
 
         private void ApplyNodeLicenseAccess(Button button)
         {
-            LicenseFeature feature = button.Tag is NodeStatus status && status.CanManageServices
+            LicenseFeature feature = button.Tag is NodeStatus status &&
+                                     (status.CanManageServices ||
+                                      status.ActionKind == NodeActionKind.RecoverLmServices ||
+                                      status.ActionKind == NodeActionKind.InitializeLm)
                 ? LicenseFeature.AutoFix
                 : LicenseFeature.Diagnostics;
             SetFeatureAvailability(button, feature);

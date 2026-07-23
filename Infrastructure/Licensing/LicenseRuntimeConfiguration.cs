@@ -5,7 +5,7 @@ namespace HonestFlow.Infrastructure.Licensing
 {
     public sealed class LicenseRuntimeConfiguration
     {
-        public LicenseEnforcementMode EnforcementMode { get; set; } = LicenseEnforcementMode.ObserveOnly;
+        public LicenseEnforcementMode EnforcementMode { get; set; } = LicenseEnforcementMode.Enforced;
         public Uri ManifestUrl { get; set; }
         public Uri SignatureUrl { get; set; }
         public string KeyId { get; set; }

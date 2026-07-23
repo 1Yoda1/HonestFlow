@@ -38,6 +38,34 @@ namespace HonestFlow.Application.Licensing
             }
 
             LicenseManifest manifest = context.Manifest;
+            OperatorDevice operatorDevice = (manifest.OperatorDevices ?? new List<OperatorDevice>())
+                .FirstOrDefault(candidate =>
+                    candidate != null &&
+                    candidate.Enabled &&
+                    string.Equals(candidate.DeviceId, context.DeviceId, StringComparison.OrdinalIgnoreCase));
+
+            if (operatorDevice != null)
+            {
+                if (nowUtc > manifest.ValidUntilUtc)
+                {
+                    return Denied(
+                        LicenseDecision.ManifestExpired,
+                        "Срок действия лицензионного manifest истёк.",
+                        "LICENSE_MANIFEST_EXPIRED",
+                        null,
+                        null,
+                        null);
+                }
+
+                return new LicenseDecisionResult(
+                    LicenseDecision.Allowed,
+                    AllFeatures(),
+                    "Операторское устройство имеет полный доступ.",
+                    "LICENSE_OPERATOR_DEVICE_ALLOWED",
+                    null,
+                    null);
+            }
+
             ClientLicense client = manifest.Clients.FirstOrDefault(candidate =>
                 candidate != null &&
                 string.Equals(candidate.ClientId, context.ClientId, StringComparison.Ordinal));
@@ -236,6 +264,9 @@ namespace HonestFlow.Application.Licensing
                 ? Array.Empty<LicenseFeature>()
                 : features.Distinct().ToArray();
         }
+
+        private static IReadOnlyCollection<LicenseFeature> AllFeatures() =>
+            ((LicenseFeature[])Enum.GetValues(typeof(LicenseFeature))).ToArray();
 
         private static Version ParseVersion(string value)
         {

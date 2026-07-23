@@ -10,7 +10,9 @@ namespace HonestFlow.Application.PointStatus
         ManageServices,
         InstallRuDesktop,
         ReinstallRuDesktop,
-        RequestRuDesktopHelp
+        RequestRuDesktopHelp,
+        RecoverLmServices,
+        InitializeLm
     }
 
     public sealed class NodeStatus
@@ -44,8 +46,10 @@ namespace HonestFlow.Application.PointStatus
             NodeActionKind.InstallRuDesktop => "Установить",
             NodeActionKind.ReinstallRuDesktop => "Переустановить",
             NodeActionKind.RequestRuDesktopHelp => "Запросить помощь",
+            NodeActionKind.RecoverLmServices => "Запустить",
+            NodeActionKind.InitializeLm => "Исправить",
             _ => !CanManageServices
-                ? "Подробнее"
+                ? "Обновить"
                 : Services.Any(x => !x.IsRunning) ? "Запустить" : "Перезапуск"
         };
     }

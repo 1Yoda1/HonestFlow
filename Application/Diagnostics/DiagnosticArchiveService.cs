@@ -27,6 +27,7 @@ namespace HonestFlow.Application.Diagnostics
         private readonly List<string> _copyErrors = new();
         private string _fiscalAddress;
         private string _pointAddress;
+        private string _pointStatusReport;
 
         public DiagnosticArchiveService(ILogService log)
             : this(log, new FileDeviceIdentityService(new DpapiDeviceIdentityStateProtector()))
@@ -42,6 +43,11 @@ namespace HonestFlow.Application.Diagnostics
         public string CreateArchive()
         {
             return CreateArchiveInfo().ArchivePath;
+        }
+
+        public void SetPointStatusReport(string report)
+        {
+            _pointStatusReport = string.IsNullOrWhiteSpace(report) ? null : report.Trim();
         }
 
         public DiagnosticArchiveInfo CreateArchiveInfo()
@@ -510,6 +516,12 @@ namespace HonestFlow.Application.Diagnostics
             AppendServiceStatus(sb, "regime");
             AppendServiceStatus(sb, "yenisei");
             AppendServiceStatus(sb, "lmcontroller");
+            sb.AppendLine();
+
+            sb.AppendLine("Состояние точки HonestFlow:");
+            sb.AppendLine(string.IsNullOrWhiteSpace(_pointStatusReport)
+                ? "Отладочный снимок ещё не сформирован. Нажмите «Обновить статусы» перед сбором диагностики."
+                : _pointStatusReport);
             sb.AppendLine();
 
             AppendList(sb, "Найденные логи:", _foundLogs);

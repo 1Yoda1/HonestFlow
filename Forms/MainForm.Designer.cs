@@ -43,7 +43,9 @@
 
             this.panelNodes = new System.Windows.Forms.Panel();
             this.nodesLayout = new System.Windows.Forms.TableLayoutPanel();
+            this.pointStatusHeaderLayout = new System.Windows.Forms.TableLayoutPanel();
             this.lblNodesTitle = new System.Windows.Forms.Label();
+            this.btnPointStatusDetails = new System.Windows.Forms.Button();
             this.nodeTable = new System.Windows.Forms.TableLayoutPanel();
 
             this.lblLmNode = new System.Windows.Forms.Label();
@@ -158,7 +160,7 @@
             // mainLayout
             this.mainLayout.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
             this.mainLayout.ColumnCount = 2;
-            this.mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 300F));
+            this.mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 280F));
             this.mainLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.mainLayout.Controls.Add(this.panelLeft, 0, 0);
             this.mainLayout.Controls.Add(this.panelNodes, 1, 0);
@@ -281,12 +283,22 @@
             // nodesLayout
             this.nodesLayout.ColumnCount = 1;
             this.nodesLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            this.nodesLayout.Controls.Add(this.lblNodesTitle, 0, 0);
+            this.nodesLayout.Controls.Add(this.pointStatusHeaderLayout, 0, 0);
             this.nodesLayout.Controls.Add(this.nodeTable, 0, 1);
             this.nodesLayout.Dock = System.Windows.Forms.DockStyle.Fill;
             this.nodesLayout.RowCount = 2;
-            this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 34F));
+            this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 46F));
             this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+
+            // pointStatusHeaderLayout
+            this.pointStatusHeaderLayout.ColumnCount = 2;
+            this.pointStatusHeaderLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.pointStatusHeaderLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 118F));
+            this.pointStatusHeaderLayout.Controls.Add(this.lblNodesTitle, 0, 0);
+            this.pointStatusHeaderLayout.Controls.Add(this.btnPointStatusDetails, 1, 0);
+            this.pointStatusHeaderLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.pointStatusHeaderLayout.RowCount = 1;
+            this.pointStatusHeaderLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
 
             // lblNodesTitle
             this.lblNodesTitle.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -295,24 +307,36 @@
             this.lblNodesTitle.Text = "Состояние точки";
             this.lblNodesTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
+            // btnPointStatusDetails
+            ConfigureButton(this.btnPointStatusDetails, "Подробнее", false);
+            this.btnPointStatusDetails.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.btnPointStatusDetails.Enabled = false;
+            this.btnPointStatusDetails.BackColor = System.Drawing.Color.White;
+            this.btnPointStatusDetails.ForeColor = System.Drawing.Color.FromArgb(37, 99, 235);
+            this.btnPointStatusDetails.FlatAppearance.BorderSize = 0;
+            this.btnPointStatusDetails.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
+            this.btnPointStatusDetails.Margin = new System.Windows.Forms.Padding(0, 5, 0, 5);
+            this.btnPointStatusDetails.Text = "Подробнее  →";
+            this.btnPointStatusDetails.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+
             // nodeTable
             this.nodeTable.ColumnCount = 4;
-            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 150F));
+            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 135F));
             this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 64F));
-            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 150F));
+            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 48F));
+            this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 142F));
             this.nodeTable.Dock = System.Windows.Forms.DockStyle.Top;
-            this.nodeTable.Height = 348;
+            this.nodeTable.Height = 420;
             this.nodeTable.RowCount = 6;
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
 
             ConfigureNodeRow(0, this.lblLmNode, this.lblLmStatusText, this.lblLmCircle, this.btnLmAction,
-                "ЛМ ЧЗ", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
+                "ЛМ ЧЗ", System.Drawing.Color.FromArgb(34, 197, 94), "Обновить");
 
             ConfigureNodeRow(1, this.lblControllerNode, this.lblControllerStatusText, this.lblControllerCircle, this.btnControllerAction,
                 "Контроллер", System.Drawing.Color.FromArgb(251, 191, 36), "Исправить");
@@ -324,7 +348,7 @@
                 "ККТ", System.Drawing.Color.FromArgb(148, 163, 184), "Проверить");
 
             ConfigureNodeRow(4, this.lblCloudNode, this.lblCloudStatusText, this.lblCloudCircle, this.btnCloudAction,
-                "Облако", System.Drawing.Color.FromArgb(34, 197, 94), "Подробнее");
+                "Облако", System.Drawing.Color.FromArgb(34, 197, 94), "Обновить");
 
             ConfigureNodeRow(5, this.lblRuDesktopNode, this.lblRuDesktopStatusText, this.lblRuDesktopCircle, this.btnRuDesktopAction,
                 "RuDesktop", System.Drawing.Color.FromArgb(148, 163, 184), "Проверить");
@@ -373,16 +397,16 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(243, 246, 250);
-            this.ClientSize = new System.Drawing.Size(900, 620);
+            this.ClientSize = new System.Drawing.Size(1080, 720);
             this.Controls.Add(this.rootLayout);
             this.Controls.Add(this.listBox1);
             this.Controls.Add(this.button1);
             this.Controls.Add(this.buttonInstall);
             this.Controls.Add(this.label2);
             this.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-            this.MaximizeBox = false;
-            this.MinimumSize = new System.Drawing.Size(900, 620);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
+            this.MaximizeBox = true;
+            this.MinimumSize = new System.Drawing.Size(980, 680);
             this.Name = "MainForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "HonestFlow";
@@ -435,7 +459,9 @@
 
         private System.Windows.Forms.Panel panelNodes;
         private System.Windows.Forms.TableLayoutPanel nodesLayout;
+        private System.Windows.Forms.TableLayoutPanel pointStatusHeaderLayout;
         private System.Windows.Forms.Label lblNodesTitle;
+        private System.Windows.Forms.Button btnPointStatusDetails;
         private System.Windows.Forms.TableLayoutPanel nodeTable;
 
         private System.Windows.Forms.Label lblLmNode;

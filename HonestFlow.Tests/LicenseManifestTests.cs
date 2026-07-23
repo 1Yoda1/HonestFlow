@@ -24,6 +24,7 @@ namespace HonestFlow.Tests
             Assert.Equal(TimeSpan.Zero, restored.IssuedAtUtc.Offset);
             Assert.Equal(TimeSpan.Zero, restored.ValidUntilUtc.Offset);
             Assert.Equal("client-1", restored.Clients.Single().ClientId);
+            Assert.Equal("operator-1", restored.OperatorDevices.Single().DeviceId);
             Assert.Contains(LicenseFeature.Diagnostics, restored.Clients.Single().Features);
             Assert.Equal("device-1", restored.Clients.Single().Devices.Single().DeviceId);
         }
@@ -54,6 +55,12 @@ namespace HonestFlow.Tests
             var manifest = CreateValidManifest();
             manifest.Revision = -1;
             manifest.ValidUntilUtc = manifest.IssuedAtUtc.AddMinutes(-1);
+            manifest.OperatorDevices = new List<OperatorDevice>
+            {
+                new OperatorDevice { DeviceId = " operator " },
+                new OperatorDevice { DeviceId = "OPERATOR" },
+                new OperatorDevice { DeviceId = " " }
+            };
             manifest.Clients = new List<ClientLicense>
             {
                 new ClientLicense
@@ -78,6 +85,10 @@ namespace HonestFlow.Tests
             Assert.Equal(2, errors.Count(error => error.Message == "ClientId must be unique."));
             Assert.Contains(errors, error => error.Path == "Clients[2].ClientId" && error.Message == "ClientId is required.");
             Assert.Equal(2, errors.Count(error => error.Message == "DeviceId must be unique within the client."));
+            Assert.Equal(2, errors.Count(error => error.Message == "Operator DeviceId must be unique."));
+            Assert.Contains(errors, error =>
+                error.Path == "OperatorDevices[2].DeviceId" &&
+                error.Message == "Operator DeviceId is required.");
         }
 
         private static LicenseManifest CreateValidManifest()
@@ -88,6 +99,15 @@ namespace HonestFlow.Tests
                 Revision = 42,
                 IssuedAtUtc = new DateTimeOffset(2026, 7, 18, 6, 0, 0, TimeSpan.Zero),
                 ValidUntilUtc = new DateTimeOffset(2027, 7, 18, 6, 0, 0, TimeSpan.Zero),
+                OperatorDevices = new List<OperatorDevice>
+                {
+                    new OperatorDevice
+                    {
+                        DeviceId = "operator-1",
+                        Name = "Owner workstation",
+                        Enabled = true
+                    }
+                },
                 Clients = new List<ClientLicense>
                 {
                     new ClientLicense

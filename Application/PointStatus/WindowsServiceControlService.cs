@@ -19,6 +19,34 @@ namespace HonestFlow.Application.PointStatus
                 RunServicePowerShell("Restart-Service", service.ServiceName);
         }
 
+        public void StartService(string serviceName)
+        {
+            RunServicePowerShell("Start-Service", serviceName);
+        }
+
+        public bool IsServiceRunning(string serviceName)
+        {
+            var startInfo = new ProcessStartInfo("powershell.exe")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-Command");
+            startInfo.ArgumentList.Add($"(Get-Service -Name '{serviceName}' -ErrorAction SilentlyContinue).Status");
+
+            using var process = Process.Start(startInfo);
+            if (process == null)
+                return false;
+
+            string output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(5000);
+            return process.ExitCode == 0 &&
+                   string.Equals(output.Trim(), "Running", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static void RunServicePowerShell(string command, string serviceName)
         {
             var startInfo = new ProcessStartInfo("powershell.exe")

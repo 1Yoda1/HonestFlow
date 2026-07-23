@@ -13,10 +13,10 @@ namespace HonestFlow.Tests
             new(2026, 7, 18, 12, 0, 0, TimeSpan.Zero);
 
         [Fact]
-        public void RuntimeConfiguration_DefaultRemainsObserveOnly()
+        public void RuntimeConfiguration_DefaultIsEnforced()
         {
             Assert.Equal(
-                LicenseEnforcementMode.ObserveOnly,
+                LicenseEnforcementMode.Enforced,
                 new LicenseRuntimeConfiguration().EnforcementMode);
         }
 

@@ -26,6 +26,8 @@ namespace HonestFlow.Models.Licensing
                     "ValidUntilUtc cannot be earlier than IssuedAtUtc."));
             }
 
+            ValidateOperatorDevices(manifest.OperatorDevices, errors);
+
             var clients = manifest.Clients ?? new List<ClientLicense>();
             var duplicateClientIds = clients
                 .Where(client => client != null && !string.IsNullOrWhiteSpace(client.ClientId))
@@ -65,6 +67,43 @@ namespace HonestFlow.Models.Licensing
             }
 
             return errors;
+        }
+
+        private static void ValidateOperatorDevices(
+            List<OperatorDevice> devices,
+            List<LicenseValidationError> errors)
+        {
+            devices ??= new List<OperatorDevice>();
+            var duplicateDeviceIds = devices
+                .Where(device => device != null && !string.IsNullOrWhiteSpace(device.DeviceId))
+                .GroupBy(device => device.DeviceId.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            for (int deviceIndex = 0; deviceIndex < devices.Count; deviceIndex++)
+            {
+                OperatorDevice device = devices[deviceIndex];
+                string devicePath = $"OperatorDevices[{deviceIndex}]";
+                if (device == null)
+                {
+                    errors.Add(new LicenseValidationError(devicePath, "Operator device is required."));
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(device.DeviceId))
+                {
+                    errors.Add(new LicenseValidationError(
+                        $"{devicePath}.DeviceId",
+                        "Operator DeviceId is required."));
+                }
+                else if (duplicateDeviceIds.Contains(device.DeviceId.Trim()))
+                {
+                    errors.Add(new LicenseValidationError(
+                        $"{devicePath}.DeviceId",
+                        "Operator DeviceId must be unique."));
+                }
+            }
         }
 
         private static void ValidateDevices(
