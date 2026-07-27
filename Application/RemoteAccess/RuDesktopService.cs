@@ -95,6 +95,7 @@ namespace HonestFlow.Application.RemoteAccess
             var state = LoadState();
             state.LastAuthorizedClient = new LastAuthorizedClientState
             {
+                ClientId = client.ClientId,
                 Name = client.Name,
                 Inn = client.Inn,
                 AuthorizedAt = DateTime.Now

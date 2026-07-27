@@ -267,11 +267,14 @@ namespace HonestFlow
         private async void MainForm_Shown(object sender, EventArgs e)
         {
             if (_startupAuthorizedClient != null)
+            {
                 ApplyAuthorizedClient(_startupAuthorizedClient);
+                await RefreshPointStatusAsync();
+            }
             else if (!_startupAuthenticationHandled)
+            {
                 await PromptSellerLoginAsync();
-
-            await RefreshPointStatusAsync();
+            }
         }
 
         private async void BtnRefreshLicense_Click(object sender, EventArgs e)
@@ -408,7 +411,7 @@ namespace HonestFlow
         {
             LogOperatorAction($"открытие внешнего приложения: {title}");
 
-            if (!EnsureLicenseAccess(LicenseFeature.ManualTools, $"открытие {title}"))
+            if (!EnsureLicenseAccess(LicenseFeature.OpenLocalTools, $"открытие {title}"))
                 return;
 
             if (!EnsureNoLongOperation($"открытие {title}"))
@@ -478,6 +481,7 @@ namespace HonestFlow
             }
 
             ApplyAuthorizedClient(selectedIP);
+            await RefreshPointStatusAsync();
         }
 
         private async void BtnStartInstallation_Click(object sender, EventArgs e)
@@ -545,7 +549,7 @@ namespace HonestFlow
 
             if (!TryBeginLongOperation(
                 "проверка и установка компонентов",
-                LicenseFeature.Install,
+                LicenseFeature.InstallComponents,
                 requiresEngineerAccess: true))
                 return;
 
@@ -581,7 +585,7 @@ namespace HonestFlow
         {
             LogOperatorAction("нажата кнопка сбора диагностики");
 
-            if (!TryBeginLongOperation("сбор диагностики", LicenseFeature.Diagnostics))
+            if (!TryBeginLongOperation("сбор диагностики", LicenseFeature.CollectDiagnostics))
                 return;
 
             DiagnosticArchiveInfo archiveInfo = null;
@@ -601,7 +605,10 @@ namespace HonestFlow
                 progressBar.Value = 0;
                 lblStatus.Text = "Сборка архива диагностики...";
 
-                string pointAddress = ResolveCurrentPointAddress().Address;
+                string pointAddress = ResolvePointAddressForOnlineAction(
+                    "Сбор диагностики",
+                    "Для диагностического архива укажите адрес торговой точки.");
+
                 archiveInfo = await Task.Run(() =>
                     _diagnosticArchiveService.CreateArchiveInfo(selection, pointAddress));
                 string archivePath = archiveInfo.ArchivePath;
@@ -626,7 +633,7 @@ namespace HonestFlow
                     return;
                 }
 
-                if (!EnsureLicenseAccess(LicenseFeature.SendLogs, "отправка диагностики"))
+                if (!EnsureLicenseAccess(LicenseFeature.SendDiagnostics, "отправка диагностики"))
                 {
                     lblStatus.Text = "Архив диагностики собран локально";
                     return;
@@ -682,8 +689,18 @@ namespace HonestFlow
         {
             LogOperatorAction("открыто меню обслуживания точки");
 
-            if (!EnsureLicenseAccess(LicenseFeature.Repair, "открытие меню обслуживания"))
+            if (!HasAnyLicenseAccess(
+                LicenseFeature.ReinstallComponents,
+                LicenseFeature.RestoreLmDatabase))
+            {
+                LogOperatorAction("меню обслуживания заблокировано лицензией", isError: true);
+                MessageBox.Show(
+                    "В лицензии не разрешено ни одного действия обслуживания.",
+                    "Функция недоступна",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
                 return;
+            }
 
             if (!EnsureEngineerAccess("открытие меню обслуживания"))
                 return;
@@ -761,7 +778,7 @@ namespace HonestFlow
 
             if (!TryBeginLongOperation(
                 "ручная переустановка компонентов",
-                LicenseFeature.Repair,
+                LicenseFeature.ReinstallComponents,
                 requiresEngineerAccess: true))
                 return;
 
@@ -826,7 +843,7 @@ namespace HonestFlow
 
             if (!TryBeginLongOperation(
                 "восстановление базы ЛМ ЧЗ",
-                LicenseFeature.Repair,
+                LicenseFeature.RestoreLmDatabase,
                 requiresEngineerAccess: true))
                 return;
 
@@ -1010,6 +1027,9 @@ namespace HonestFlow
                 Margin = new Padding(0, 4, 0, 4)
             };
 
+            SetFeatureAvailability(reinstallButton, LicenseFeature.ReinstallComponents);
+            SetFeatureAvailability(restoreButton, LicenseFeature.RestoreLmDatabase);
+
             MaintenanceAction? selected = null;
 
             reinstallButton.Click += (s, e) =>
@@ -1149,7 +1169,7 @@ namespace HonestFlow
         private async void BtnRefreshStatus_Click(object sender, EventArgs e)
         {
             LogOperatorAction("запрошено ручное обновление статусов точки");
-            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "обновление статусов"))
+            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "обновление статусов"))
                 return;
             await RefreshPointStatusAsync();
         }
@@ -1206,7 +1226,7 @@ namespace HonestFlow
                 }
             }
 
-            if (!TryBeginLongOperation("управление службами", LicenseFeature.AutoFix))
+            if (!TryBeginLongOperation("управление службами", LicenseFeature.ManageServices))
                 return;
 
             try
@@ -1248,7 +1268,14 @@ namespace HonestFlow
 
         private async Task RefreshPointStatusAsync(bool allowDuringLongOperation = false)
         {
-            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "проверка состояния точки"))
+            if (_selectedIP == null)
+            {
+                LogOperatorAction("проверка состояния точки заблокирована: продавец не авторизован", isError: true);
+                lblStatus.Text = "Для проверки состояния точки войдите как продавец";
+                return;
+            }
+
+            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "проверка состояния точки"))
                 return;
 
             if (!allowDuringLongOperation && IsLongOperationRunning)
@@ -1378,7 +1405,7 @@ namespace HonestFlow
 
         private async void RecoverLmServices_Click(object sender, EventArgs e)
         {
-            if (!TryBeginLongOperation("восстановление служб ЛМ ЧЗ", LicenseFeature.AutoFix))
+            if (!TryBeginLongOperation("восстановление служб ЛМ ЧЗ", LicenseFeature.RecoverLmServices))
                 return;
 
             try
@@ -1435,7 +1462,7 @@ namespace HonestFlow
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
             if (confirmation != DialogResult.Yes ||
-                !TryBeginLongOperation("инициализация ЛМ ЧЗ", LicenseFeature.AutoFix))
+                !TryBeginLongOperation("инициализация ЛМ ЧЗ", LicenseFeature.InitializeLm))
             {
                 return;
             }
@@ -1543,7 +1570,7 @@ namespace HonestFlow
             // RuDesktop intentionally does not require the engineer password.
             if (!TryBeginLongOperation(
                     $"{action.ToLowerInvariant()} RuDesktop",
-                    LicenseFeature.Install,
+                    LicenseFeature.InstallRuDesktop,
                     requiresEngineerAccess: false))
                 return;
 
@@ -1618,7 +1645,7 @@ namespace HonestFlow
 
         private void ShowNodeDetails_Click(object sender, EventArgs e)
         {
-            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "просмотр состояния точки"))
+            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "просмотр состояния точки"))
                 return;
 
             if (sender is Button button && button.Tag is NodeStatus status)
@@ -1630,7 +1657,7 @@ namespace HonestFlow
 
         private void ShowPointStatusDetails_Click(object sender, EventArgs e)
         {
-            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "просмотр состояния точки"))
+            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "просмотр состояния точки"))
                 return;
 
             if (_lastPointStatusResult == null)
@@ -1766,7 +1793,7 @@ namespace HonestFlow
         {
             LogOperatorAction("нажата кнопка запроса помощи");
 
-            if (!EnsureLicenseAccess(LicenseFeature.SendLogs, "запрос помощи"))
+            if (!EnsureLicenseAccess(LicenseFeature.RequestHelp, "запрос помощи"))
                 return;
 
             if (!EnsureNoLongOperation("запрос помощи"))
@@ -2014,6 +2041,7 @@ namespace HonestFlow
             {
                 Location = new Point(16, 106),
                 Width = 428,
+                MaxLength = PointAddressService.MaximumAddressLength,
                 Text = addressFound ? fiscalAddress : string.Empty
             };
 
@@ -2046,7 +2074,6 @@ namespace HonestFlow
             var okButton = new Button
             {
                 Text = "Отправить",
-                DialogResult = DialogResult.OK,
                 Location = new Point(254, 344),
                 Width = 90
             };
@@ -2071,6 +2098,24 @@ namespace HonestFlow
             form.AcceptButton = okButton;
             form.CancelButton = cancelButton;
 
+            okButton.Click += (_, _) =>
+            {
+                string normalizedAddress = PointAddressService.NormalizeAddress(addressBox.Text);
+                if (normalizedAddress == null)
+                {
+                    MessageBox.Show(
+                        $"Введите адрес торговой точки длиной не более {PointAddressService.MaximumAddressLength} символов.",
+                        "Запросить помощь",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    addressBox.Focus();
+                    return;
+                }
+
+                addressBox.Text = normalizedAddress;
+                form.DialogResult = DialogResult.OK;
+            };
+
             if (form.ShowDialog() != DialogResult.OK)
                 return null;
 
@@ -2090,6 +2135,86 @@ namespace HonestFlow
         private PointAddressResult ResolveCurrentPointAddress()
         {
             return _pointAddressService.Resolve(_licenseSnapshotStore.Current);
+        }
+
+        private string ResolvePointAddressForOnlineAction(
+            string title,
+            string prompt)
+        {
+            PointAddressResult resolved = ResolveCurrentPointAddress();
+            if (resolved.IsAvailable)
+                return resolved.Address;
+
+            using var form = new Form
+            {
+                Text = title,
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ControlBox = false,
+                ShowInTaskbar = false,
+                ClientSize = new Size(460, 160)
+            };
+
+            var promptLabel = new Label
+            {
+                Text = prompt,
+                Location = new Point(16, 16),
+                Size = new Size(428, 36)
+            };
+            var addressBox = new TextBox
+            {
+                Location = new Point(16, 58),
+                Width = 428,
+                MaxLength = PointAddressService.MaximumAddressLength
+            };
+            var okButton = new Button
+            {
+                Text = "Продолжить",
+                Location = new Point(244, 112),
+                Width = 100
+            };
+
+            okButton.Click += (_, _) =>
+            {
+                string normalizedAddress = PointAddressService.NormalizeAddress(addressBox.Text);
+                if (normalizedAddress == null)
+                {
+                    MessageBox.Show(
+                        "Введите адрес торговой точки.",
+                        title,
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    addressBox.Focus();
+                    return;
+                }
+
+                addressBox.Text = normalizedAddress;
+                form.DialogResult = DialogResult.OK;
+            };
+
+            form.Controls.Add(promptLabel);
+            form.Controls.Add(addressBox);
+            form.Controls.Add(okButton);
+            form.AcceptButton = okButton;
+            form.FormClosing += (_, args) =>
+            {
+                if (args.CloseReason == CloseReason.UserClosing &&
+                    form.DialogResult != DialogResult.OK)
+                {
+                    args.Cancel = true;
+                }
+            };
+
+            form.ShowDialog(this);
+
+            string pointAddress = addressBox.Text;
+            _pointAddressService.Save(
+                _licenseSnapshotStore.Current?.DeviceId,
+                pointAddress,
+                PointAddressSource.Manual);
+            return pointAddress;
         }
 
         private static string MaskInn(string inn)
@@ -2141,7 +2266,7 @@ namespace HonestFlow
         {
             LogOperatorAction("открытие журнала выполнения");
 
-            if (!EnsureLicenseAccess(LicenseFeature.Diagnostics, "открытие журнала"))
+            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "открытие журнала"))
                 return;
 
             try
@@ -2219,6 +2344,7 @@ namespace HonestFlow
             _logService.LogUser($"Пользователь: {selectedIP.Name}");
             _logService.LogDebug($"Авторизован: {selectedIP.Name}, ИНН: {selectedIP.Inn}, Разрядность: {selectedIP.Architecture}");
             _ruDesktopService.SaveLastAuthorizedClient(selectedIP);
+            ApplyAuthorizedUiMode();
             ApplyLicenseAccessToUi();
             HandleLicenseSnapshot(_licenseSnapshotStore.Current);
         }
@@ -2344,7 +2470,7 @@ namespace HonestFlow
 
         private async Task ConfigureRuDesktopPasswordFromClient(IPData selectedIP)
         {
-            if (!TryBeginLongOperation("настройка RuDesktop", LicenseFeature.ManualTools))
+            if (!TryBeginLongOperation("настройка RuDesktop", LicenseFeature.ConfigureRuDesktop))
                 return;
 
             try
@@ -2600,6 +2726,12 @@ namespace HonestFlow
             btnRuDesktopAction.Enabled = enabled;
         }
 
+        private bool HasAnyLicenseAccess(params LicenseFeature[] features)
+        {
+            return features != null && features.Any(feature =>
+                _licenseAccessPolicy.Check(feature).IsAllowed);
+        }
+
         private bool EnsureLicenseAccess(LicenseFeature feature, string operationName)
         {
             LicenseAccessResult access = _licenseAccessPolicy.Check(feature);
@@ -2623,25 +2755,86 @@ namespace HonestFlow
             if (IsDisposed || IsLongOperationRunning)
                 return;
 
-            SetFeatureAvailability(btnDiagnostics, LicenseFeature.Diagnostics);
-            SetFeatureAvailability(btnCheckWithoutPassword, LicenseFeature.Diagnostics);
-            SetFeatureAvailability(btnDetails, LicenseFeature.Diagnostics);
-            SetFeatureAvailability(btnMaintenance, LicenseFeature.Repair);
-            SetFeatureAvailability(btnReinstallComponents, LicenseFeature.Repair);
-            SetFeatureAvailability(btnRestoreLmDatabase, LicenseFeature.Repair);
-            SetFeatureAvailability(btnOpenKktDriver, LicenseFeature.ManualTools);
-            SetFeatureAvailability(btnOpenEsm, LicenseFeature.ManualTools);
+            SetFeatureAvailability(btnDiagnostics, LicenseFeature.CollectDiagnostics);
+            SetFeatureAvailability(btnCheckWithoutPassword, LicenseFeature.ViewPointStatus);
+            SetFeatureAvailability(btnDetails, LicenseFeature.ViewPointStatus);
+            SetAnyFeatureAvailability(
+                btnMaintenance,
+                LicenseFeature.ReinstallComponents,
+                LicenseFeature.RestoreLmDatabase);
+            SetFeatureAvailability(btnReinstallComponents, LicenseFeature.ReinstallComponents);
+            SetFeatureAvailability(btnRestoreLmDatabase, LicenseFeature.RestoreLmDatabase);
+            SetFeatureAvailability(btnOpenKktDriver, LicenseFeature.OpenLocalTools);
+            SetFeatureAvailability(btnOpenEsm, LicenseFeature.OpenLocalTools);
 
             if (_selectedIP != null)
-                SetFeatureAvailability(btnStartInstallation, LicenseFeature.Install);
+                SetFeatureAvailability(btnStartInstallation, LicenseFeature.InstallComponents);
 
             ApplyNodeLicenseAccess(btnLmAction);
             ApplyNodeLicenseAccess(btnControllerAction);
-            SetFeatureAvailability(btnPointStatusDetails, LicenseFeature.Diagnostics);
+            SetFeatureAvailability(btnPointStatusDetails, LicenseFeature.ViewPointStatus);
             ApplyNodeLicenseAccess(btnEsmAction);
             ApplyNodeLicenseAccess(btnKktAction);
             ApplyNodeLicenseAccess(btnCloudAction);
             ApplyRuDesktopLicenseAccess();
+
+            if (_selectedIP == null)
+                ApplyDiagnosticsOnlyUiMode();
+        }
+
+        private void ApplyDiagnosticsOnlyUiMode()
+        {
+            btnCheckWithoutPassword.Text = "Запросить помощь";
+            btnCheckWithoutPassword.Click -= BtnRefreshStatus_Click;
+            btnCheckWithoutPassword.Click -= BtnRequestHelp_Click;
+            btnCheckWithoutPassword.Click += BtnRequestHelp_Click;
+            btnCheckWithoutPassword.Enabled = _licenseAccessPolicy
+                .Check(LicenseFeature.RequestHelp)
+                .IsAllowed;
+
+            btnDiagnostics.Visible = true;
+            btnOpenKktDriver.Visible = false;
+            btnOpenEsm.Visible = false;
+            btnDetails.Visible = false;
+            leftLayout.RowStyles[6].Height = 0;
+            leftLayout.RowStyles[7].Height = 0;
+            leftLayout.RowStyles[8].Height = 0;
+
+            panelNodes.Enabled = false;
+            btnPointStatusDetails.Enabled = false;
+            SetNodeActionButtonsEnabled(false);
+            lblHeaderStatus.Text = "● Требуется авторизация";
+            lblAuthorizedClient.Text = "Продавец не авторизован";
+            lblStatus.Text = "Доступны сбор диагностики и запрос помощи";
+
+            foreach (Label statusLabel in new[]
+            {
+                lblLmStatusText,
+                lblControllerStatusText,
+                lblEsmStatusText,
+                lblKktStatusText,
+                lblCloudStatusText,
+                lblRuDesktopStatusText
+            })
+            {
+                statusLabel.Text = "Войдите как продавец";
+            }
+        }
+
+        private void ApplyAuthorizedUiMode()
+        {
+            btnCheckWithoutPassword.Text = "Обновить статусы";
+            btnCheckWithoutPassword.Click -= BtnRequestHelp_Click;
+            btnCheckWithoutPassword.Click -= BtnRefreshStatus_Click;
+            btnCheckWithoutPassword.Click += BtnRefreshStatus_Click;
+
+            btnOpenKktDriver.Visible = true;
+            btnOpenEsm.Visible = true;
+            btnDetails.Visible = true;
+            leftLayout.RowStyles[6].Height = 40;
+            leftLayout.RowStyles[7].Height = 40;
+            leftLayout.RowStyles[8].Height = 40;
+            panelNodes.Enabled = true;
         }
 
         private void ApplyRuDesktopLicenseAccess()
@@ -2649,26 +2842,40 @@ namespace HonestFlow
             LicenseFeature feature = btnRuDesktopAction.Tag is NodeStatus status
                 ? status.ActionKind switch
                 {
-                    NodeActionKind.InstallRuDesktop => LicenseFeature.Install,
-                    NodeActionKind.ReinstallRuDesktop => LicenseFeature.Install,
-                    NodeActionKind.ManageServices => LicenseFeature.AutoFix,
-                    NodeActionKind.RequestRuDesktopHelp => LicenseFeature.SendLogs,
-                    _ => LicenseFeature.Diagnostics
+                    NodeActionKind.InstallRuDesktop => LicenseFeature.InstallRuDesktop,
+                    NodeActionKind.ReinstallRuDesktop => LicenseFeature.InstallRuDesktop,
+                    NodeActionKind.ManageServices => LicenseFeature.ManageServices,
+                    NodeActionKind.RequestRuDesktopHelp => LicenseFeature.RequestHelp,
+                    _ => LicenseFeature.ViewPointStatus
                 }
-                : LicenseFeature.Diagnostics;
+                : LicenseFeature.ViewPointStatus;
 
             SetFeatureAvailability(btnRuDesktopAction, feature);
         }
 
         private void ApplyNodeLicenseAccess(Button button)
         {
-            LicenseFeature feature = button.Tag is NodeStatus status &&
-                                     (status.CanManageServices ||
-                                      status.ActionKind == NodeActionKind.RecoverLmServices ||
-                                      status.ActionKind == NodeActionKind.InitializeLm)
-                ? LicenseFeature.AutoFix
-                : LicenseFeature.Diagnostics;
+            LicenseFeature feature = button.Tag is NodeStatus status
+                ? status.ActionKind switch
+                {
+                    NodeActionKind.RecoverLmServices => LicenseFeature.RecoverLmServices,
+                    NodeActionKind.InitializeLm => LicenseFeature.InitializeLm,
+                    _ when status.CanManageServices => LicenseFeature.ManageServices,
+                    _ => LicenseFeature.ViewPointStatus
+                }
+                : LicenseFeature.ViewPointStatus;
             SetFeatureAvailability(button, feature);
+        }
+
+        private void SetAnyFeatureAvailability(
+            Control control,
+            params LicenseFeature[] features)
+        {
+            bool isAllowed = HasAnyLicenseAccess(features);
+            control.Enabled = isAllowed;
+            _licenseToolTip.SetToolTip(
+                control,
+                isAllowed ? string.Empty : "В лицензии не разрешены действия этого раздела.");
         }
 
         private void SetFeatureAvailability(Control control, LicenseFeature feature)
@@ -2705,7 +2912,12 @@ namespace HonestFlow
             _pointAddressService.Resolve(snapshot);
 
             if (snapshot?.Decision == LicenseDecision.DeviceNotRegistered && _selectedIP != null)
-                _ = SendDeviceRegistrationRequestSafelyAsync(snapshot);
+            {
+                string pointAddress = ResolvePointAddressForOnlineAction(
+                    "Заявка на лицензию",
+                    "Для отправки заявки укажите адрес торговой точки.");
+                _ = SendDeviceRegistrationRequestSafelyAsync(snapshot, pointAddress);
+            }
 
             PresentLicenseDecision(snapshot);
         }
@@ -2728,7 +2940,7 @@ namespace HonestFlow
                     return;
 
                 case LicenseDecision.DeviceNotRegistered:
-                    ShowUnregisteredDevice(snapshot);
+                    lblStatus.Text = "Устройство не зарегистрировано. Заявка на регистрацию отправляется автоматически.";
                     return;
 
                 case LicenseDecision.ClientDisabled:
@@ -2771,37 +2983,11 @@ namespace HonestFlow
             }
         }
 
-        private void ShowUnregisteredDevice(LicenseObservationSnapshot snapshot)
-        {
-            string clientId = string.IsNullOrWhiteSpace(snapshot.ClientId) ? "не указан" : snapshot.ClientId;
-            string deviceId = string.IsNullOrWhiteSpace(snapshot.DeviceId) ? "не удалось получить" : snapshot.DeviceId;
-            DialogResult copy = MessageBox.Show(
-                $"Устройство не зарегистрировано в лицензии.\n\nClientId: {clientId}\nDeviceId: {deviceId}\n\nСкопировать заявку на регистрацию?",
-                "Устройство не зарегистрировано",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-
-            if (copy == DialogResult.Yes &&
-                !string.IsNullOrWhiteSpace(snapshot.ClientId) &&
-                !string.IsNullOrWhiteSpace(snapshot.DeviceId))
-            {
-                string pointAddress = _pointAddressService.Resolve(snapshot).Address;
-                string request = _deviceRegistrationRequestService.Create(
-                    snapshot.ClientId,
-                    snapshot.DeviceId,
-                    Environment.MachineName,
-                    pointAddress,
-                    GetHonestFlowVersion(),
-                    DateTimeOffset.UtcNow);
-                Clipboard.SetText(request);
-                lblStatus.Text = "Заявка на регистрацию устройства скопирована.";
-            }
-        }
 
         private async Task SendDeviceRegistrationRequestSafelyAsync(
-            LicenseObservationSnapshot snapshot)
+            LicenseObservationSnapshot snapshot,
+            string pointAddress)
         {
-            string pointAddress = _pointAddressService.Resolve(snapshot).Address;
             DeviceRegistrationDeliveryStatus status = await _deviceRegistrationCoordinator.TrySendAsync(
                 snapshot,
                 Environment.MachineName,

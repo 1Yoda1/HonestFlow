@@ -14,6 +14,7 @@ namespace HonestFlow.Application.RemoteAccess
 
     public class LastAuthorizedClientState
     {
+        public string ClientId { get; set; }
         public string Name { get; set; }
         public string Inn { get; set; }
         public DateTime AuthorizedAt { get; set; }

@@ -13,6 +13,7 @@ using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Application.Auth;
 using HonestFlow.Models;
 using HonestFlow.Application.Prerequisites;
+using HonestFlow.Application.RemoteAccess;
 
 namespace HonestFlow
 {
@@ -80,7 +81,7 @@ namespace HonestFlow
 
                     startup.AuthService = LicenseObservationBootstrap.WrapAuthService(startup.AuthService);
 
-                    startup.AuthorizedClient = await AuthenticateSellerAtStartupAsync(startup.AuthService);
+                    startup.AuthorizedClient = await AuthenticateSellerAtStartupAsync(startup, logService);
                     startup.SellerAuthenticationHandled = true;
                     if (startup.AuthorizedClient != null)
                         await PrepareDotNet10Async(logService);
@@ -116,8 +117,17 @@ namespace HonestFlow
                 }
             }
 
-            private async Task<IPData> AuthenticateSellerAtStartupAsync(IAuthService authService)
+            private async Task<IPData> AuthenticateSellerAtStartupAsync(
+                StartupResult startup,
+                ILogService logService)
             {
+                IAuthService authService = startup.AuthService;
+                IPData rememberedClient = await TryRestoreRememberedSellerAsync(
+                    startup,
+                    logService);
+                if (rememberedClient != null)
+                    return rememberedClient;
+
                 string errorMessage = null;
                 while (true)
                 {
@@ -163,6 +173,74 @@ namespace HonestFlow
                 }
             }
 
+            private async Task<IPData> TryRestoreRememberedSellerAsync(
+                StartupResult startup,
+                ILogService logService)
+            {
+                LastAuthorizedClientState remembered = new RuDesktopService(logService)
+                    .GetLastAuthorizedClient();
+                if (string.IsNullOrWhiteSpace(remembered?.ClientId))
+                    return null;
+
+                IPData client = startup.Ips?.Find(candidate =>
+                    candidate != null &&
+                    string.Equals(
+                        candidate.ClientId,
+                        remembered.ClientId,
+                        StringComparison.Ordinal));
+                if (client == null)
+                {
+                    Logger.Info(
+                        "Event=RememberedSellerLogin Status=ClientNotFound",
+                        nameof(Program));
+                    return null;
+                }
+
+                string displayName = string.IsNullOrWhiteSpace(client.Name)
+                    ? "сохранённым продавцом"
+                    : $"продавцом «{client.Name.Trim()}»";
+                DialogResult answer = MessageBox.Show(
+                    _startupForm,
+                    $"Вы уже авторизованы под {displayName}. Войти?",
+                    "Вход в HonestFlow",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                if (answer != DialogResult.Yes)
+                    return null;
+
+                try
+                {
+                    if (startup.AuthService is ILicenseObservationRefresher refresher)
+                    {
+                        var progress = new Progress<LicenseAuthenticationProgress>(
+                            _startupForm.ReportLicenseAuthentication);
+                        await refresher.RefreshLicenseAsync(
+                            client,
+                            progress,
+                            CancellationToken.None);
+                    }
+
+                    Logger.Info(
+                        "Event=RememberedSellerLogin Status=Success",
+                        nameof(Program));
+                    _startupForm.ShowAuthenticationSuccess(client.Name);
+                    await Task.Delay(450);
+                    return client;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(
+                        $"Event=RememberedSellerLogin Status=Failed ErrorType={ex.GetType().Name}",
+                        nameof(Program));
+                    MessageBox.Show(
+                        _startupForm,
+                        "Не удалось проверить сохранённый вход. Введите пароль продавца.",
+                        "Вход в HonestFlow",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return null;
+                }
+            }
             private async Task PrepareDotNet10Async(ILogService logService)
             {
                 var installer = new DotNetDesktopRuntimeInstaller(logService);

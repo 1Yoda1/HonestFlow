@@ -33,7 +33,7 @@ namespace HonestFlow.Application.Licensing
                 return Denied("LICENSE_DECISION_PENDING", "Проверка лицензии ещё не завершена. Доступна диагностика.", feature, DiagnosticAndLogs);
 
             IReadOnlyCollection<LicenseFeature> allowed = GetAllowedFeatures(snapshot);
-            return Contains(allowed, feature)
+            return IsGranted(allowed, feature)
                 ? Allowed(snapshot.TechnicalCode)
                 : new LicenseAccessResult(false, snapshot.TechnicalCode, BuildDeniedMessage(snapshot));
         }
@@ -64,7 +64,7 @@ namespace HonestFlow.Application.Licensing
             LicenseFeature requested,
             IReadOnlyCollection<LicenseFeature> allowed)
         {
-            return Contains(allowed, requested)
+            return IsGranted(allowed, requested)
                 ? Allowed(technicalCode)
                 : new LicenseAccessResult(false, technicalCode, message);
         }
@@ -72,7 +72,35 @@ namespace HonestFlow.Application.Licensing
         private static LicenseAccessResult Allowed(string technicalCode) =>
             new(true, technicalCode, string.Empty);
 
-        private static bool Contains(IReadOnlyCollection<LicenseFeature> features, LicenseFeature feature)
+        private static bool IsGranted(
+            IReadOnlyCollection<LicenseFeature> features,
+            LicenseFeature requested)
+        {
+            if (Contains(features, requested))
+                return true;
+
+            return requested switch
+            {
+                LicenseFeature.ViewPointStatus => Contains(features, LicenseFeature.Diagnostics),
+                LicenseFeature.CollectDiagnostics => Contains(features, LicenseFeature.Diagnostics),
+                LicenseFeature.SendDiagnostics => Contains(features, LicenseFeature.SendLogs),
+                LicenseFeature.RequestHelp => Contains(features, LicenseFeature.SendLogs),
+                LicenseFeature.InstallComponents => Contains(features, LicenseFeature.Install),
+                LicenseFeature.ReinstallComponents => Contains(features, LicenseFeature.Repair),
+                LicenseFeature.RestoreLmDatabase => Contains(features, LicenseFeature.Repair),
+                LicenseFeature.ManageServices => Contains(features, LicenseFeature.AutoFix),
+                LicenseFeature.RecoverLmServices => Contains(features, LicenseFeature.AutoFix),
+                LicenseFeature.InitializeLm => Contains(features, LicenseFeature.AutoFix),
+                LicenseFeature.InstallRuDesktop => Contains(features, LicenseFeature.Install),
+                LicenseFeature.ConfigureRuDesktop => Contains(features, LicenseFeature.ManualTools),
+                LicenseFeature.OpenLocalTools => Contains(features, LicenseFeature.ManualTools),
+                _ => false
+            };
+        }
+
+        private static bool Contains(
+            IReadOnlyCollection<LicenseFeature> features,
+            LicenseFeature feature)
         {
             if (features == null)
                 return false;
