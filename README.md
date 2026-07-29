@@ -1,106 +1,101 @@
 # HonestFlow
 
-Автоматизированный установщик и диагностический инструмент для развёртывания программного обеспечения на рабочих местах клиентов.
+HonestFlow is a Windows desktop tool for preparing, checking, and supporting client workstations that use Honest Sign related components.
 
-## О проекте
+The application helps an engineer install required components, verify local services and APIs, collect diagnostics, request support, and keep client configuration up to date.
 
-HonestFlow — это WinForms-приложение на C#, предназначенное для автоматизации установки, обновления и проверки программного обеспечения.
+## What It Does
 
-Основная цель проекта — сократить время ввода рабочего места в эксплуатацию и минимизировать количество ошибок при ручной установке.
+- Checks the workstation state: LM, controller, ESM, KKT, cloud connectivity, and remote access.
+- Installs or repairs supported components from local or remote installer caches.
+- Supports remote configuration through Yandex Disk public resources.
+- Enforces feature access through a signed license manifest.
+- Collects a diagnostic archive for support.
+- Can update HonestFlow itself when a newer published build is available.
 
-Приложение автоматически:
+## Requirements
 
-* загружает конфигурации;
-* определяет необходимые версии программ;
-* устанавливает требуемые компоненты;
-* выполняет проверки после установки;
-* взаимодействует с ЛМ ЧЗ;
-* ведёт журнал выполнения операций;
-* позволяет централизованно обновлять настройки через удалённую конфигурацию.
+- Windows x64.
+- .NET 6 Desktop Runtime to run HonestFlow.
+- Administrator rights for installation, repair, Windows service control, MSI execution, and runtime installation.
+- Network access to configured Yandex Disk resources for remote configuration, updates, and installer downloads.
 
-## Основные возможности
-
-### Автоматическая установка
-
-Поддерживается установка:
-
-* ЛМ ЧЗ
-* АТОЛ
-* ЕСМ
-* Контроллеров и вспомогательных компонентов
-
-### Централизованное управление конфигурацией
-
-Конфигурации могут загружаться:
-
-* локально;
-* из Yandex Disk.
-
-### Проверка корректности установки
-
-Приложение выполняет:
-
-* проверку версий;
-* проверку ИНН;
-* проверку служб;
-* диагностику состояния компонентов.
-
-### Логирование
-
-Все действия записываются в журнал.
-
-## Архитектура проекта
+## Repository Structure
 
 ```text
-Forms/                 Пользовательский интерфейс
-Services/              Бизнес-логика
-Models/                Модели данных
-Infrastructure/        Работа с файлами, процессами, Yandex Disk и логированием
-Application/           Запуск и инициализация приложения
-Helpers/               Вспомогательные классы
+Application/                    Application workflows and use cases
+Application/Licensing/           License decisions, access policy, observation snapshots
+Application/PointStatus/         Workstation health checks
+Application/Installation/        Component installation planning and orchestration
+Application/Diagnostics/         Diagnostic archive collection and delivery
+Application/RemoteAccess/        RuDesktop installation and support flows
+Forms/                           WinForms UI
+Infrastructure/                  File system, network, process, installer, logging, and DPAPI adapters
+Models/                          Data models and DTOs
+HonestFlow.Tests/                xUnit tests
+HonestFlow.LicenseSigning/       License manifest signing helper
+Resourses/                       Application icon
 ```
 
-## Структура установки
+## Build And Test
+
+```powershell
+dotnet restore
+dotnet build HonestFlow.csproj -c Release
+dotnet test HonestFlow.Tests\HonestFlow.Tests.csproj -c Release
+```
+
+## Publish
+
+```powershell
+dotnet publish HonestFlow.csproj -c Release -r win-x64
+```
+
+The project is configured as a single-file, framework-dependent Windows executable. The published `HonestFlow.exe` expects the required .NET Desktop Runtime to be available on the target machine.
+
+Note: the current project target is `net6.0-windows`. .NET 6 is out of support; upgrade the target framework before a broad public release unless the deployment environment explicitly requires .NET 6.
+
+## Runtime Configuration
+
+HonestFlow can use local files next to the executable and remote files from the configured Yandex Disk public folder.
+
+Sensitive runtime files must not be committed:
+
+- `ips_encrypted.json`
+- `support_mail_encrypted.json`
+- `yandex_public_key.txt`
+- `yandex_public_url.txt`
+- `licenses.json`
+- `licenses.json.sig`
+- installer caches, diagnostics, logs, and local DPAPI state
+
+Important: files named `*_encrypted.json` are compatibility-obfuscated, not cryptographically protected secrets. Treat them as sensitive production configuration.
+
+## Logs And Diagnostics
+
+Runtime logs and diagnostic archives are stored under:
 
 ```text
-Пользователь
-      │
-      ▼
- MainForm
-      │
-      ▼
- InstallationService
-      │
- ┌────┼────────────┐
- ▼    ▼            ▼
-ЛМ  АТОЛ         ЕСМ
-      │
-      ▼
- Проверка результата
-      │
-      ▼
- Логирование
+%ProgramData%\HonestFlow
 ```
 
-## Технологии
+Diagnostic archives may contain workstation names, Windows usernames, device identifiers, point addresses, and product logs. Review sensitive data handling before sharing diagnostics outside the support boundary.
 
-* C#
-* .NET Framework
-* WinForms
-* Yandex Disk public API
-* JSON-конфигурации
+## Release Checklist
 
-## Статус проекта
+Before publishing a public release:
 
-Проект находится в активной разработке.
+- Ensure `git status` is clean.
+- Ensure `HonestFlow.csproj` version matches the GitHub release tag.
+- Run tests in Release configuration.
+- Build and smoke-test the published executable on a clean Windows machine.
+- Test offline startup, missing config files, UAC cancellation, MSI busy state, update rollback, and reboot-required flows.
+- Publish release notes, checksums, and the intended installer assets.
 
-Текущая цель — развитие HonestFlow V2 с упором на:
+## Status
 
-* повышение надёжности;
-* автоматическую диагностику;
-* удалённое управление конфигурацией;
-* восстановление служб и компонентов.
+HonestFlow is in active development and is currently optimized for controlled operational use. Public releases should include explicit setup instructions, known limitations, and security notes.
 
-## Автор
+## Author
 
-Разработка и сопровождение: Павел Шадров.
+Development and maintenance: Pavel Shadrov.

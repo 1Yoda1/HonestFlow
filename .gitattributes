@@ -3,6 +3,15 @@
 ###############################################################################
 * text=auto
 
+*.cs text working-tree-encoding=UTF-8
+*.csproj text working-tree-encoding=UTF-8
+*.slnx text working-tree-encoding=UTF-8
+*.md text working-tree-encoding=UTF-8
+*.json text working-tree-encoding=UTF-8
+*.yml text working-tree-encoding=UTF-8
+*.yaml text working-tree-encoding=UTF-8
+*.resx text working-tree-encoding=UTF-8
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

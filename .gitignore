@@ -361,15 +361,21 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-*.txt
-
 # HonestFlow local licensing and secret material
 *.pem
 *.key
 *.pfx
 *.p12
 *.dat
+ips_encrypted.json
+support_mail_encrypted.json
+yandex_public_key.txt
+yandex_public_url.txt
 licenses.json
 licenses.json.sig
 **/keys/
 **/secrets/
+**/license-cache/
+**/device-identity/
+**/rudesktop-installer/
+**/dotnet-runtime/

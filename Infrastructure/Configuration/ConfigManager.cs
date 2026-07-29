@@ -85,7 +85,16 @@ namespace HonestFlow.Infrastructure.Configuration
                 Logger.LogToFile(
                     $"Damaged or incomplete cached file: {fileName}, size {actualBytes} bytes, expected {asset.Size} bytes. The file will be downloaded again.",
                     true);
-                File.Delete(destination);
+                try
+                {
+                    File.Delete(destination);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogToFile(
+                        $"Failed to delete damaged cached file {fileName}: {ex.Message}. Download will overwrite if possible.",
+                        true);
+                }
             }
 
             return await _downloader.DownloadFileWithRetry(

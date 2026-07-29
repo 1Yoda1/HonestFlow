@@ -567,12 +567,13 @@ namespace HonestFlow.Application.Diagnostics
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "sc",
-                    Arguments = $"query {serviceName}",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true
                 };
+                startInfo.ArgumentList.Add("query");
+                startInfo.ArgumentList.Add(serviceName);
 
                 using var process = Process.Start(startInfo);
                 if (process == null)
@@ -581,9 +582,24 @@ namespace HonestFlow.Application.Diagnostics
                     return;
                 }
 
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
+                string output;
+                string error;
+                if (!process.WaitForExit(5000))
+                {
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch
+                    {
+                    }
+
+                    sb.AppendLine($"- {serviceName}: status check timed out");
+                    return;
+                }
+
+                output = process.StandardOutput.ReadToEnd();
+                error = process.StandardError.ReadToEnd();
 
                 string combined = $"{output}\n{error}";
                 if (process.ExitCode != 0 ||

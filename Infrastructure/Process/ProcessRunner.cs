@@ -62,10 +62,11 @@ namespace HonestFlow.Infrastructure
                 {
                     result.TimedOut = true;
                     try { process.Kill(true); } catch { }
+                    try { await Task.Run(() => process.WaitForExit(5000)); } catch { }
                 }
 
-                result.StandardOutput = await outputTask;
-                result.StandardError = await errorTask;
+                result.StandardOutput = await CompleteReadTask(outputTask, TimeSpan.FromSeconds(5));
+                result.StandardError = await CompleteReadTask(errorTask, TimeSpan.FromSeconds(5));
                 result.ExitCode = exited ? process.ExitCode : -1;
             }
             catch (Exception ex)
@@ -82,6 +83,12 @@ namespace HonestFlow.Infrastructure
             }
 
             return result;
+        }
+
+        private static async Task<string> CompleteReadTask(Task<string> readTask, TimeSpan timeout)
+        {
+            Task completed = await Task.WhenAny(readTask, Task.Delay(timeout));
+            return ReferenceEquals(completed, readTask) ? await readTask : string.Empty;
         }
     }
 }
