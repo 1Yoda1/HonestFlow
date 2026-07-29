@@ -236,7 +236,7 @@ namespace HonestFlow
             lblHeaderStatus.Text = "● Ожидание проверки";
             lblAuthorizedClient.Text = "Продавец не авторизован";
             lblCloudNode.Text = "Связь с облаком";
-            SetNodeChecking();
+            SetNodeChecking(canViewAndRepair: false);
         }
 
         private void WireUiEvents()
@@ -1169,7 +1169,9 @@ namespace HonestFlow
         private async void BtnRefreshStatus_Click(object sender, EventArgs e)
         {
             LogOperatorAction("запрошено ручное обновление статусов точки");
-            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "обновление статусов"))
+            bool baseStatusRefresh = sender == btnCloudAction || sender == btnRuDesktopAction;
+            if (!baseStatusRefresh &&
+                !EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "обновление статусов"))
                 return;
             await RefreshPointStatusAsync();
         }
@@ -1226,7 +1228,10 @@ namespace HonestFlow
                 }
             }
 
-            if (!TryBeginLongOperation("управление службами", LicenseFeature.ManageServices))
+            LicenseFeature serviceFeature = button == btnRuDesktopAction
+                ? LicenseFeature.InstallRuDesktop
+                : LicenseFeature.ManageServices;
+            if (!TryBeginLongOperation("управление службами", serviceFeature))
                 return;
 
             try
@@ -1275,8 +1280,9 @@ namespace HonestFlow
                 return;
             }
 
-            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "проверка состояния точки"))
-                return;
+            bool canViewAndRepair = _licenseAccessPolicy
+                .Check(LicenseFeature.ViewPointStatus)
+                .IsAllowed;
 
             if (!allowDuringLongOperation && IsLongOperationRunning)
             {
@@ -1292,7 +1298,7 @@ namespace HonestFlow
 
             _statusRefreshRunning = true;
             btnCheckWithoutPassword.Enabled = false;
-            SetNodeChecking();
+            SetNodeChecking(canViewAndRepair);
             lblStatus.Text = "Проверка служб и связи...";
             lblHeaderStatus.Text = "● Проверка";
             lblHeaderStatus.ForeColor = StatusYellow;
@@ -1307,19 +1313,33 @@ namespace HonestFlow
                     return;
                 }
 
-                ApplyNodeStatus(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, result.Lm, "ЛМ ЧЗ");
-                ApplyNodeStatus(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, result.Controller, "Контроллер");
-                ApplyNodeStatus(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, result.Esm, "ЕСМ");
-                ApplyNodeStatus(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, result.Kkt, "ККТ");
+                if (canViewAndRepair)
+                {
+                    ApplyNodeStatus(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, result.Lm, "ЛМ ЧЗ");
+                    ApplyNodeStatus(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, result.Controller, "Контроллер");
+                    ApplyNodeStatus(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, result.Esm, "ЕСМ");
+                    ApplyNodeStatus(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, result.Kkt, "ККТ");
+                    _lastPointStatusResult = result;
+                }
+                else
+                {
+                    SetNodeLicenseRequired(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, "ЛМ ЧЗ");
+                    SetNodeLicenseRequired(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, "Контроллер");
+                    SetNodeLicenseRequired(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, "ЕСМ");
+                    SetNodeLicenseRequired(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, "ККТ");
+                    _lastPointStatusResult = null;
+                }
                 ApplyNodeStatus(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, result.Cloud, "Облако");
                 ApplyRuDesktopStatus(result.RuDesktop);
-                _lastPointStatusResult = result;
                 _diagnosticArchiveService.SetPointStatusReport(BuildPointStatusDebugReport(result));
-                btnPointStatusDetails.Enabled = true;
+                btnPointStatusDetails.Enabled = canViewAndRepair;
 
-                bool hasRed = new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud, result.RuDesktop }
+                NodeStatus[] visibleStatuses = canViewAndRepair
+                    ? new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud, result.RuDesktop }
+                    : new[] { result.Cloud, result.RuDesktop };
+                bool hasRed = visibleStatuses
                     .Any(x => x.Level == NodeLevel.Error);
-                bool hasYellow = new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud, result.RuDesktop }
+                bool hasYellow = visibleStatuses
                     .Any(x => x.Level == NodeLevel.Warning);
 
                 lblHeaderStatus.Text = hasRed
@@ -1345,16 +1365,49 @@ namespace HonestFlow
             }
         }
 
-        private void SetNodeChecking()
+        private void SetNodeChecking(bool canViewAndRepair)
         {
             _lastPointStatusResult = null;
             btnPointStatusDetails.Enabled = false;
-            SetNodeChecking(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, "ЛМ ЧЗ");
-            SetNodeChecking(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, "Контроллер");
-            SetNodeChecking(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, "ЕСМ");
-            SetNodeChecking(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, "ККТ");
+            if (canViewAndRepair)
+            {
+                SetNodeChecking(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, "ЛМ ЧЗ");
+                SetNodeChecking(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, "Контроллер");
+                SetNodeChecking(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, "ЕСМ");
+                SetNodeChecking(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, "ККТ");
+            }
+            else
+            {
+                SetNodeLicenseRequired(lblLmNode, lblLmStatusText, lblLmCircle, btnLmAction, "ЛМ ЧЗ");
+                SetNodeLicenseRequired(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, "Контроллер");
+                SetNodeLicenseRequired(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, "ЕСМ");
+                SetNodeLicenseRequired(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, "ККТ");
+            }
             SetNodeChecking(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, "Облако");
             SetNodeChecking(lblRuDesktopNode, lblRuDesktopStatusText, lblRuDesktopCircle, btnRuDesktopAction, "RuDesktop");
+        }
+
+        private void SetNodeLicenseRequired(
+            Label nodeLabel,
+            Label statusTextLabel,
+            Label circle,
+            Button actionButton,
+            string defaultLabel)
+        {
+            nodeLabel.Text = defaultLabel;
+            statusTextLabel.Text = "Доступно после лицензирования.";
+            circle.Text = "●";
+            circle.ForeColor = StatusGray;
+            actionButton.Text = "Недоступно";
+            actionButton.Tag = null;
+            actionButton.Enabled = false;
+            actionButton.Click -= ShowNodeDetails_Click;
+            actionButton.Click -= ServiceAction_Click;
+            actionButton.Click -= BtnRefreshStatus_Click;
+            actionButton.Click -= BtnRequestHelp_Click;
+            actionButton.Click -= BtnRuDesktopInstallationPending_Click;
+            actionButton.Click -= RecoverLmServices_Click;
+            actionButton.Click -= InitializeLm_Click;
         }
 
         private void SetNodeChecking(Label nodeLabel, Label statusTextLabel, Label circle, Button actionButton, string defaultLabel)
@@ -2775,7 +2828,7 @@ namespace HonestFlow
             SetFeatureAvailability(btnPointStatusDetails, LicenseFeature.ViewPointStatus);
             ApplyNodeLicenseAccess(btnEsmAction);
             ApplyNodeLicenseAccess(btnKktAction);
-            ApplyNodeLicenseAccess(btnCloudAction);
+            SetFeatureAvailability(btnCloudAction, LicenseFeature.CollectDiagnostics);
             ApplyRuDesktopLicenseAccess();
 
             if (_selectedIP == null)
@@ -2844,11 +2897,11 @@ namespace HonestFlow
                 {
                     NodeActionKind.InstallRuDesktop => LicenseFeature.InstallRuDesktop,
                     NodeActionKind.ReinstallRuDesktop => LicenseFeature.InstallRuDesktop,
-                    NodeActionKind.ManageServices => LicenseFeature.ManageServices,
+                    NodeActionKind.ManageServices => LicenseFeature.InstallRuDesktop,
                     NodeActionKind.RequestRuDesktopHelp => LicenseFeature.RequestHelp,
-                    _ => LicenseFeature.ViewPointStatus
+                    _ => LicenseFeature.InstallRuDesktop
                 }
-                : LicenseFeature.ViewPointStatus;
+                : LicenseFeature.InstallRuDesktop;
 
             SetFeatureAvailability(btnRuDesktopAction, feature);
         }

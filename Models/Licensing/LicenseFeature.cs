@@ -10,6 +10,12 @@ namespace HonestFlow.Models.Licensing
     [JsonConverter(typeof(StringEnumConverter))]
     public enum LicenseFeature
     {
+        [Description("Просмотр состояния и ремонт точки")]
+        ViewAndRepair,
+
+        [Description("Установка и обслуживание точки")]
+        InstallAndMaintenance,
+
         [Description("Диагностика (старый набор прав)")]
         Diagnostics,
 
@@ -73,19 +79,8 @@ namespace HonestFlow.Models.Licensing
         public static IReadOnlyList<LicenseFeature> ConfigurableFeatures { get; } =
             Array.AsReadOnly(new[]
             {
-                LicenseFeature.ViewPointStatus,
-                LicenseFeature.CollectDiagnostics,
-                LicenseFeature.SendDiagnostics,
-                LicenseFeature.RequestHelp,
-                LicenseFeature.InstallComponents,
-                LicenseFeature.ReinstallComponents,
-                LicenseFeature.RestoreLmDatabase,
-                LicenseFeature.ManageServices,
-                LicenseFeature.RecoverLmServices,
-                LicenseFeature.InitializeLm,
-                LicenseFeature.InstallRuDesktop,
-                LicenseFeature.ConfigureRuDesktop,
-                LicenseFeature.OpenLocalTools
+                LicenseFeature.ViewAndRepair,
+                LicenseFeature.InstallAndMaintenance
             });
 
         public static string GetDisplayName(LicenseFeature feature)

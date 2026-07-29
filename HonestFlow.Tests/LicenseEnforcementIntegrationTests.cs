@@ -32,7 +32,7 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void Enforced_AllowedUsesExactLicensedFeatures()
+        public void Enforced_BaseSupportAccessDoesNotRequireManifestFlags()
         {
             var store = new LicenseObservationSnapshotStore();
             store.Set(Snapshot(
@@ -43,7 +43,12 @@ namespace HonestFlow.Tests
 
             Assert.True(policy.Check(LicenseFeature.Diagnostics).IsAllowed);
             Assert.True(policy.Check(LicenseFeature.Install).IsAllowed);
-            Assert.False(policy.Check(LicenseFeature.SendLogs).IsAllowed);
+            Assert.True(policy.Check(LicenseFeature.SendLogs).IsAllowed);
+            Assert.True(policy.Check(LicenseFeature.CollectDiagnostics).IsAllowed);
+            Assert.True(policy.Check(LicenseFeature.SendDiagnostics).IsAllowed);
+            Assert.True(policy.Check(LicenseFeature.RequestHelp).IsAllowed);
+            Assert.True(policy.Check(LicenseFeature.InstallRuDesktop).IsAllowed);
+            Assert.True(policy.Check(LicenseFeature.ConfigureRuDesktop).IsAllowed);
             Assert.False(policy.Check(LicenseFeature.AutoFix).IsAllowed);
         }
 
@@ -68,14 +73,16 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void Enforced_VersionTooOldKeepsDiagnosticsOnly()
+        public void Enforced_VersionTooOldKeepsBaseSupportAccess()
         {
             var store = new LicenseObservationSnapshotStore();
             store.Set(Snapshot(LicenseDecision.VersionTooOld, LicenseFeature.SendLogs, LicenseFeature.Install));
             var policy = Enforced(store);
 
             Assert.True(policy.Check(LicenseFeature.Diagnostics).IsAllowed);
-            Assert.False(policy.Check(LicenseFeature.SendLogs).IsAllowed);
+            Assert.True(policy.Check(LicenseFeature.SendLogs).IsAllowed);
+            Assert.True(policy.Check(LicenseFeature.RequestHelp).IsAllowed);
+            Assert.True(policy.Check(LicenseFeature.InstallRuDesktop).IsAllowed);
             Assert.False(policy.Check(LicenseFeature.Install).IsAllowed);
         }
 
@@ -160,35 +167,68 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void Enforced_LegacyRuDesktopPermissionsDoNotBroadenAccess()
+        public void Enforced_RuDesktopAccessIsAlwaysAvailable()
         {
             var installStore = new LicenseObservationSnapshotStore();
             installStore.Set(Snapshot(LicenseDecision.Allowed, LicenseFeature.Install));
             var installPolicy = Enforced(installStore);
 
             Assert.True(installPolicy.Check(LicenseFeature.InstallRuDesktop).IsAllowed);
-            Assert.False(installPolicy.Check(LicenseFeature.ConfigureRuDesktop).IsAllowed);
+            Assert.True(installPolicy.Check(LicenseFeature.ConfigureRuDesktop).IsAllowed);
 
             var toolsStore = new LicenseObservationSnapshotStore();
             toolsStore.Set(Snapshot(LicenseDecision.Allowed, LicenseFeature.ManualTools));
             var toolsPolicy = Enforced(toolsStore);
 
             Assert.True(toolsPolicy.Check(LicenseFeature.ConfigureRuDesktop).IsAllowed);
-            Assert.False(toolsPolicy.Check(LicenseFeature.InstallRuDesktop).IsAllowed);
+            Assert.True(toolsPolicy.Check(LicenseFeature.InstallRuDesktop).IsAllowed);
         }
 
         [Fact]
-        public void FeatureCatalog_ExposesOnlyGranularFeaturesWithRussianNames()
+        public void FeatureCatalog_ExposesOnlyTwoLicenseLevels()
         {
-            Assert.DoesNotContain(
-                LicenseFeature.Diagnostics,
-                LicenseFeatureCatalog.ConfigurableFeatures);
-            Assert.Contains(
-                LicenseFeature.RestoreLmDatabase,
+            Assert.Equal(
+                new[]
+                {
+                    LicenseFeature.ViewAndRepair,
+                    LicenseFeature.InstallAndMaintenance
+                },
                 LicenseFeatureCatalog.ConfigurableFeatures);
             Assert.Equal(
-                "Восстановление базы ЛМ ЧЗ",
-                LicenseFeatureCatalog.GetDisplayName(LicenseFeature.RestoreLmDatabase));
+                "Просмотр состояния и ремонт точки",
+                LicenseFeatureCatalog.GetDisplayName(LicenseFeature.ViewAndRepair));
+        }
+
+        [Theory]
+        [InlineData(LicenseFeature.ViewPointStatus)]
+        [InlineData(LicenseFeature.ManageServices)]
+        [InlineData(LicenseFeature.RecoverLmServices)]
+        [InlineData(LicenseFeature.InitializeLm)]
+        [InlineData(LicenseFeature.OpenLocalTools)]
+        public void Enforced_ViewAndRepairGrantsPointWork(LicenseFeature operation)
+        {
+            var store = new LicenseObservationSnapshotStore();
+            store.Set(Snapshot(LicenseDecision.Allowed, LicenseFeature.ViewAndRepair));
+            var policy = Enforced(store);
+
+            Assert.True(policy.Check(operation).IsAllowed);
+            Assert.False(policy.Check(LicenseFeature.InstallComponents).IsAllowed);
+            Assert.False(policy.Check(LicenseFeature.ReinstallComponents).IsAllowed);
+        }
+
+        [Theory]
+        [InlineData(LicenseFeature.InstallComponents)]
+        [InlineData(LicenseFeature.ReinstallComponents)]
+        [InlineData(LicenseFeature.RestoreLmDatabase)]
+        public void Enforced_InstallAndMaintenanceGrantsInstallationWork(LicenseFeature operation)
+        {
+            var store = new LicenseObservationSnapshotStore();
+            store.Set(Snapshot(LicenseDecision.Allowed, LicenseFeature.InstallAndMaintenance));
+            var policy = Enforced(store);
+
+            Assert.True(policy.Check(operation).IsAllowed);
+            Assert.False(policy.Check(LicenseFeature.ViewPointStatus).IsAllowed);
+            Assert.False(policy.Check(LicenseFeature.ManageServices).IsAllowed);
         }
         private static LicenseAccessPolicy Enforced(ILicenseObservationSnapshotStore store) =>
             new(LicenseEnforcementMode.Enforced, store);

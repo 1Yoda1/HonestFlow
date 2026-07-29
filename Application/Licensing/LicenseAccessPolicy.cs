@@ -6,12 +6,6 @@ namespace HonestFlow.Application.Licensing
 {
     public sealed class LicenseAccessPolicy : ILicenseAccessPolicy
     {
-        private static readonly IReadOnlyCollection<LicenseFeature> DiagnosticAndLogs =
-            new[] { LicenseFeature.Diagnostics, LicenseFeature.SendLogs };
-
-        private static readonly IReadOnlyCollection<LicenseFeature> DiagnosticsOnly =
-            new[] { LicenseFeature.Diagnostics };
-
         private readonly LicenseEnforcementMode _mode;
         private readonly ILicenseObservationSnapshotStore _snapshotStore;
 
@@ -28,9 +22,15 @@ namespace HonestFlow.Application.Licensing
             if (_mode != LicenseEnforcementMode.Enforced)
                 return Allowed("LICENSE_ENFORCEMENT_NOT_ACTIVE");
 
+            if (IsBaseAccessFeature(feature))
+                return Allowed("LICENSE_BASE_ACCESS");
+
             LicenseObservationSnapshot snapshot = _snapshotStore.Current;
             if (snapshot == null)
-                return Denied("LICENSE_DECISION_PENDING", "Проверка лицензии ещё не завершена. Доступна диагностика.", feature, DiagnosticAndLogs);
+                return new LicenseAccessResult(
+                    false,
+                    "LICENSE_DECISION_PENDING",
+                    "Заявка на лицензирование ещё не подтверждена.");
 
             IReadOnlyCollection<LicenseFeature> allowed = GetAllowedFeatures(snapshot);
             return IsGranted(allowed, feature)
@@ -45,7 +45,6 @@ namespace HonestFlow.Application.Licensing
                 case LicenseDecision.Allowed:
                     return snapshot.Features ?? Array.Empty<LicenseFeature>();
                 case LicenseDecision.VersionTooOld:
-                    return DiagnosticsOnly;
                 case LicenseDecision.ClientDisabled:
                 case LicenseDecision.DeviceNotRegistered:
                 case LicenseDecision.DeviceDisabled:
@@ -54,19 +53,8 @@ namespace HonestFlow.Application.Licensing
                 case LicenseDecision.ManifestExpired:
                 case LicenseDecision.InvalidLicenseState:
                 default:
-                    return DiagnosticAndLogs;
+                    return Array.Empty<LicenseFeature>();
             }
-        }
-
-        private static LicenseAccessResult Denied(
-            string technicalCode,
-            string message,
-            LicenseFeature requested,
-            IReadOnlyCollection<LicenseFeature> allowed)
-        {
-            return IsGranted(allowed, requested)
-                ? Allowed(technicalCode)
-                : new LicenseAccessResult(false, technicalCode, message);
         }
 
         private static LicenseAccessResult Allowed(string technicalCode) =>
@@ -81,22 +69,42 @@ namespace HonestFlow.Application.Licensing
 
             return requested switch
             {
-                LicenseFeature.ViewPointStatus => Contains(features, LicenseFeature.Diagnostics),
-                LicenseFeature.CollectDiagnostics => Contains(features, LicenseFeature.Diagnostics),
-                LicenseFeature.SendDiagnostics => Contains(features, LicenseFeature.SendLogs),
-                LicenseFeature.RequestHelp => Contains(features, LicenseFeature.SendLogs),
-                LicenseFeature.InstallComponents => Contains(features, LicenseFeature.Install),
-                LicenseFeature.ReinstallComponents => Contains(features, LicenseFeature.Repair),
-                LicenseFeature.RestoreLmDatabase => Contains(features, LicenseFeature.Repair),
-                LicenseFeature.ManageServices => Contains(features, LicenseFeature.AutoFix),
-                LicenseFeature.RecoverLmServices => Contains(features, LicenseFeature.AutoFix),
-                LicenseFeature.InitializeLm => Contains(features, LicenseFeature.AutoFix),
-                LicenseFeature.InstallRuDesktop => Contains(features, LicenseFeature.Install),
-                LicenseFeature.ConfigureRuDesktop => Contains(features, LicenseFeature.ManualTools),
-                LicenseFeature.OpenLocalTools => Contains(features, LicenseFeature.ManualTools),
+                LicenseFeature.ViewPointStatus =>
+                    Contains(features, LicenseFeature.ViewAndRepair) ||
+                    Contains(features, LicenseFeature.Diagnostics),
+                LicenseFeature.ManageServices =>
+                    Contains(features, LicenseFeature.ViewAndRepair) ||
+                    Contains(features, LicenseFeature.AutoFix),
+                LicenseFeature.RecoverLmServices =>
+                    Contains(features, LicenseFeature.ViewAndRepair) ||
+                    Contains(features, LicenseFeature.AutoFix),
+                LicenseFeature.InitializeLm =>
+                    Contains(features, LicenseFeature.ViewAndRepair) ||
+                    Contains(features, LicenseFeature.AutoFix),
+                LicenseFeature.OpenLocalTools =>
+                    Contains(features, LicenseFeature.ViewAndRepair) ||
+                    Contains(features, LicenseFeature.ManualTools),
+                LicenseFeature.InstallComponents =>
+                    Contains(features, LicenseFeature.InstallAndMaintenance) ||
+                    Contains(features, LicenseFeature.Install),
+                LicenseFeature.ReinstallComponents =>
+                    Contains(features, LicenseFeature.InstallAndMaintenance) ||
+                    Contains(features, LicenseFeature.Repair),
+                LicenseFeature.RestoreLmDatabase =>
+                    Contains(features, LicenseFeature.InstallAndMaintenance) ||
+                    Contains(features, LicenseFeature.Repair),
                 _ => false
             };
         }
+
+        private static bool IsBaseAccessFeature(LicenseFeature feature) =>
+            feature == LicenseFeature.Diagnostics ||
+            feature == LicenseFeature.SendLogs ||
+            feature == LicenseFeature.CollectDiagnostics ||
+            feature == LicenseFeature.SendDiagnostics ||
+            feature == LicenseFeature.RequestHelp ||
+            feature == LicenseFeature.InstallRuDesktop ||
+            feature == LicenseFeature.ConfigureRuDesktop;
 
         private static bool Contains(
             IReadOnlyCollection<LicenseFeature> features,

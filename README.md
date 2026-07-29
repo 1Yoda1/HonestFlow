@@ -1,43 +1,43 @@
 # HonestFlow
 
-HonestFlow is a Windows desktop tool for preparing, checking, and supporting client workstations that use Honest Sign related components.
+HonestFlow — Windows-приложение для подготовки, проверки и сопровождения рабочих мест клиентов, на которых используются компоненты, связанные с «Честным Знаком».
 
-The application helps an engineer install required components, verify local services and APIs, collect diagnostics, request support, and keep client configuration up to date.
+Приложение помогает инженеру установить нужные компоненты, проверить локальные службы и API, собрать диагностику, запросить поддержку и поддерживать клиентскую конфигурацию в актуальном состоянии.
 
-## What It Does
+## Что Умеет
 
-- Checks the workstation state: LM, controller, ESM, KKT, cloud connectivity, and remote access.
-- Installs or repairs supported components from local or remote installer caches.
-- Supports remote configuration through Yandex Disk public resources.
-- Enforces feature access through a signed license manifest.
-- Collects a diagnostic archive for support.
-- Can update HonestFlow itself when a newer published build is available.
+- Проверяет состояние рабочего места: ЛМ, контроллер, ЕСМ, ККТ, связь с облаком и удалённый доступ.
+- Устанавливает или восстанавливает поддерживаемые компоненты из локального или удалённого кэша установщиков.
+- Поддерживает удалённую конфигурацию через публичные ресурсы Yandex Disk.
+- Ограничивает доступ к функциям через подписанный license manifest.
+- Собирает диагностический архив для поддержки.
+- Может обновлять HonestFlow, если опубликована более новая сборка.
 
-## Requirements
+## Требования
 
 - Windows x64.
-- .NET 6 Desktop Runtime to run HonestFlow.
-- Administrator rights for installation, repair, Windows service control, MSI execution, and runtime installation.
-- Network access to configured Yandex Disk resources for remote configuration, updates, and installer downloads.
+- .NET 6 Desktop Runtime для запуска HonestFlow.
+- Права администратора для установки, восстановления, управления службами Windows, запуска MSI и установки runtime.
+- Доступ к настроенным ресурсам Yandex Disk для удалённой конфигурации, обновлений и загрузки установщиков.
 
-## Repository Structure
+## Структура Репозитория
 
 ```text
-Application/                    Application workflows and use cases
-Application/Licensing/           License decisions, access policy, observation snapshots
-Application/PointStatus/         Workstation health checks
-Application/Installation/        Component installation planning and orchestration
-Application/Diagnostics/         Diagnostic archive collection and delivery
-Application/RemoteAccess/        RuDesktop installation and support flows
+Application/                    Прикладные сценарии и use cases
+Application/Licensing/           Лицензии, политики доступа и snapshots
+Application/PointStatus/         Проверка состояния рабочего места
+Application/Installation/        Планирование и запуск установки компонентов
+Application/Diagnostics/         Сбор и отправка диагностического архива
+Application/RemoteAccess/        Установка RuDesktop и сценарии поддержки
 Forms/                           WinForms UI
-Infrastructure/                  File system, network, process, installer, logging, and DPAPI adapters
-Models/                          Data models and DTOs
-HonestFlow.Tests/                xUnit tests
-HonestFlow.LicenseSigning/       License manifest signing helper
-Resourses/                       Application icon
+Infrastructure/                  Файлы, сеть, процессы, установщики, логирование и DPAPI
+Models/                          Модели данных и DTO
+HonestFlow.Tests/                xUnit-тесты
+HonestFlow.LicenseSigning/       Утилита подписи license manifest
+Resourses/                       Иконка приложения
 ```
 
-## Build And Test
+## Сборка И Тесты
 
 ```powershell
 dotnet restore
@@ -45,21 +45,21 @@ dotnet build HonestFlow.csproj -c Release
 dotnet test HonestFlow.Tests\HonestFlow.Tests.csproj -c Release
 ```
 
-## Publish
+## Публикация
 
 ```powershell
 dotnet publish HonestFlow.csproj -c Release -r win-x64
 ```
 
-The project is configured as a single-file, framework-dependent Windows executable. The published `HonestFlow.exe` expects the required .NET Desktop Runtime to be available on the target machine.
+Проект настроен как single-file, framework-dependent Windows executable. Опубликованный `HonestFlow.exe` ожидает, что нужный .NET Desktop Runtime уже доступен на целевой машине.
 
-Note: the current project target is `net6.0-windows`. .NET 6 is out of support; upgrade the target framework before a broad public release unless the deployment environment explicitly requires .NET 6.
+Важно: текущий target framework проекта — `net6.0-windows`. .NET 6 больше не поддерживается; перед широким публичным релизом стоит обновить target framework, если среда развёртывания явно не требует .NET 6.
 
-## Runtime Configuration
+## Runtime-Конфигурация
 
-HonestFlow can use local files next to the executable and remote files from the configured Yandex Disk public folder.
+HonestFlow может использовать локальные файлы рядом с executable и удалённые файлы из настроенной публичной папки Yandex Disk.
 
-Sensitive runtime files must not be committed:
+Чувствительные runtime-файлы нельзя коммитить:
 
 - `ips_encrypted.json`
 - `support_mail_encrypted.json`
@@ -67,35 +67,35 @@ Sensitive runtime files must not be committed:
 - `yandex_public_url.txt`
 - `licenses.json`
 - `licenses.json.sig`
-- installer caches, diagnostics, logs, and local DPAPI state
+- кэши установщиков, диагностика, логи и локальное DPAPI-состояние
 
-Important: files named `*_encrypted.json` are compatibility-obfuscated, not cryptographically protected secrets. Treat them as sensitive production configuration.
+Важно: файлы вида `*_encrypted.json` — это совместимая обфускация, а не криптографическая защита секретов. Считайте их чувствительной production-конфигурацией.
 
-## Logs And Diagnostics
+## Логи И Диагностика
 
-Runtime logs and diagnostic archives are stored under:
+Runtime-логи и диагностические архивы хранятся здесь:
 
 ```text
 %ProgramData%\HonestFlow
 ```
 
-Diagnostic archives may contain workstation names, Windows usernames, device identifiers, point addresses, and product logs. Review sensitive data handling before sharing diagnostics outside the support boundary.
+Диагностические архивы могут содержать имя компьютера, имя пользователя Windows, идентификаторы устройства, адрес точки и продуктовые логи. Перед передачей диагностики за пределы поддержки проверьте, что в архиве нет лишних чувствительных данных.
 
-## Release Checklist
+## Чеклист Релиза
 
-Before publishing a public release:
+Перед публичным релизом:
 
-- Ensure `git status` is clean.
-- Ensure `HonestFlow.csproj` version matches the GitHub release tag.
-- Run tests in Release configuration.
-- Build and smoke-test the published executable on a clean Windows machine.
-- Test offline startup, missing config files, UAC cancellation, MSI busy state, update rollback, and reboot-required flows.
-- Publish release notes, checksums, and the intended installer assets.
+- Убедиться, что `git status` чистый.
+- Убедиться, что версия в `HonestFlow.csproj` совпадает с GitHub release tag.
+- Прогнать тесты в Release-конфигурации.
+- Собрать и проверить опубликованный executable на чистой Windows-машине.
+- Проверить offline startup, отсутствие конфигов, отмену UAC, занятый MSI, rollback обновления и сценарии с требованием перезагрузки.
+- Опубликовать release notes, checksums и нужные assets.
 
-## Status
+## Статус
 
-HonestFlow is in active development and is currently optimized for controlled operational use. Public releases should include explicit setup instructions, known limitations, and security notes.
+HonestFlow находится в активной разработке и сейчас оптимизирован для контролируемого операционного использования. Публичные релизы должны сопровождаться понятной инструкцией настройки, известными ограничениями и security notes.
 
-## Author
+## Автор
 
-Development and maintenance: Pavel Shadrov.
+Разработка и сопровождение: Павел Шадров.

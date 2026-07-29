@@ -11,7 +11,9 @@ using System.Threading;
 using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Application.Auth;
+using HonestFlow.Application.Licensing;
 using HonestFlow.Models;
+using HonestFlow.Models.Licensing;
 using HonestFlow.Application.Prerequisites;
 using HonestFlow.Application.RemoteAccess;
 
@@ -84,7 +86,23 @@ namespace HonestFlow
                     startup.AuthorizedClient = await AuthenticateSellerAtStartupAsync(startup, logService);
                     startup.SellerAuthenticationHandled = true;
                     if (startup.AuthorizedClient != null)
-                        await PrepareDotNet10Async(logService);
+                    {
+                        LicenseRuntimeConfiguration licenseConfiguration =
+                            LicenseRuntimeConfiguration.FromEnvironment();
+                        var accessPolicy = new LicenseAccessPolicy(
+                            licenseConfiguration.EnforcementMode,
+                            LicenseObservationSnapshotStore.Instance);
+                        if (accessPolicy.Check(LicenseFeature.InstallComponents).IsAllowed)
+                        {
+                            await PrepareDotNet10Async(logService);
+                        }
+                        else
+                        {
+                            Logger.Info(
+                                "Event=DotNet10Preparation Status=Skipped Reason=InstallAndMaintenanceNotLicensed",
+                                nameof(Program));
+                        }
+                    }
 
                     startupProgress.SetProgress(92, "\u041e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u043c \u0433\u043b\u0430\u0432\u043d\u043e\u0435 \u043e\u043a\u043d\u043e...");
                     var mainForm = new MainForm(startup);
