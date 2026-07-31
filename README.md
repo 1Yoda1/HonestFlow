@@ -48,10 +48,16 @@ dotnet test HonestFlow.Tests\HonestFlow.Tests.csproj -c Release
 ## Публикация
 
 ```powershell
-dotnet publish HonestFlow.csproj -c Release -r win-x64
+.\scripts\publish-honestflow.ps1
 ```
 
 Проект настроен как single-file, framework-dependent Windows executable. Опубликованный `HonestFlow.exe` ожидает, что нужный .NET Desktop Runtime уже доступен на целевой машине.
+
+Публикация всегда лежит в одном предсказуемом месте:
+
+- последняя сборка: `artifacts\HonestFlow\current\HonestFlow.exe`
+- архив версии: `artifacts\HonestFlow\versions\<Version>\HonestFlow.exe`
+- манифест публикации: `publish-manifest.json`
 
 Важно: текущий target framework проекта — `net6.0-windows`. .NET 6 больше не поддерживается; перед широким публичным релизом стоит обновить target framework, если среда развёртывания явно не требует .NET 6.
 

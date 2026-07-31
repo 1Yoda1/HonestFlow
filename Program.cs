@@ -92,7 +92,7 @@ namespace HonestFlow
                         var accessPolicy = new LicenseAccessPolicy(
                             licenseConfiguration.EnforcementMode,
                             LicenseObservationSnapshotStore.Instance);
-                        if (accessPolicy.Check(LicenseFeature.InstallComponents).IsAllowed)
+                        if (accessPolicy.Check(LicenseOperation.InstallComponents).IsAllowed)
                         {
                             await PrepareDotNet10Async(logService);
                         }

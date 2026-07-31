@@ -4,6 +4,6 @@ namespace HonestFlow.Application.Licensing
 {
     public interface ILicenseAccessPolicy
     {
-        LicenseAccessResult Check(LicenseFeature feature);
+        LicenseAccessResult Check(LicenseOperation operation);
     }
 }

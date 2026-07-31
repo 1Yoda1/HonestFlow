@@ -14,63 +14,23 @@ namespace HonestFlow.Models.Licensing
         ViewAndRepair,
 
         [Description("Установка и обслуживание точки")]
-        InstallAndMaintenance,
+        InstallAndMaintenance
+    }
 
-        [Description("Диагностика (старый набор прав)")]
-        Diagnostics,
-
-        [Description("Отправка логов (старый набор прав)")]
-        SendLogs,
-
-        [Description("Установка (старый набор прав)")]
-        Install,
-
-        [Description("Ремонт (старый набор прав)")]
-        Repair,
-
-        [Description("Автоматическое исправление (старый набор прав)")]
-        AutoFix,
-
-        [Description("Ручные инструменты (старый набор прав)")]
-        ManualTools,
-
-        [Description("Просмотр состояния точки")]
+    public enum LicenseOperation
+    {
         ViewPointStatus,
-
-        [Description("Сбор диагностики")]
         CollectDiagnostics,
-
-        [Description("Отправка диагностики")]
         SendDiagnostics,
-
-        [Description("Запрос помощи")]
         RequestHelp,
-
-        [Description("Установка компонентов")]
         InstallComponents,
-
-        [Description("Переустановка компонентов")]
         ReinstallComponents,
-
-        [Description("Восстановление базы ЛМ ЧЗ")]
         RestoreLmDatabase,
-
-        [Description("Управление службами")]
         ManageServices,
-
-        [Description("Восстановление служб ЛМ ЧЗ")]
         RecoverLmServices,
-
-        [Description("Инициализация ЛМ ЧЗ")]
         InitializeLm,
-
-        [Description("Установка и переустановка RuDesktop")]
         InstallRuDesktop,
-
-        [Description("Настройка постоянного пароля RuDesktop")]
         ConfigureRuDesktop,
-
-        [Description("Запуск драйвера ККТ и ЕСМ")]
         OpenLocalTools
     }
 

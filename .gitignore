@@ -379,3 +379,6 @@ licenses.json.sig
 **/device-identity/
 **/rudesktop-installer/
 **/dotnet-runtime/
+
+# Local release output created by scripts/publish-honestflow.ps1
+/release/

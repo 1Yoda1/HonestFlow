@@ -17,7 +17,7 @@ namespace HonestFlow.Tests
             string json = JsonConvert.SerializeObject(manifest);
             LicenseManifest restored = JsonConvert.DeserializeObject<LicenseManifest>(json);
 
-            Assert.Contains("\"Diagnostics\"", json);
+            Assert.Contains("\"ViewAndRepair\"", json);
             Assert.NotNull(restored);
             Assert.Equal(3, restored.SchemaVersion);
             Assert.Equal(42, restored.Revision);
@@ -25,8 +25,18 @@ namespace HonestFlow.Tests
             Assert.Equal(TimeSpan.Zero, restored.ValidUntilUtc.Offset);
             Assert.Equal("client-1", restored.Clients.Single().ClientId);
             Assert.Equal("operator-1", restored.OperatorDevices.Single().DeviceId);
-            Assert.Contains(LicenseFeature.Diagnostics, restored.Clients.Single().Features);
+            Assert.Contains(LicenseFeature.ViewAndRepair, restored.Clients.Single().Features);
             Assert.Equal("device-1", restored.Clients.Single().Devices.Single().DeviceId);
+        }
+
+        [Fact]
+        public void Deserialize_RejectsRemovedFeatureTags()
+        {
+            string json = JsonConvert.SerializeObject(CreateValidManifest())
+                .Replace("\"ViewAndRepair\"", "\"Diagnostics\"");
+
+            Assert.Throws<JsonSerializationException>(
+                () => JsonConvert.DeserializeObject<LicenseManifest>(json));
         }
 
         [Fact]
@@ -118,12 +128,8 @@ namespace HonestFlow.Tests
                         OfflineGraceHours = 72,
                         Features = new List<LicenseFeature>
                         {
-                            LicenseFeature.Diagnostics,
-                            LicenseFeature.SendLogs,
-                            LicenseFeature.Install,
-                            LicenseFeature.Repair,
-                            LicenseFeature.AutoFix,
-                            LicenseFeature.ManualTools
+                            LicenseFeature.ViewAndRepair,
+                            LicenseFeature.InstallAndMaintenance
                         },
                         Devices = new List<LicensedDevice>
                         {

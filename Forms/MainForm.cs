@@ -1,4 +1,4 @@
-﻿using HonestFlow.Application.Bootstrap;
+using HonestFlow.Application.Bootstrap;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Models;
@@ -411,7 +411,7 @@ namespace HonestFlow
         {
             LogOperatorAction($"открытие внешнего приложения: {title}");
 
-            if (!EnsureLicenseAccess(LicenseFeature.OpenLocalTools, $"открытие {title}"))
+            if (!EnsureLicenseAccess(LicenseOperation.OpenLocalTools, $"открытие {title}"))
                 return;
 
             if (!EnsureNoLongOperation($"открытие {title}"))
@@ -549,7 +549,7 @@ namespace HonestFlow
 
             if (!TryBeginLongOperation(
                 "проверка и установка компонентов",
-                LicenseFeature.InstallComponents,
+                LicenseOperation.InstallComponents,
                 requiresEngineerAccess: true))
                 return;
 
@@ -585,7 +585,7 @@ namespace HonestFlow
         {
             LogOperatorAction("нажата кнопка сбора диагностики");
 
-            if (!TryBeginLongOperation("сбор диагностики", LicenseFeature.CollectDiagnostics))
+            if (!TryBeginLongOperation("сбор диагностики", LicenseOperation.CollectDiagnostics))
                 return;
 
             DiagnosticArchiveInfo archiveInfo = null;
@@ -633,7 +633,7 @@ namespace HonestFlow
                     return;
                 }
 
-                if (!EnsureLicenseAccess(LicenseFeature.SendDiagnostics, "отправка диагностики"))
+                if (!EnsureLicenseAccess(LicenseOperation.SendDiagnostics, "отправка диагностики"))
                 {
                     lblStatus.Text = "Архив диагностики собран локально";
                     return;
@@ -690,8 +690,8 @@ namespace HonestFlow
             LogOperatorAction("открыто меню обслуживания точки");
 
             if (!HasAnyLicenseAccess(
-                LicenseFeature.ReinstallComponents,
-                LicenseFeature.RestoreLmDatabase))
+                LicenseOperation.ReinstallComponents,
+                LicenseOperation.RestoreLmDatabase))
             {
                 LogOperatorAction("меню обслуживания заблокировано лицензией", isError: true);
                 MessageBox.Show(
@@ -778,7 +778,7 @@ namespace HonestFlow
 
             if (!TryBeginLongOperation(
                 "ручная переустановка компонентов",
-                LicenseFeature.ReinstallComponents,
+                LicenseOperation.ReinstallComponents,
                 requiresEngineerAccess: true))
                 return;
 
@@ -843,7 +843,7 @@ namespace HonestFlow
 
             if (!TryBeginLongOperation(
                 "восстановление базы ЛМ ЧЗ",
-                LicenseFeature.RestoreLmDatabase,
+                LicenseOperation.RestoreLmDatabase,
                 requiresEngineerAccess: true))
                 return;
 
@@ -1027,8 +1027,8 @@ namespace HonestFlow
                 Margin = new Padding(0, 4, 0, 4)
             };
 
-            SetFeatureAvailability(reinstallButton, LicenseFeature.ReinstallComponents);
-            SetFeatureAvailability(restoreButton, LicenseFeature.RestoreLmDatabase);
+            SetFeatureAvailability(reinstallButton, LicenseOperation.ReinstallComponents);
+            SetFeatureAvailability(restoreButton, LicenseOperation.RestoreLmDatabase);
 
             MaintenanceAction? selected = null;
 
@@ -1171,7 +1171,7 @@ namespace HonestFlow
             LogOperatorAction("запрошено ручное обновление статусов точки");
             bool baseStatusRefresh = sender == btnCloudAction || sender == btnRuDesktopAction;
             if (!baseStatusRefresh &&
-                !EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "обновление статусов"))
+                !EnsureLicenseAccess(LicenseOperation.ViewPointStatus, "обновление статусов"))
                 return;
             await RefreshPointStatusAsync();
         }
@@ -1228,9 +1228,9 @@ namespace HonestFlow
                 }
             }
 
-            LicenseFeature serviceFeature = button == btnRuDesktopAction
-                ? LicenseFeature.InstallRuDesktop
-                : LicenseFeature.ManageServices;
+            LicenseOperation serviceFeature = button == btnRuDesktopAction
+                ? LicenseOperation.InstallRuDesktop
+                : LicenseOperation.ManageServices;
             if (!TryBeginLongOperation("управление службами", serviceFeature))
                 return;
 
@@ -1281,7 +1281,7 @@ namespace HonestFlow
             }
 
             bool canViewAndRepair = _licenseAccessPolicy
-                .Check(LicenseFeature.ViewPointStatus)
+                .Check(LicenseOperation.ViewPointStatus)
                 .IsAllowed;
 
             if (!allowDuringLongOperation && IsLongOperationRunning)
@@ -1458,7 +1458,7 @@ namespace HonestFlow
 
         private async void RecoverLmServices_Click(object sender, EventArgs e)
         {
-            if (!TryBeginLongOperation("восстановление служб ЛМ ЧЗ", LicenseFeature.RecoverLmServices))
+            if (!TryBeginLongOperation("восстановление служб ЛМ ЧЗ", LicenseOperation.RecoverLmServices))
                 return;
 
             try
@@ -1515,7 +1515,7 @@ namespace HonestFlow
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
             if (confirmation != DialogResult.Yes ||
-                !TryBeginLongOperation("инициализация ЛМ ЧЗ", LicenseFeature.InitializeLm))
+                !TryBeginLongOperation("инициализация ЛМ ЧЗ", LicenseOperation.InitializeLm))
             {
                 return;
             }
@@ -1623,7 +1623,7 @@ namespace HonestFlow
             // RuDesktop intentionally does not require the engineer password.
             if (!TryBeginLongOperation(
                     $"{action.ToLowerInvariant()} RuDesktop",
-                    LicenseFeature.InstallRuDesktop,
+                    LicenseOperation.InstallRuDesktop,
                     requiresEngineerAccess: false))
                 return;
 
@@ -1698,7 +1698,7 @@ namespace HonestFlow
 
         private void ShowNodeDetails_Click(object sender, EventArgs e)
         {
-            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "просмотр состояния точки"))
+            if (!EnsureLicenseAccess(LicenseOperation.ViewPointStatus, "просмотр состояния точки"))
                 return;
 
             if (sender is Button button && button.Tag is NodeStatus status)
@@ -1710,7 +1710,7 @@ namespace HonestFlow
 
         private void ShowPointStatusDetails_Click(object sender, EventArgs e)
         {
-            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "просмотр состояния точки"))
+            if (!EnsureLicenseAccess(LicenseOperation.ViewPointStatus, "просмотр состояния точки"))
                 return;
 
             if (_lastPointStatusResult == null)
@@ -1846,7 +1846,7 @@ namespace HonestFlow
         {
             LogOperatorAction("нажата кнопка запроса помощи");
 
-            if (!EnsureLicenseAccess(LicenseFeature.RequestHelp, "запрос помощи"))
+            if (!EnsureLicenseAccess(LicenseOperation.RequestHelp, "запрос помощи"))
                 return;
 
             if (!EnsureNoLongOperation("запрос помощи"))
@@ -2319,7 +2319,7 @@ namespace HonestFlow
         {
             LogOperatorAction("открытие журнала выполнения");
 
-            if (!EnsureLicenseAccess(LicenseFeature.ViewPointStatus, "открытие журнала"))
+            if (!EnsureLicenseAccess(LicenseOperation.ViewPointStatus, "открытие журнала"))
                 return;
 
             try
@@ -2523,7 +2523,7 @@ namespace HonestFlow
 
         private async Task ConfigureRuDesktopPasswordFromClient(IPData selectedIP)
         {
-            if (!TryBeginLongOperation("настройка RuDesktop", LicenseFeature.ConfigureRuDesktop))
+            if (!TryBeginLongOperation("настройка RuDesktop", LicenseOperation.ConfigureRuDesktop))
                 return;
 
             try
@@ -2616,7 +2616,7 @@ namespace HonestFlow
 
         private bool TryBeginLongOperation(
             string operationName,
-            LicenseFeature? requiredFeature = null,
+            LicenseOperation? requiredFeature = null,
             bool requiresEngineerAccess = false)
         {
             if (requiredFeature.HasValue && !EnsureLicenseAccess(requiredFeature.Value, operationName))
@@ -2779,20 +2779,20 @@ namespace HonestFlow
             btnRuDesktopAction.Enabled = enabled;
         }
 
-        private bool HasAnyLicenseAccess(params LicenseFeature[] features)
+        private bool HasAnyLicenseAccess(params LicenseOperation[] operations)
         {
-            return features != null && features.Any(feature =>
-                _licenseAccessPolicy.Check(feature).IsAllowed);
+            return operations != null && operations.Any(operation =>
+                _licenseAccessPolicy.Check(operation).IsAllowed);
         }
 
-        private bool EnsureLicenseAccess(LicenseFeature feature, string operationName)
+        private bool EnsureLicenseAccess(LicenseOperation operation, string operationName)
         {
-            LicenseAccessResult access = _licenseAccessPolicy.Check(feature);
+            LicenseAccessResult access = _licenseAccessPolicy.Check(operation);
             if (access.IsAllowed)
                 return true;
 
             Logger.Warning(
-                $"Event=LicenseOperationDenied Feature={feature} TechnicalCode={access.TechnicalCode}",
+                $"Event=LicenseOperationDenied Operation={operation} TechnicalCode={access.TechnicalCode}",
                 nameof(MainForm));
             LogOperatorAction($"{operationName} заблокировано лицензией (код: {access.TechnicalCode})", isError: true);
             MessageBox.Show(
@@ -2808,27 +2808,27 @@ namespace HonestFlow
             if (IsDisposed || IsLongOperationRunning)
                 return;
 
-            SetFeatureAvailability(btnDiagnostics, LicenseFeature.CollectDiagnostics);
-            SetFeatureAvailability(btnCheckWithoutPassword, LicenseFeature.ViewPointStatus);
-            SetFeatureAvailability(btnDetails, LicenseFeature.ViewPointStatus);
+            SetFeatureAvailability(btnDiagnostics, LicenseOperation.CollectDiagnostics);
+            SetFeatureAvailability(btnCheckWithoutPassword, LicenseOperation.ViewPointStatus);
+            SetFeatureAvailability(btnDetails, LicenseOperation.ViewPointStatus);
             SetAnyFeatureAvailability(
                 btnMaintenance,
-                LicenseFeature.ReinstallComponents,
-                LicenseFeature.RestoreLmDatabase);
-            SetFeatureAvailability(btnReinstallComponents, LicenseFeature.ReinstallComponents);
-            SetFeatureAvailability(btnRestoreLmDatabase, LicenseFeature.RestoreLmDatabase);
-            SetFeatureAvailability(btnOpenKktDriver, LicenseFeature.OpenLocalTools);
-            SetFeatureAvailability(btnOpenEsm, LicenseFeature.OpenLocalTools);
+                LicenseOperation.ReinstallComponents,
+                LicenseOperation.RestoreLmDatabase);
+            SetFeatureAvailability(btnReinstallComponents, LicenseOperation.ReinstallComponents);
+            SetFeatureAvailability(btnRestoreLmDatabase, LicenseOperation.RestoreLmDatabase);
+            SetFeatureAvailability(btnOpenKktDriver, LicenseOperation.OpenLocalTools);
+            SetFeatureAvailability(btnOpenEsm, LicenseOperation.OpenLocalTools);
 
             if (_selectedIP != null)
-                SetFeatureAvailability(btnStartInstallation, LicenseFeature.InstallComponents);
+                SetFeatureAvailability(btnStartInstallation, LicenseOperation.InstallComponents);
 
             ApplyNodeLicenseAccess(btnLmAction);
             ApplyNodeLicenseAccess(btnControllerAction);
-            SetFeatureAvailability(btnPointStatusDetails, LicenseFeature.ViewPointStatus);
+            SetFeatureAvailability(btnPointStatusDetails, LicenseOperation.ViewPointStatus);
             ApplyNodeLicenseAccess(btnEsmAction);
             ApplyNodeLicenseAccess(btnKktAction);
-            SetFeatureAvailability(btnCloudAction, LicenseFeature.CollectDiagnostics);
+            SetFeatureAvailability(btnCloudAction, LicenseOperation.CollectDiagnostics);
             ApplyRuDesktopLicenseAccess();
 
             if (_selectedIP == null)
@@ -2842,7 +2842,7 @@ namespace HonestFlow
             btnCheckWithoutPassword.Click -= BtnRequestHelp_Click;
             btnCheckWithoutPassword.Click += BtnRequestHelp_Click;
             btnCheckWithoutPassword.Enabled = _licenseAccessPolicy
-                .Check(LicenseFeature.RequestHelp)
+                .Check(LicenseOperation.RequestHelp)
                 .IsAllowed;
 
             btnDiagnostics.Visible = true;
@@ -2892,48 +2892,48 @@ namespace HonestFlow
 
         private void ApplyRuDesktopLicenseAccess()
         {
-            LicenseFeature feature = btnRuDesktopAction.Tag is NodeStatus status
+            LicenseOperation operation = btnRuDesktopAction.Tag is NodeStatus status
                 ? status.ActionKind switch
                 {
-                    NodeActionKind.InstallRuDesktop => LicenseFeature.InstallRuDesktop,
-                    NodeActionKind.ReinstallRuDesktop => LicenseFeature.InstallRuDesktop,
-                    NodeActionKind.ManageServices => LicenseFeature.InstallRuDesktop,
-                    NodeActionKind.RequestRuDesktopHelp => LicenseFeature.RequestHelp,
-                    _ => LicenseFeature.InstallRuDesktop
+                    NodeActionKind.InstallRuDesktop => LicenseOperation.InstallRuDesktop,
+                    NodeActionKind.ReinstallRuDesktop => LicenseOperation.InstallRuDesktop,
+                    NodeActionKind.ManageServices => LicenseOperation.InstallRuDesktop,
+                    NodeActionKind.RequestRuDesktopHelp => LicenseOperation.RequestHelp,
+                    _ => LicenseOperation.InstallRuDesktop
                 }
-                : LicenseFeature.InstallRuDesktop;
+                : LicenseOperation.InstallRuDesktop;
 
-            SetFeatureAvailability(btnRuDesktopAction, feature);
+            SetFeatureAvailability(btnRuDesktopAction, operation);
         }
 
         private void ApplyNodeLicenseAccess(Button button)
         {
-            LicenseFeature feature = button.Tag is NodeStatus status
+            LicenseOperation operation = button.Tag is NodeStatus status
                 ? status.ActionKind switch
                 {
-                    NodeActionKind.RecoverLmServices => LicenseFeature.RecoverLmServices,
-                    NodeActionKind.InitializeLm => LicenseFeature.InitializeLm,
-                    _ when status.CanManageServices => LicenseFeature.ManageServices,
-                    _ => LicenseFeature.ViewPointStatus
+                    NodeActionKind.RecoverLmServices => LicenseOperation.RecoverLmServices,
+                    NodeActionKind.InitializeLm => LicenseOperation.InitializeLm,
+                    _ when status.CanManageServices => LicenseOperation.ManageServices,
+                    _ => LicenseOperation.ViewPointStatus
                 }
-                : LicenseFeature.ViewPointStatus;
-            SetFeatureAvailability(button, feature);
+                : LicenseOperation.ViewPointStatus;
+            SetFeatureAvailability(button, operation);
         }
 
         private void SetAnyFeatureAvailability(
             Control control,
-            params LicenseFeature[] features)
+            params LicenseOperation[] operations)
         {
-            bool isAllowed = HasAnyLicenseAccess(features);
+            bool isAllowed = HasAnyLicenseAccess(operations);
             control.Enabled = isAllowed;
             _licenseToolTip.SetToolTip(
                 control,
                 isAllowed ? string.Empty : "В лицензии не разрешены действия этого раздела.");
         }
 
-        private void SetFeatureAvailability(Control control, LicenseFeature feature)
+        private void SetFeatureAvailability(Control control, LicenseOperation operation)
         {
-            LicenseAccessResult access = _licenseAccessPolicy.Check(feature);
+            LicenseAccessResult access = _licenseAccessPolicy.Check(operation);
             control.Enabled = access.IsAllowed;
             _licenseToolTip.SetToolTip(control, access.IsAllowed ? string.Empty : access.Message);
         }

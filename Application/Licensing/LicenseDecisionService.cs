@@ -246,15 +246,7 @@ namespace HonestFlow.Application.Licensing
 
         private IReadOnlyCollection<LicenseFeature> GetDeniedFeatures(ClientLicense client)
         {
-            if (client?.Features == null)
-                return Array.Empty<LicenseFeature>();
-
-            var allowed = new List<LicenseFeature>();
-            if (_policy.AllowDiagnosticsWhenDenied && client.Features.Contains(LicenseFeature.Diagnostics))
-                allowed.Add(LicenseFeature.Diagnostics);
-            if (_policy.AllowSendLogsWhenDenied && client.Features.Contains(LicenseFeature.SendLogs))
-                allowed.Add(LicenseFeature.SendLogs);
-            return allowed;
+            return Array.Empty<LicenseFeature>();
         }
 
         private static IReadOnlyCollection<LicenseFeature> DistinctFeatures(

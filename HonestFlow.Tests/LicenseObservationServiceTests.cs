@@ -208,9 +208,8 @@ namespace HonestFlow.Tests
                         OfflineGraceHours = 24,
                         Features = new List<LicenseFeature>
                         {
-                            LicenseFeature.Diagnostics,
-                            LicenseFeature.SendLogs,
-                            LicenseFeature.Install
+                            LicenseFeature.ViewAndRepair,
+                            LicenseFeature.InstallAndMaintenance
                         },
                         Devices = new List<LicensedDevice>
                         {

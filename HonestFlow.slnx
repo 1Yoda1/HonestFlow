@@ -1,3 +1,5 @@
 <Solution>
   <Project Path="HonestFlow.csproj" />
+  <Project Path="HonestFlow.LicenseSigning/HonestFlow.LicenseSigning.csproj" />
+  <Project Path="HonestFlow.Tests/HonestFlow.Tests.csproj" />
 </Solution>

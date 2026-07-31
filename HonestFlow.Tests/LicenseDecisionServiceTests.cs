@@ -21,7 +21,7 @@ namespace HonestFlow.Tests
 
             Assert.Equal(LicenseDecision.Allowed, result.Decision);
             Assert.Equal("LICENSE_ALLOWED", result.TechnicalCode);
-            Assert.Contains(LicenseFeature.Install, result.Features);
+            Assert.Contains(LicenseFeature.InstallAndMaintenance, result.Features);
             Assert.Equal(new Version(2, 4, 2, 0), result.MinimumRequiredVersion);
         }
 
@@ -188,7 +188,7 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void Decide_AllowsDiagnosticsAndSendLogsOnDenialOnlyWhenPolicyExplicitlyAllowsThem()
+        public void Decide_DenialDoesNotReturnManifestTags()
         {
             LicenseDecisionContext context = CreateValidContext();
             context.Manifest.Clients[0].Enabled = false;
@@ -200,10 +200,7 @@ namespace HonestFlow.Tests
 
             LicenseDecisionResult result = CreateService(policy).Decide(context);
 
-            Assert.Equal(
-                new[] { LicenseFeature.Diagnostics, LicenseFeature.SendLogs },
-                result.Features.OrderBy(feature => feature));
-            Assert.DoesNotContain(LicenseFeature.Install, result.Features);
+            Assert.Empty(result.Features);
         }
 
         [Fact]
@@ -265,9 +262,8 @@ namespace HonestFlow.Tests
                             OfflineGraceHours = 24,
                             Features = new List<LicenseFeature>
                             {
-                                LicenseFeature.Diagnostics,
-                                LicenseFeature.SendLogs,
-                                LicenseFeature.Install
+                                LicenseFeature.ViewAndRepair,
+                                LicenseFeature.InstallAndMaintenance
                             },
                             Devices = new List<LicensedDevice>
                             {

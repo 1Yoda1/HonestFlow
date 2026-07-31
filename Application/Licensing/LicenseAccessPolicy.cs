@@ -17,12 +17,12 @@ namespace HonestFlow.Application.Licensing
             _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
         }
 
-        public LicenseAccessResult Check(LicenseFeature feature)
+        public LicenseAccessResult Check(LicenseOperation operation)
         {
             if (_mode != LicenseEnforcementMode.Enforced)
                 return Allowed("LICENSE_ENFORCEMENT_NOT_ACTIVE");
 
-            if (IsBaseAccessFeature(feature))
+            if (IsBaseAccessOperation(operation))
                 return Allowed("LICENSE_BASE_ACCESS");
 
             LicenseObservationSnapshot snapshot = _snapshotStore.Current;
@@ -33,7 +33,7 @@ namespace HonestFlow.Application.Licensing
                     "Заявка на лицензирование ещё не подтверждена.");
 
             IReadOnlyCollection<LicenseFeature> allowed = GetAllowedFeatures(snapshot);
-            return IsGranted(allowed, feature)
+            return IsGranted(allowed, operation)
                 ? Allowed(snapshot.TechnicalCode)
                 : new LicenseAccessResult(false, snapshot.TechnicalCode, BuildDeniedMessage(snapshot));
         }
@@ -62,49 +62,30 @@ namespace HonestFlow.Application.Licensing
 
         private static bool IsGranted(
             IReadOnlyCollection<LicenseFeature> features,
-            LicenseFeature requested)
+            LicenseOperation requested)
         {
-            if (Contains(features, requested))
-                return true;
-
             return requested switch
             {
-                LicenseFeature.ViewPointStatus =>
-                    Contains(features, LicenseFeature.ViewAndRepair) ||
-                    Contains(features, LicenseFeature.Diagnostics),
-                LicenseFeature.ManageServices =>
-                    Contains(features, LicenseFeature.ViewAndRepair) ||
-                    Contains(features, LicenseFeature.AutoFix),
-                LicenseFeature.RecoverLmServices =>
-                    Contains(features, LicenseFeature.ViewAndRepair) ||
-                    Contains(features, LicenseFeature.AutoFix),
-                LicenseFeature.InitializeLm =>
-                    Contains(features, LicenseFeature.ViewAndRepair) ||
-                    Contains(features, LicenseFeature.AutoFix),
-                LicenseFeature.OpenLocalTools =>
-                    Contains(features, LicenseFeature.ViewAndRepair) ||
-                    Contains(features, LicenseFeature.ManualTools),
-                LicenseFeature.InstallComponents =>
-                    Contains(features, LicenseFeature.InstallAndMaintenance) ||
-                    Contains(features, LicenseFeature.Install),
-                LicenseFeature.ReinstallComponents =>
-                    Contains(features, LicenseFeature.InstallAndMaintenance) ||
-                    Contains(features, LicenseFeature.Repair),
-                LicenseFeature.RestoreLmDatabase =>
-                    Contains(features, LicenseFeature.InstallAndMaintenance) ||
-                    Contains(features, LicenseFeature.Repair),
+                LicenseOperation.ViewPointStatus or
+                LicenseOperation.ManageServices or
+                LicenseOperation.RecoverLmServices or
+                LicenseOperation.InitializeLm or
+                LicenseOperation.OpenLocalTools =>
+                    Contains(features, LicenseFeature.ViewAndRepair),
+                LicenseOperation.InstallComponents or
+                LicenseOperation.ReinstallComponents or
+                LicenseOperation.RestoreLmDatabase =>
+                    Contains(features, LicenseFeature.InstallAndMaintenance),
                 _ => false
             };
         }
 
-        private static bool IsBaseAccessFeature(LicenseFeature feature) =>
-            feature == LicenseFeature.Diagnostics ||
-            feature == LicenseFeature.SendLogs ||
-            feature == LicenseFeature.CollectDiagnostics ||
-            feature == LicenseFeature.SendDiagnostics ||
-            feature == LicenseFeature.RequestHelp ||
-            feature == LicenseFeature.InstallRuDesktop ||
-            feature == LicenseFeature.ConfigureRuDesktop;
+        private static bool IsBaseAccessOperation(LicenseOperation operation) =>
+            operation == LicenseOperation.CollectDiagnostics ||
+            operation == LicenseOperation.SendDiagnostics ||
+            operation == LicenseOperation.RequestHelp ||
+            operation == LicenseOperation.InstallRuDesktop ||
+            operation == LicenseOperation.ConfigureRuDesktop;
 
         private static bool Contains(
             IReadOnlyCollection<LicenseFeature> features,
