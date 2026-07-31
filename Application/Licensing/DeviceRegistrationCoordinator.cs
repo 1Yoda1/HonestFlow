@@ -43,8 +43,13 @@ namespace HonestFlow.Application.Licensing
             string honestFlowVersion,
             CancellationToken cancellationToken)
         {
+            bool isNewDevice = snapshot?.Decision == LicenseDecision.DeviceNotRegistered;
+            bool needsAddress = snapshot?.Decision == LicenseDecision.Allowed &&
+                                string.IsNullOrWhiteSpace(snapshot.PointAddress) &&
+                                !string.IsNullOrWhiteSpace(pointAddress);
+
             if (snapshot == null ||
-                snapshot.Decision != LicenseDecision.DeviceNotRegistered ||
+                (!isNewDevice && !needsAddress) ||
                 string.IsNullOrWhiteSpace(snapshot.ClientId) ||
                 string.IsNullOrWhiteSpace(snapshot.DeviceId))
             {

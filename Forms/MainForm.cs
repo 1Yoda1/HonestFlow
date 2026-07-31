@@ -13,7 +13,6 @@ using HonestFlow.Application.Licensing;
 using HonestFlow.Application.PointStatus;
 using HonestFlow.Application.PointIdentity;
 using HonestFlow.Application.RemoteAccess;
-using HonestFlow.Application.Security;
 using HonestFlow.Application.Ui;
 using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Infrastructure.Api;
@@ -65,7 +64,6 @@ namespace HonestFlow
         private readonly DeviceRegistrationRequestService _deviceRegistrationRequestService = new();
         private readonly DeviceRegistrationCoordinator _deviceRegistrationCoordinator;
         private readonly IPointAddressService _pointAddressService;
-        private readonly IEngineerAccessService _engineerAccessService;
         private readonly IPData _startupAuthorizedClient;
         private readonly bool _startupAuthenticationHandled;
         private readonly CancellationTokenSource _lifetimeCancellation = new();
@@ -109,7 +107,6 @@ namespace HonestFlow
                 _deviceRegistrationRequestService,
                 new SmtpDeviceRegistrationRequestSender(),
                 new DpapiDeviceRegistrationDeliveryStateStore());
-            _engineerAccessService = new EngineerAccessService();
             _licenseSnapshotStore = LicenseObservationSnapshotStore.Instance;
             LicenseEnforcementMode licenseMode = LicenseRuntimeConfiguration.FromEnvironment().EnforcementMode;
             _licenseAccessPolicy = new LicenseAccessPolicy(licenseMode, _licenseSnapshotStore);
@@ -549,8 +546,7 @@ namespace HonestFlow
 
             if (!TryBeginLongOperation(
                 "проверка и установка компонентов",
-                LicenseOperation.InstallComponents,
-                requiresEngineerAccess: true))
+                LicenseOperation.InstallComponents))
                 return;
 
             progressBar.Visible = true;
@@ -702,9 +698,6 @@ namespace HonestFlow
                 return;
             }
 
-            if (!EnsureEngineerAccess("открытие меню обслуживания"))
-                return;
-
             var action = ShowMaintenanceActionDialog();
             if (action == null)
             {
@@ -751,9 +744,6 @@ namespace HonestFlow
                 return;
             }
 
-            if (!EnsureEngineerAccess("ручная переустановка компонентов"))
-                return;
-
             var components = ShowComponentSelectionDialog();
             if (components == null || components.Count == 0)
             {
@@ -778,8 +768,7 @@ namespace HonestFlow
 
             if (!TryBeginLongOperation(
                 "ручная переустановка компонентов",
-                LicenseOperation.ReinstallComponents,
-                requiresEngineerAccess: true))
+                LicenseOperation.ReinstallComponents))
                 return;
 
             try
@@ -843,8 +832,7 @@ namespace HonestFlow
 
             if (!TryBeginLongOperation(
                 "восстановление базы ЛМ ЧЗ",
-                LicenseOperation.RestoreLmDatabase,
-                requiresEngineerAccess: true))
+                LicenseOperation.RestoreLmDatabase))
                 return;
 
             try
@@ -1623,8 +1611,7 @@ namespace HonestFlow
             // RuDesktop intentionally does not require the engineer password.
             if (!TryBeginLongOperation(
                     $"{action.ToLowerInvariant()} RuDesktop",
-                    LicenseOperation.InstallRuDesktop,
-                    requiresEngineerAccess: false))
+                    LicenseOperation.InstallRuDesktop))
                 return;
 
             try
@@ -2376,9 +2363,7 @@ namespace HonestFlow
             leftLayout.RowStyles[1].Height = 40;
             leftLayout.RowStyles[2].Height = 40;
             leftLayout.RowStyles[3].Height = 40;
-            btnStartInstallation.Text = selectedIP.EngineerAccess == null
-                ? "Запустить установку"
-                : "🔒 Запустить установку";
+            btnStartInstallation.Text = "Запустить установку";
             btnStartInstallation.Visible = true;
             btnMaintenance.Visible = true;
             leftLayout.RowStyles[9].Height = 40;
@@ -2387,9 +2372,7 @@ namespace HonestFlow
             btnRateApplication.Enabled = true;
             lblRatingThanks.Visible = false;
             btnRefreshLicense.Enabled = true;
-            btnMaintenance.Text = selectedIP.EngineerAccess == null
-                ? "Обслуживание точки"
-                : "🔒 Обслуживание точки";
+            btnMaintenance.Text = "Обслуживание точки";
             btnDetails.Visible = true;
             lblStatus.Text = "Лицензия проверена. Активен режим продавца.";
             lblAuthorizedClient.Text = "Авторизован: " + selectedIP.Name;
@@ -2616,13 +2599,9 @@ namespace HonestFlow
 
         private bool TryBeginLongOperation(
             string operationName,
-            LicenseOperation? requiredFeature = null,
-            bool requiresEngineerAccess = false)
+            LicenseOperation? requiredFeature = null)
         {
             if (requiredFeature.HasValue && !EnsureLicenseAccess(requiredFeature.Value, operationName))
-                return false;
-
-            if (requiresEngineerAccess && !EnsureEngineerAccess(operationName))
                 return false;
 
             if (!EnsureNoLongOperation(operationName))
@@ -2631,114 +2610,6 @@ namespace HonestFlow
             _longOperationName = operationName;
             SetLongOperationControlsEnabled(false);
             return true;
-        }
-
-        private bool EnsureEngineerAccess(string operationName)
-        {
-            EngineerAccessResult access = _engineerAccessService.CheckAccess(_selectedIP);
-            if (access.IsAllowed)
-            {
-                if (access.TechnicalCode == "ENGINEER_PASSWORD_NOT_CONFIGURED_LEGACY_ALLOWED")
-                {
-                    Logger.Warning(
-                        $"Event=EngineerAccessLegacyAllowed Operation={operationName}",
-                        nameof(MainForm));
-                }
-                return true;
-            }
-
-            if (!access.PasswordRequired)
-            {
-                LogEngineerAccessDenied(operationName, access);
-                return false;
-            }
-
-            string password = ShowEngineerPasswordDialog(operationName);
-            if (password == null)
-                return false;
-
-            access = _engineerAccessService.Unlock(_selectedIP, password);
-            if (!access.IsAllowed)
-            {
-                LogEngineerAccessDenied(operationName, access);
-                return false;
-            }
-
-            Logger.Info(
-                $"Event=EngineerAccessGranted TechnicalCode={access.TechnicalCode}",
-                nameof(MainForm));
-            ApplyLicenseAccessToUi();
-            Logger.Info(
-                $"Event=EngineerUiRefreshed InstallEnabled={btnStartInstallation.Enabled} " +
-                $"MaintenanceEnabled={btnMaintenance.Enabled}",
-                nameof(MainForm));
-            return true;
-        }
-
-        private void LogEngineerAccessDenied(string operationName, EngineerAccessResult access)
-        {
-            Logger.Warning(
-                $"Event=EngineerAccessDenied TechnicalCode={access.TechnicalCode}",
-                nameof(MainForm));
-            LogOperatorAction(
-                $"{operationName} отклонено инженерной политикой (код: {access.TechnicalCode})",
-                isError: true);
-            MessageBox.Show(
-                access.Message,
-                "Инженерный доступ",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
-        }
-
-        private string ShowEngineerPasswordDialog(string operationName)
-        {
-            using var form = new Form
-            {
-                Text = "Режим инженера",
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                ClientSize = new Size(430, 180)
-            };
-            var description = new Label
-            {
-                Left = 20,
-                Top = 18,
-                Width = 390,
-                Height = 45,
-                Text = "Операция: " + operationName + "\nВведите пароль инженера."
-            };
-            var passwordBox = new TextBox
-            {
-                Left = 20,
-                Top = 72,
-                Width = 390,
-                UseSystemPasswordChar = true
-            };
-            var ok = new Button
-            {
-                Left = 230,
-                Top = 122,
-                Width = 85,
-                Height = 32,
-                Text = "Открыть",
-                DialogResult = DialogResult.OK
-            };
-            var cancel = new Button
-            {
-                Left = 325,
-                Top = 122,
-                Width = 85,
-                Height = 32,
-                Text = "Отмена",
-                DialogResult = DialogResult.Cancel
-            };
-            form.Controls.AddRange(new Control[] { description, passwordBox, ok, cancel });
-            form.AcceptButton = ok;
-            form.CancelButton = cancel;
-            form.Shown += (_, _) => passwordBox.Focus();
-            return form.ShowDialog(this) == DialogResult.OK ? passwordBox.Text : null;
         }
 
         private void EndLongOperation()
@@ -2962,13 +2833,19 @@ namespace HonestFlow
 
         private void HandleLicenseSnapshot(LicenseObservationSnapshot snapshot)
         {
-            _pointAddressService.Resolve(snapshot);
+            PointAddressResult resolvedAddress = _pointAddressService.Resolve(snapshot);
 
-            if (snapshot?.Decision == LicenseDecision.DeviceNotRegistered && _selectedIP != null)
+            bool needsRegistration = snapshot?.Decision == LicenseDecision.DeviceNotRegistered;
+            bool needsAddressSync = snapshot?.Decision == LicenseDecision.Allowed &&
+                                    string.IsNullOrWhiteSpace(snapshot.PointAddress);
+
+            if ((needsRegistration || needsAddressSync) && _selectedIP != null)
             {
-                string pointAddress = ResolvePointAddressForOnlineAction(
-                    "Заявка на лицензию",
-                    "Для отправки заявки укажите адрес торговой точки.");
+                string pointAddress = resolvedAddress.Address ?? ResolvePointAddressForOnlineAction(
+                    needsRegistration ? "Заявка на лицензию" : "Адрес торговой точки",
+                    needsRegistration
+                        ? "Для отправки заявки укажите адрес торговой точки."
+                        : "В лицензии этого устройства нет адреса. Укажите адрес торговой точки для его добавления.");
                 _ = SendDeviceRegistrationRequestSafelyAsync(snapshot, pointAddress);
             }
 

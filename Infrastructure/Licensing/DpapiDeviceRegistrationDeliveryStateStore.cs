@@ -13,9 +13,9 @@ namespace HonestFlow.Infrastructure.Licensing
 {
     public sealed class DpapiDeviceRegistrationDeliveryStateStore : IDeviceRegistrationDeliveryStateStore
     {
-        // v2 intentionally invalidates the old one-time marker because registration
-        // requests now carry the point address and must be delivered once again.
-        private const string DeliveryKeyVersion = "v2-point-address";
+        // v3 allows one address-sync request for devices that were registered before
+        // point addresses were stored in the license manifest.
+        private const string DeliveryKeyVersion = "v3-address-sync";
         private static readonly byte[] Entropy =
             Encoding.UTF8.GetBytes("HonestFlow.DeviceRegistrationDelivery.v1");
         private readonly string _path;

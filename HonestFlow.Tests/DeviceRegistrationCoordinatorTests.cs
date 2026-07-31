@@ -61,6 +61,39 @@ namespace HonestFlow.Tests
             Assert.Equal(0, sender.SendCalls);
         }
 
+        [Fact]
+        public async Task TrySend_SendsAddressForRegisteredDeviceWithMissingLicenseAddress()
+        {
+            var sender = new FakeSender();
+            var coordinator = CreateCoordinator(sender, new FakeStateStore());
+            var snapshot = UnregisteredSnapshot();
+            snapshot.Decision = LicenseDecision.Allowed;
+            snapshot.PointAddress = null;
+
+            DeviceRegistrationDeliveryStatus result = await coordinator.TrySendAsync(
+                snapshot, "PC", "ул. Мира, 5", "2.6.1", CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationDeliveryStatus.Sent, result);
+            Assert.Equal("ул. Мира, 5",
+                JsonConvert.DeserializeObject<DeviceRegistrationRequest>(sender.LastRequest).Address);
+        }
+
+        [Fact]
+        public async Task TrySend_DoesNotSyncAddressWhenLicenseAlreadyContainsOne()
+        {
+            var sender = new FakeSender();
+            var coordinator = CreateCoordinator(sender, new FakeStateStore());
+            var snapshot = UnregisteredSnapshot();
+            snapshot.Decision = LicenseDecision.Allowed;
+            snapshot.PointAddress = "адрес из лицензии";
+
+            DeviceRegistrationDeliveryStatus result = await coordinator.TrySendAsync(
+                snapshot, "PC", "другой адрес", "2.6.1", CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationDeliveryStatus.NotApplicable, result);
+            Assert.Equal(0, sender.SendCalls);
+        }
+
         private static DeviceRegistrationCoordinator CreateCoordinator(
             IDeviceRegistrationRequestSender sender,
             IDeviceRegistrationDeliveryStateStore state) =>
