@@ -59,16 +59,6 @@ namespace HonestFlow
                         new DpapiDeviceIdentityStateProtector());
                     await deviceIdentityService.GetOrCreateAsync(CancellationToken.None);
 
-                    startupProgress.SetProgress(8, "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u043c \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 HonestFlow...");
-                    var updater = new SelfUpdateService(new WinFormsDialogService(_startupForm));
-                    bool updateStarted = await updater.CheckDownloadAndRunUpdateIfNeeded();
-
-                    if (updateStarted)
-                    {
-                        ExitThread();
-                        return;
-                    }
-
                     startupProgress.SetProgress(28, "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043c \u0441\u043f\u0438\u0441\u043a\u0438 \u0442\u043e\u0447\u0435\u043a \u0438 \u0432\u0435\u0440\u0441\u0438\u0438...");
                     var logService = new LogService();
                     var startup = await Task.Run(() =>
@@ -87,13 +77,18 @@ namespace HonestFlow
                     mainForm.FormClosed += (sender, args) =>
                     {
                         Logger.Info("Application closed", nameof(Program));
+                        Logger.Shutdown();
                         ExitThread();
                     };
 
-                    mainForm.Shown += (sender, args) =>
+                    mainForm.Shown += async (sender, args) =>
                     {
                         if (!_startupForm.IsDisposed)
                             _startupForm.Close();
+
+                        var updater = new SelfUpdateService(new WinFormsDialogService(mainForm));
+                        if (await updater.CheckDownloadAndRunUpdateIfNeeded())
+                            mainForm.Close();
                     };
 
                     mainForm.Show();

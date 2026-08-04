@@ -14,6 +14,7 @@ using HonestFlow.Application.DeviceIdentity;
 using HonestFlow.Infrastructure.DeviceIdentity;
 using Microsoft.Win32;
 using System.Threading;
+using System.ServiceProcess;
 using HonestFlow.Application.Licensing;
 
 namespace HonestFlow.Application.Diagnostics
@@ -564,57 +565,12 @@ namespace HonestFlow.Application.Diagnostics
         {
             try
             {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "sc",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                startInfo.ArgumentList.Add("query");
-                startInfo.ArgumentList.Add(serviceName);
-
-                using var process = Process.Start(startInfo);
-                if (process == null)
-                {
-                    sb.AppendLine($"- {serviceName}: Not Installed / Stopped");
-                    return;
-                }
-
-                string output;
-                string error;
-                if (!process.WaitForExit(5000))
-                {
-                    try
-                    {
-                        process.Kill();
-                    }
-                    catch
-                    {
-                    }
-
-                    sb.AppendLine($"- {serviceName}: status check timed out");
-                    return;
-                }
-
-                output = process.StandardOutput.ReadToEnd();
-                error = process.StandardError.ReadToEnd();
-
-                string combined = $"{output}\n{error}";
-                if (process.ExitCode != 0 ||
-                    combined.Contains("FAILED 1060", StringComparison.OrdinalIgnoreCase) ||
-                    combined.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
-                {
-                    sb.AppendLine($"- {serviceName}: Not Installed / Stopped");
-                    return;
-                }
-
-                string runningState = output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase)
-                    ? "Running"
-                    : "Stopped";
-
-                sb.AppendLine($"- {serviceName}: Installed / {runningState}");
+                using var service = new ServiceController(serviceName);
+                sb.AppendLine($"- {serviceName}: Installed / {service.Status}");
+            }
+            catch (InvalidOperationException)
+            {
+                sb.AppendLine($"- {serviceName}: Not Installed / Stopped");
             }
             catch (Exception ex)
             {

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure.Dialogs;
 using Microsoft.Win32;
@@ -156,10 +157,10 @@ namespace HonestFlow.Infrastructure.Installers
             await WindowsServiceManager.StopService();
             await Task.Delay(1000);
 
-            KillProcess("InstallAutoUpdateLM");
-            KillProcess("AutoUpdateLM");
-            KillProcess("UpdateLM");
-            KillProcess("Regime");
+            await KillProcessAsync("InstallAutoUpdateLM");
+            await KillProcessAsync("AutoUpdateLM");
+            await KillProcessAsync("UpdateLM");
+            await KillProcessAsync("Regime");
 
             await WaitForMsiSystemIdleAsync("перед удалением ЛМ ЧЗ", 120);
 
@@ -257,13 +258,13 @@ namespace HonestFlow.Infrastructure.Installers
             await WindowsServiceManager.StopService();
             await Task.Delay(1000);
 
-            KillProcess("InstallAutoUpdateLM");
-            KillProcess("AutoUpdateLM");
-            KillProcess("UpdateLM");
-            KillProcess("Regime");
-            KillProcess("erl");
-            KillProcess("epmd");
-            KillProcess("nssm");
+            await KillProcessAsync("InstallAutoUpdateLM");
+            await KillProcessAsync("AutoUpdateLM");
+            await KillProcessAsync("UpdateLM");
+            await KillProcessAsync("Regime");
+            await KillProcessAsync("erl");
+            await KillProcessAsync("epmd");
+            await KillProcessAsync("nssm");
 
             await WaitForMsiSystemIdleAsync("перед UI-удалением ЛМ ЧЗ для восстановления базы", 120);
 
@@ -529,7 +530,7 @@ namespace HonestFlow.Infrastructure.Installers
             if (process == null)
                 throw new Exception($"Не удалось запустить msiexec: {actionName}");
 
-            await Task.Run(() => process.WaitForExit());
+            await process.WaitForExitAsync();
 
             Logger.Info($"msiexec завершён: {actionName}, ExitCode={process.ExitCode}", nameof(LmModuleInstaller));
             return process.ExitCode;
@@ -751,7 +752,11 @@ namespace HonestFlow.Infrastructure.Installers
                     try
                     {
                         return Process.GetProcessesByName(name)
-                            .Select(p => $"{name}.exe:{p.Id}")
+                            .Select(p =>
+                            {
+                                using (p)
+                                    return $"{name}.exe:{p.Id}";
+                            })
                             .ToArray();
                     }
                     catch
@@ -762,7 +767,7 @@ namespace HonestFlow.Infrastructure.Installers
                 .ToArray();
         }
 
-        private static void KillProcess(string processName)
+        private static async Task KillProcessAsync(string processName)
         {
             try
             {
@@ -771,7 +776,21 @@ namespace HonestFlow.Infrastructure.Installers
                 {
                     Logger.Warning($"Завершаем {processName}.exe (PID: {p.Id})", nameof(LmModuleInstaller));
                     p.Kill();
-                    p.WaitForExit(3000);
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                    try
+                    {
+                        await p.WaitForExitAsync(timeout.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Logger.Warning(
+                            $"Процесс {processName}.exe (PID: {p.Id}) не завершился за 3 секунды",
+                            nameof(LmModuleInstaller));
+                    }
+                    finally
+                    {
+                        p.Dispose();
+                    }
                 }
             }
             catch (Exception ex)

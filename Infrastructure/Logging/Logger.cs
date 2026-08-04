@@ -35,6 +35,9 @@ namespace HonestFlow.Infrastructure
         private static string _logFilePath;
         private static string _sessionId;
         private static bool _initialized;
+        private static readonly StringBuilder PendingWrites = new();
+        private static Timer _flushTimer;
+        private const int FlushThreshold = 16 * 1024;
 
         public static bool EnableDebug { get; set; } = true;
 
@@ -49,6 +52,7 @@ namespace HonestFlow.Infrastructure
                 _sessionId = DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 _logFilePath = Path.Combine(AppPaths.LogsFolder, $"install_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log");
                 _initialized = true;
+                _flushTimer ??= new Timer(_ => Flush(), null, 1000, 1000);
 
                 WriteSessionHeader();
                 Info("Логгер инициализирован", nameof(Logger));
@@ -152,7 +156,7 @@ namespace HonestFlow.Infrastructure
                     }
 
                     sb.AppendLine(new string('=', 100));
-                    File.AppendAllText(_logFilePath, sb.ToString(), Encoding.UTF8);
+                    AppendBuffered(sb.ToString(), flushImmediately: true);
                 }
             }
             catch (Exception loggerEx)
@@ -175,7 +179,9 @@ namespace HonestFlow.Infrastructure
             {
                 lock (Sync)
                 {
-                    File.AppendAllText(_logFilePath, FormatLine(level, message, module) + Environment.NewLine, Encoding.UTF8);
+                    AppendBuffered(
+                        FormatLine(level, message, module) + Environment.NewLine,
+                        flushImmediately: level == "ERROR" || level == "WARNING");
                 }
             }
             catch (Exception ex)
@@ -190,6 +196,52 @@ namespace HonestFlow.Infrastructure
             string safeModule = string.IsNullOrWhiteSpace(module) ? "General" : module.Trim();
             int threadId = Thread.CurrentThread.ManagedThreadId;
             return $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level,-9}] [{safeModule}] [T:{threadId:00}] {safeMessage}";
+        }
+
+        private static void AppendBuffered(string text, bool flushImmediately = false)
+        {
+            PendingWrites.Append(text);
+            if (flushImmediately || PendingWrites.Length >= FlushThreshold)
+                FlushLocked();
+        }
+
+        public static void Flush()
+        {
+            try
+            {
+                lock (Sync)
+                    FlushLocked();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Ошибка сброса буфера логов: {ex.Message}");
+            }
+        }
+
+        public static void Shutdown()
+        {
+            try
+            {
+                lock (Sync)
+                {
+                    _flushTimer?.Dispose();
+                    _flushTimer = null;
+                    FlushLocked();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Ошибка завершения логгера: {ex.Message}");
+            }
+        }
+
+        private static void FlushLocked()
+        {
+            if (PendingWrites.Length == 0 || string.IsNullOrWhiteSpace(_logFilePath))
+                return;
+
+            File.AppendAllText(_logFilePath, PendingWrites.ToString(), Encoding.UTF8);
+            PendingWrites.Clear();
         }
 
         private static void WriteSessionHeader()

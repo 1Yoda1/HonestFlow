@@ -7,13 +7,15 @@ using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using HonestFlow.Models;
+using HonestFlow.Application.PointStatus;
 
 namespace HonestFlow.Infrastructure.Api
 {
-    public class LmApiClient : IDisposable
+    public class LmApiClient : ILmStatusClient, IDisposable
     {
         private const string ModuleName = nameof(LmApiClient);
 
+        private static readonly HttpClient SharedClient = new() { Timeout = TimeSpan.FromSeconds(10) };
         private HttpClient _client;
         private string _apiVersion = "v2";
         private readonly bool _enableDetailedLogging;
@@ -32,7 +34,7 @@ namespace HonestFlow.Infrastructure.Api
             {
                 if (_client == null || _isDisposed)
                 {
-                    _client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                    _client = SharedClient;
                     _isDisposed = false;
 
                     if (_enableDetailedLogging)
@@ -266,18 +268,7 @@ namespace HonestFlow.Infrastructure.Api
 
         public void Dispose()
         {
-            lock (_lockObject)
-            {
-                if (!_isDisposed && _client != null)
-                {
-                    _client.Dispose();
-                    _client = null;
-                    _isDisposed = true;
-
-                    if (_enableDetailedLogging)
-                        Logger.DebugLog("HttpClient уничтожен", ModuleName);
-                }
-            }
+            // SharedClient lives for the process lifetime to reuse connections.
         }
 
         private static string Truncate(string text, int maxLength)

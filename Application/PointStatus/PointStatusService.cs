@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Net.Http;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,20 +16,36 @@ namespace HonestFlow.Application.PointStatus
         private readonly bool _remoteConfigLoaded;
         private readonly int _ipCount;
         private readonly IReadOnlyList<IPData> _clients;
-        private readonly RuDesktopService _ruDesktopService;
+        private readonly IRuDesktopStatusProvider _ruDesktopService;
         private readonly IEsmStatusClient _esmStatusClient;
-        public PointStatusService(bool remoteConfigLoaded, int ipCount, IReadOnlyList<IPData> clients = null, RuDesktopService ruDesktopService = null, IEsmStatusClient esmStatusClient = null)
+        private readonly IWindowsServiceSnapshotProvider _serviceSnapshotProvider;
+        private readonly ILmStatusClient _lmApiClient;
+        private readonly ICloudConnectivityProbe _cloudConnectivityProbe;
+        public PointStatusService(
+            bool remoteConfigLoaded,
+            int ipCount,
+            IReadOnlyList<IPData> clients = null,
+            IRuDesktopStatusProvider ruDesktopService = null,
+            IEsmStatusClient esmStatusClient = null,
+            IWindowsServiceSnapshotProvider serviceSnapshotProvider = null,
+            ILmStatusClient lmStatusClient = null,
+            ICloudConnectivityProbe cloudConnectivityProbe = null)
         {
             _remoteConfigLoaded = remoteConfigLoaded;
             _ipCount = ipCount;
             _clients = clients ?? Array.Empty<IPData>();
             _ruDesktopService = ruDesktopService;
             _esmStatusClient = esmStatusClient ?? new EsmRestStatusClient();
+            _serviceSnapshotProvider = serviceSnapshotProvider ?? new WindowsServiceSnapshotProvider();
+            _lmApiClient = lmStatusClient ?? new LmApiClient(enableDetailedLogging: false);
+            _cloudConnectivityProbe = cloudConnectivityProbe ?? new CloudConnectivityProbe();
         }
 
         public async Task<PointStatusResult> CheckAsync(CancellationToken cancellationToken)
         {
-            var services = await Task.Run(GetAllServiceSnapshots, cancellationToken).ConfigureAwait(false);
+            var services = await _serviceSnapshotProvider
+                .GetSnapshotsAsync(cancellationToken)
+                .ConfigureAwait(false);
             var controllerService = CheckExactServices(services, "esm-lm-controller");
             var kktService = CheckExactServices(services, "uem-agent", "uem-updater", "atol-grpc-service");
             var esmService = CheckEsmServices(services);
@@ -40,11 +55,26 @@ namespace HonestFlow.Application.PointStatus
             Task<EsmCashRegisterResult> kktTask = AreAllKktServicesRunning(kktService)
                 ? _esmStatusClient.GetCashRegisterStatusAsync(cancellationToken)
                 : Task.FromResult<EsmCashRegisterResult>(null);
-            Task<EsmRegistrationResult> esmTask = IsEsmOrchestratorRunning(esmService)
-                ? _esmStatusClient.GetRegistrationStatusAsync(cancellationToken)
-                : Task.FromResult<EsmRegistrationResult>(null);
-            await Task.WhenAll(controllerTask, kktTask, esmTask).ConfigureAwait(false);
-            NodeStatus lmStatus = CheckLmStatus(services, out bool lmReady);
+            Task<EsmRegistrationResult> esmTask;
+            if (!IsEsmOrchestratorRunning(esmService))
+            {
+                esmTask = Task.FromResult<EsmRegistrationResult>(null);
+            }
+            else if (controllerService.Services.Any(x => x.IsRunning))
+            {
+                // GetStatusAsync already reads /instances/info; reuse that result instead
+                // of issuing the same ESM request again for registration status.
+                esmTask = GetRegistrationFromControllerStatusAsync(controllerTask);
+            }
+            else
+            {
+                esmTask = _esmStatusClient.GetRegistrationStatusAsync(cancellationToken);
+            }
+            Task<(NodeStatus Status, bool Ready)> lmTask = CheckLmStatusAsync(services);
+            Task<NodeStatus> cloudTask = CheckCloudStatusAsync(cancellationToken);
+            Task<NodeStatus> ruDesktopTask = CheckRuDesktopStatusAsync();
+            await Task.WhenAll(controllerTask, kktTask, esmTask, lmTask, cloudTask, ruDesktopTask).ConfigureAwait(false);
+            (NodeStatus lmStatus, bool lmReady) = await lmTask.ConfigureAwait(false);
 
             return new PointStatusResult
             {
@@ -52,8 +82,8 @@ namespace HonestFlow.Application.PointStatus
                 Controller = BuildControllerStatus(controllerService, controllerTask.Result, lmReady, DateTime.Now),
                 Esm = BuildEsmStatus(esmService, esmTask.Result, kktTask.Result),
                 Kkt = BuildKktStatus(kktService, kktTask.Result),
-                Cloud = CheckCloudStatus(),
-                RuDesktop = CheckRuDesktopStatus()
+                Cloud = await cloudTask.ConfigureAwait(false),
+                RuDesktop = await ruDesktopTask.ConfigureAwait(false)
             };
         }
 
@@ -67,6 +97,18 @@ namespace HonestFlow.Application.PointStatus
             serviceStatus.Services.Any(x =>
                 string.Equals(x.ServiceName, "esm-orchestrator", StringComparison.OrdinalIgnoreCase) &&
                 x.IsRunning);
+
+        private static async Task<EsmRegistrationResult> GetRegistrationFromControllerStatusAsync(
+            Task<EsmStatusResult> controllerTask)
+        {
+            EsmStatusResult result = await controllerTask.ConfigureAwait(false);
+            return result?.Kind switch
+            {
+                EsmStatusResultKind.Success => EsmRegistrationResult.Registered(),
+                EsmStatusResultKind.NotConfigured => EsmRegistrationResult.NotConfigured(),
+                _ => EsmRegistrationResult.Unavailable()
+            };
+        }
 
         public static NodeStatus BuildEsmStatus(
             NodeStatus serviceStatus,
@@ -292,12 +334,12 @@ namespace HonestFlow.Application.PointStatus
         private static bool TryParseEsmTime(string value, out DateTime result) =>
             DateTime.TryParseExact(value, "HH:mm:ss dd-MM-yyyy", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out result);
 
-        private NodeStatus CheckRuDesktopStatus()
+        private async Task<NodeStatus> CheckRuDesktopStatusAsync()
         {
             if (_ruDesktopService == null)
                 return new NodeStatus(NodeLevel.Warning, "Не проверено", "Сервис проверки RuDesktop не инициализирован");
 
-            var status = _ruDesktopService.GetStatus().GetAwaiter().GetResult();
+            var status = await _ruDesktopService.GetStatus().ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(status.ErrorMessage))
             {
                 return new NodeStatus(
@@ -363,9 +405,9 @@ namespace HonestFlow.Application.PointStatus
                 actionKind: NodeActionKind.RequestRuDesktopHelp);
         }
 
-        private NodeStatus CheckLmStatus(ServiceSnapshot[] services, out bool lmReady)
+        private async Task<(NodeStatus Status, bool Ready)> CheckLmStatusAsync(ServiceSnapshot[] services)
         {
-            lmReady = false;
+            bool lmReady = false;
             var serviceStatus = CheckExactServices(services, "regime", "yenisei");
             var regimeService = serviceStatus.Services.FirstOrDefault(x =>
                 string.Equals(x.ServiceName, "regime", StringComparison.OrdinalIgnoreCase));
@@ -380,11 +422,10 @@ namespace HonestFlow.Application.PointStatus
 
             try
             {
-                using var api = new LmApiClient(enableDetailedLogging: false);
-                var response = api.GetStatus().GetAwaiter().GetResult();
+                var response = await _lmApiClient.GetStatus().ConfigureAwait(false);
 
                 if (!response.IsSuccess || response.Data == null)
-                    return BuildLmApiUnavailableStatus(serviceStatus, serviceText, response.ErrorMessage);
+                    return (BuildLmApiUnavailableStatus(serviceStatus, serviceText, response.ErrorMessage), false);
 
                 var status = response.Data;
                 lmReady = string.Equals(status.Status, "ready", StringComparison.OrdinalIgnoreCase);
@@ -414,52 +455,52 @@ namespace HonestFlow.Application.PointStatus
 
                 if (hasLmInn && !clientFound)
                 {
-                    return new NodeStatus(
+                    return (new NodeStatus(
                         NodeLevel.Error,
                         "Клиент не найден",
                         details + "\n\nИтог: клиент по ИНН не найден. Обратитесь к администратору.",
-                        statusText: "Клиент по ИНН не найден\nОбратитесь к администратору");
+                        statusText: "Клиент по ИНН не найден\nОбратитесь к администратору"), lmReady);
                 }
 
                 if (notConfigured)
                 {
-                    return new NodeStatus(
+                    return (new NodeStatus(
                         NodeLevel.Warning,
                         "Не настроена",
                         details + "\n\nИтог: ЛМ ЧЗ требуется инициализация.",
                         statusText: "ЛМ ЧЗ не настроена\nНажмите «Исправить»",
-                        actionKind: NodeActionKind.InitializeLm);
+                        actionKind: NodeActionKind.InitializeLm), lmReady);
                 }
 
                 if (initializing)
                 {
-                    return new NodeStatus(
+                    return (new NodeStatus(
                         NodeLevel.Warning,
                         "Инициализация",
                         details + "\n\nИтог: допустимое переходное состояние initialization.",
-                        statusText: "ЛМ ЧЗ инициализируется\nНажмите «Обновить»");
+                        statusText: "ЛМ ЧЗ инициализируется\nНажмите «Обновить»"), lmReady);
                 }
 
                 if (!lmReady)
                 {
-                    return new NodeStatus(
+                    return (new NodeStatus(
                         NodeLevel.Error,
                         "Не готова",
                         details + "\n\nИтог: API отвечает, но статус не ready.",
-                        statusText: $"ЛМ ЧЗ: {apiStatus}\nОжидается ready");
+                        statusText: $"ЛМ ЧЗ: {apiStatus}\nОжидается ready"), lmReady);
                 }
 
                 var readyLevel = serviceStatus.Level == NodeLevel.Ok ? NodeLevel.Ok : NodeLevel.Warning;
-                return new NodeStatus(
+                return (new NodeStatus(
                     readyLevel,
                     "Ready",
                     details,
                     serviceStatus.Services,
-                    statusText);
+                    statusText), lmReady);
             }
             catch (Exception ex)
             {
-                return BuildLmApiUnavailableStatus(serviceStatus, serviceText, ex.Message);
+                return (BuildLmApiUnavailableStatus(serviceStatus, serviceText, ex.Message), false);
             }
         }
 
@@ -482,66 +523,6 @@ namespace HonestFlow.Application.PointStatus
                 needsServiceRecovery ? serviceStatus.Services : null,
                 statusText,
                 needsServiceRecovery ? NodeActionKind.RecoverLmServices : NodeActionKind.Default);
-        }
-
-        private static ServiceSnapshot[] GetAllServiceSnapshots()
-        {
-            var startInfo = new ProcessStartInfo("powershell.exe")
-            {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-ExecutionPolicy");
-            startInfo.ArgumentList.Add("Bypass");
-            startInfo.ArgumentList.Add("-Command");
-            startInfo.ArgumentList.Add("Get-Service | ForEach-Object { [Console]::WriteLine(('{0}|{1}' -f $_.Name, $_.Status)) }");
-
-            using var process = Process.Start(startInfo);
-            if (process == null)
-                throw new InvalidOperationException("Не удалось запустить PowerShell для проверки служб.");
-
-            string output = process.StandardOutput.ReadToEnd();
-            string error = process.StandardError.ReadToEnd();
-            if (!process.WaitForExit(10000))
-            {
-                process.Kill();
-                throw new TimeoutException("Проверка служб заняла слишком много времени.");
-            }
-
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
-                    ? "PowerShell не смог получить список служб."
-                    : error.Trim());
-
-            var services = ParsePowerShellServices(output);
-            if (services.Length == 0)
-                throw new InvalidOperationException("PowerShell вернул пустой список служб.");
-
-            return services;
-        }
-
-        private static ServiceSnapshot[] ParsePowerShellServices(string output)
-        {
-            var services = new List<ServiceSnapshot>();
-
-            foreach (string rawLine in output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None))
-            {
-                string line = rawLine.Trim();
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                string[] parts = line.Split(new[] { '|' }, 2);
-                if (parts.Length != 2)
-                    continue;
-
-                services.Add(new ServiceSnapshot(parts[0].Trim(), parts[1].Trim()));
-            }
-
-            return services.ToArray();
         }
 
         private static NodeStatus CheckEsmServices(ServiceSnapshot[] services)
@@ -647,15 +628,13 @@ namespace HonestFlow.Application.PointStatus
             return inn.Substring(0, 4) + new string('*', Math.Max(0, inn.Length - 6)) + inn.Substring(inn.Length - 2);
         }
 
-        private NodeStatus CheckCloudStatus()
+        private async Task<NodeStatus> CheckCloudStatusAsync(CancellationToken cancellationToken)
         {
             try
             {
-                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-                using var response = client.GetAsync("https://cloud-api.yandex.net/v1/disk/").GetAwaiter().GetResult();
-                bool internetOk = response.IsSuccessStatusCode ||
-                                  (int)response.StatusCode == 401 ||
-                                  (int)response.StatusCode == 404;
+                bool internetOk = await _cloudConnectivityProbe
+                    .IsAvailableAsync(cancellationToken)
+                    .ConfigureAwait(false);
 
                 if (_remoteConfigLoaded && _ipCount > 0)
                     return new NodeStatus(

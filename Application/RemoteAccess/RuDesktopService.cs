@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Core;
+using HonestFlow.Application.PointStatus;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Models;
@@ -16,7 +17,7 @@ using Newtonsoft.Json;
 
 namespace HonestFlow.Application.RemoteAccess
 {
-    public class RuDesktopService
+    public class RuDesktopService : IRuDesktopStatusProvider
     {
         private const int CommandTimeoutSeconds = 15;
         private static readonly Regex IdRegex = new(@"\b\d{6,}\b", RegexOptions.Compiled);
@@ -206,7 +207,7 @@ namespace HonestFlow.Application.RemoteAccess
                 string exePath = FindExecutablePath();
                 status.IsInstalled = !string.IsNullOrWhiteSpace(exePath);
 
-                var service = GetServiceStatus();
+                var service = await GetServiceStatusAsync().ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(service.ErrorMessage))
                     throw new InvalidOperationException(service.ErrorMessage);
 
@@ -414,7 +415,7 @@ namespace HonestFlow.Application.RemoteAccess
             return match.Success ? match.Groups["path"].Value.Trim() : null;
         }
 
-        private (bool Installed, bool Running, string ErrorMessage) GetServiceStatus()
+        private async Task<(bool Installed, bool Running, string ErrorMessage)> GetServiceStatusAsync()
         {
             try
             {
@@ -436,15 +437,20 @@ namespace HonestFlow.Application.RemoteAccess
 
                 Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
                 Task<string> errorTask = process.StandardError.ReadToEndAsync();
-                if (!process.WaitForExit(5000))
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
                 {
                     process.Kill(entireProcessTree: true);
-                    process.WaitForExit(2000);
+                    await process.WaitForExitAsync().ConfigureAwait(false);
                     return GetServiceStatusFallback("Проверка службы RuDesktop превысила допустимое время.");
                 }
 
-                string output = outputTask.GetAwaiter().GetResult().Trim();
-                string error = errorTask.GetAwaiter().GetResult().Trim();
+                string output = (await outputTask.ConfigureAwait(false)).Trim();
+                string error = (await errorTask.ConfigureAwait(false)).Trim();
 
                 if (process.ExitCode != 0)
                 {

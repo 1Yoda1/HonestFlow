@@ -1231,9 +1231,9 @@ namespace HonestFlow
                 lblStatus.Text = $"Пытаюсь {actionName} службы: {serviceList}";
 
                 if (shouldStart)
-                    await Task.Run(() => _serviceControlService.StartStoppedServices(status.Services));
+                    await _serviceControlService.StartStoppedServicesAsync(status.Services);
                 else
-                    await Task.Run(() => _serviceControlService.RestartServices(status.Services));
+                    await _serviceControlService.RestartServicesAsync(status.Services);
 
                 lblStatus.Text = "Операция со службами завершена";
                 LogOperatorAction($"операция со службами завершена: {actionName} ({serviceList})");
@@ -1452,7 +1452,7 @@ namespace HonestFlow
             try
             {
                 lblStatus.Text = "Запускаем службу Regime...";
-                await Task.Run(() => _serviceControlService.StartService("regime"));
+                await _serviceControlService.StartServiceAsync("regime");
 
                 lblStatus.Text = "Ожидаем запуск Yenisei через Regime...";
                 await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
@@ -1460,7 +1460,7 @@ namespace HonestFlow
                 if (!_serviceControlService.IsServiceRunning("yenisei"))
                 {
                     lblStatus.Text = "Yenisei не запустилась автоматически. Запускаем...";
-                    await Task.Run(() => _serviceControlService.StartService("yenisei"));
+                    await _serviceControlService.StartServiceAsync("yenisei");
                 }
 
                 lblStatus.Text = "Ожидаем готовность API ЛМ ЧЗ...";

@@ -1,84 +1,90 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
+using System.ServiceProcess;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace HonestFlow.Application.PointStatus
 {
     public sealed class WindowsServiceControlService
     {
-        public void StartStoppedServices(IReadOnlyList<ServiceSnapshot> services)
+        public async Task StartStoppedServicesAsync(IReadOnlyList<ServiceSnapshot> services)
         {
             foreach (var service in services.Where(x => !x.IsRunning))
-                RunServicePowerShell("Start-Service", service.ServiceName);
+                await StartServiceCoreAsync(service.ServiceName).ConfigureAwait(false);
         }
 
-        public void RestartServices(IReadOnlyList<ServiceSnapshot> services)
+        public async Task RestartServicesAsync(IReadOnlyList<ServiceSnapshot> services)
         {
             foreach (var service in services)
-                RunServicePowerShell("Restart-Service", service.ServiceName);
+                await RestartServiceCoreAsync(service.ServiceName).ConfigureAwait(false);
         }
 
-        public void StartService(string serviceName)
+        public Task StartServiceAsync(string serviceName)
         {
-            RunServicePowerShell("Start-Service", serviceName);
+            return StartServiceCoreAsync(serviceName);
         }
 
         public bool IsServiceRunning(string serviceName)
         {
-            var startInfo = new ProcessStartInfo("powershell.exe")
+            try
             {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-Command");
-            startInfo.ArgumentList.Add($"(Get-Service -Name '{serviceName}' -ErrorAction SilentlyContinue).Status");
-
-            using var process = Process.Start(startInfo);
-            if (process == null)
+                using var service = new ServiceController(serviceName);
+                return service.Status == ServiceControllerStatus.Running;
+            }
+            catch (InvalidOperationException)
+            {
                 return false;
-
-            string output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(5000);
-            return process.ExitCode == 0 &&
-                   string.Equals(output.Trim(), "Running", StringComparison.OrdinalIgnoreCase);
+            }
         }
 
-        private static void RunServicePowerShell(string command, string serviceName)
+        private static async Task StartServiceCoreAsync(string serviceName)
         {
-            var startInfo = new ProcessStartInfo("powershell.exe")
+            using var service = new ServiceController(serviceName);
+            service.Refresh();
+            if (service.Status == ServiceControllerStatus.Running)
+                return;
+
+            service.Start();
+            await WaitForStatusAsync(service, ServiceControllerStatus.Running).ConfigureAwait(false);
+        }
+
+        private static async Task RestartServiceCoreAsync(string serviceName)
+        {
+            using var service = new ServiceController(serviceName);
+            service.Refresh();
+            if (service.Status != ServiceControllerStatus.Stopped)
             {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-ExecutionPolicy");
-            startInfo.ArgumentList.Add("Bypass");
-            startInfo.ArgumentList.Add("-Command");
-            startInfo.ArgumentList.Add($"{command} -Name '{serviceName.Replace("'", "''")}' -ErrorAction Stop");
-
-            using var process = Process.Start(startInfo);
-            if (process == null)
-                throw new InvalidOperationException($"Не удалось запустить PowerShell для службы {serviceName}.");
-
-            string output = process.StandardOutput.ReadToEnd();
-            string error = process.StandardError.ReadToEnd();
-            if (!process.WaitForExit(30000))
-            {
-                process.Kill();
-                throw new TimeoutException($"Операция со службой {serviceName} заняла слишком много времени.");
+                service.Stop();
+                await WaitForStatusAsync(service, ServiceControllerStatus.Stopped).ConfigureAwait(false);
             }
 
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
-                    ? $"Команда {command} не выполнилась для {serviceName}. {output}".Trim()
-                    : error.Trim());
+            service.Start();
+            await WaitForStatusAsync(service, ServiceControllerStatus.Running).ConfigureAwait(false);
+        }
+
+        private static async Task WaitForStatusAsync(
+            ServiceController service,
+            ServiceControllerStatus desiredStatus)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            while (true)
+            {
+                service.Refresh();
+                if (service.Status == desiredStatus)
+                    return;
+
+                try
+                {
+                    await Task.Delay(200, timeout.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw new System.TimeoutException(
+                        $"Служба {service.ServiceName} не перешла в состояние {desiredStatus} за 30 секунд.");
+                }
+            }
         }
     }
 }

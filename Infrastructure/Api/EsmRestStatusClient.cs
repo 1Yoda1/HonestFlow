@@ -14,12 +14,13 @@ namespace HonestFlow.Infrastructure.Api
     {
         public const string DefaultSettingsPath = @"C:\ProgramData\ESP\ESM\esm-gui\gui_settings.json";
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(3);
+        private static readonly HttpClient SharedHttpClient = new();
         private readonly HttpClient _httpClient;
         private readonly string _settingsPath;
         private readonly bool _ownsClient;
 
         public EsmRestStatusClient(string settingsPath = DefaultSettingsPath)
-            : this(new HttpClient(), settingsPath, true)
+            : this(SharedHttpClient, settingsPath)
         {
         }
 
