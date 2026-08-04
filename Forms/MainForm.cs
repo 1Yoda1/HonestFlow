@@ -181,6 +181,7 @@ namespace HonestFlow
                 _ => "• "
             };
             lblStatus.Text = prefix + message.Replace(Environment.NewLine, " ");
+            lblStatus.Visible = true;
             lblStatus.ForeColor = severity switch
             {
                 UserNotificationSeverity.Success => Color.FromArgb(22, 163, 74),
@@ -657,10 +658,13 @@ namespace HonestFlow
                     LogOperatorAction("проверка и установка завершены успешно");
                 }
 
-                progressBar.Visible = false;
-                lblStatus.Visible = false;
-
                 await RefreshPointStatusAsync(allowDuringLongOperation: true);
+                ShowNotification(
+                    success
+                        ? "Установка завершена."
+                        : "Установка не выполнена. Подробности записаны в журнал.",
+                    "Установка",
+                    success ? UserNotificationSeverity.Success : UserNotificationSeverity.Error);
             }
             finally
             {

@@ -9,18 +9,26 @@ namespace HonestFlow
     public partial class StartupProgressForm
     {
         private readonly Panel _authenticationPanel = new();
+        private readonly Label _passwordLabel = new();
         private readonly TextBox _passwordBox = new();
         private readonly Button _loginButton = new();
         private readonly Button _diagnosticsButton = new();
         private readonly Label _authenticationMessage = new();
         private TaskCompletionSource<string> _passwordRequest;
+        private TaskCompletionSource<bool> _rememberedLoginRequest;
+        private bool _confirmingRememberedLogin;
 
         public Task<string> RequestSellerPasswordAsync(string errorMessage = null)
         {
+            _confirmingRememberedLogin = false;
             _passwordRequest = new TaskCompletionSource<string>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             ClientSize = new Size(460, 342);
             _authenticationPanel.Visible = true;
+            _passwordLabel.Visible = true;
+            _passwordBox.Visible = true;
+            _diagnosticsButton.Text = "Только диагностика";
+            _loginButton.Text = "Войти и проверить лицензию";
             SetAuthenticationControlsEnabled(true);
             _passwordBox.Clear();
             _authenticationMessage.Text = string.IsNullOrWhiteSpace(errorMessage)
@@ -32,6 +40,24 @@ namespace HonestFlow
             SetProgress(100, "Конфигурация получена. Выполните вход.");
             _passwordBox.Focus();
             return _passwordRequest.Task;
+        }
+
+        public Task<bool> RequestRememberedSellerConfirmationAsync(string clientName)
+        {
+            _confirmingRememberedLogin = true;
+            _rememberedLoginRequest = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            ClientSize = new Size(460, 342);
+            _authenticationPanel.Visible = true;
+            _passwordLabel.Visible = false;
+            _passwordBox.Visible = false;
+            _authenticationMessage.Text =
+                $"Сохранённый вход для точки «{clientName}» актуален.";
+            _authenticationMessage.ForeColor = Color.FromArgb(22, 163, 74);
+            _diagnosticsButton.Text = "Ввести другой пароль";
+            _loginButton.Text = "Продолжить";
+            SetProgress(100, "Подтвердите сохранённый вход.");
+            return _rememberedLoginRequest.Task;
         }
 
         public void ReportLicenseAuthentication(LicenseAuthenticationProgress progress)
@@ -92,15 +118,9 @@ namespace HonestFlow
             _authenticationPanel.BorderStyle = BorderStyle.FixedSingle;
             _authenticationPanel.Visible = false;
 
-            var passwordLabel = new Label
-            {
-                Left = 16,
-                Top = 12,
-                Width = 180,
-                Height = 22,
-                Text = "Пароль продавца",
-                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold)
-            };
+            _passwordLabel.SetBounds(16, 12, 180, 22);
+            _passwordLabel.Text = "Пароль продавца";
+            _passwordLabel.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
             _passwordBox.SetBounds(16, 38, 382, 27);
             _passwordBox.UseSystemPasswordChar = true;
 
@@ -111,7 +131,13 @@ namespace HonestFlow
             _diagnosticsButton.Text = "Только диагностика";
             _diagnosticsButton.FlatStyle = FlatStyle.Flat;
             _diagnosticsButton.FlatAppearance.BorderColor = Color.FromArgb(180, 190, 205);
-            _diagnosticsButton.Click += (_, _) => CompletePasswordRequest(null);
+            _diagnosticsButton.Click += (_, _) =>
+            {
+                if (_confirmingRememberedLogin)
+                    _rememberedLoginRequest?.TrySetResult(false);
+                else
+                    CompletePasswordRequest(null);
+            };
 
             _loginButton.SetBounds(198, 119, 200, 34);
             _loginButton.Text = "Войти и проверить лицензию";
@@ -121,6 +147,12 @@ namespace HonestFlow
             _loginButton.FlatAppearance.BorderSize = 0;
             _loginButton.Click += (_, _) =>
             {
+                if (_confirmingRememberedLogin)
+                {
+                    _rememberedLoginRequest?.TrySetResult(true);
+                    return;
+                }
+
                 if (string.IsNullOrWhiteSpace(_passwordBox.Text))
                 {
                     ShowAuthenticationError("Введите пароль продавца.");
@@ -142,7 +174,7 @@ namespace HonestFlow
 
             _authenticationPanel.Controls.AddRange(new Control[]
             {
-                passwordLabel,
+                _passwordLabel,
                 _passwordBox,
                 _authenticationMessage,
                 _diagnosticsButton,

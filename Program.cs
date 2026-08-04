@@ -228,6 +228,11 @@ namespace HonestFlow
                     return null;
                 }
 
+                bool continueRememberedLogin = await _startupForm
+                    .RequestRememberedSellerConfirmationAsync(client.Name);
+                if (!continueRememberedLogin)
+                    return null;
+
                 try
                 {
                     _startupForm.ShowPreparationStatus(
