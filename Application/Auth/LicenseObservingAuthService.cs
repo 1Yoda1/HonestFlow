@@ -52,7 +52,7 @@ namespace HonestFlow.Application.Auth
             progress?.Report(new LicenseAuthenticationProgress(
                 LicenseAuthenticationStage.CheckingDeviceAndLicense,
                 client.Name));
-            LicenseObservationSnapshot snapshot = await _observationService.ObserveAsync(
+            LicenseObservationSnapshot snapshot = await ObserveWithRetryAsync(
                 client,
                 cancellationToken);
             progress?.Report(new LicenseAuthenticationProgress(
@@ -75,7 +75,7 @@ namespace HonestFlow.Application.Auth
             progress?.Report(new LicenseAuthenticationProgress(
                 LicenseAuthenticationStage.CheckingDeviceAndLicense,
                 client.Name));
-            LicenseObservationSnapshot snapshot = await _observationService.ObserveAsync(
+            LicenseObservationSnapshot snapshot = await ObserveWithRetryAsync(
                 client,
                 cancellationToken);
             progress?.Report(new LicenseAuthenticationProgress(
@@ -97,5 +97,35 @@ namespace HonestFlow.Application.Auth
                     nameof(LicenseObservingAuthService));
             }
         }
+
+        private async Task<LicenseObservationSnapshot> ObserveWithRetryAsync(
+            IPData client,
+            CancellationToken cancellationToken)
+        {
+            LicenseObservationSnapshot snapshot = null;
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                snapshot = await _observationService.ObserveAsync(client, cancellationToken);
+                if (!IsTransientFailure(snapshot) || attempt == 3)
+                    return snapshot;
+
+                int delayMs = attempt == 1
+                    ? Random.Shared.Next(700, 1501)
+                    : Random.Shared.Next(1800, 3501);
+                Logger.Warning(
+                    $"Event=LicenseObservationRetry Attempt={attempt + 1} DelayMs={delayMs} " +
+                    $"RemoteStatus={snapshot.RemoteStatus}",
+                    nameof(LicenseObservingAuthService));
+                await Task.Delay(delayMs, cancellationToken);
+            }
+
+            return snapshot;
+        }
+
+        private static bool IsTransientFailure(LicenseObservationSnapshot snapshot) =>
+            snapshot != null &&
+            (snapshot.RemoteStatus == LicenseManifestReadStatus.Timeout ||
+             snapshot.RemoteStatus == LicenseManifestReadStatus.NetworkUnavailable ||
+             snapshot.RemoteStatus == LicenseManifestReadStatus.ServerError);
     }
 }

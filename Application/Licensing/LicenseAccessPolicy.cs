@@ -8,13 +8,16 @@ namespace HonestFlow.Application.Licensing
     {
         private readonly LicenseEnforcementMode _mode;
         private readonly ILicenseObservationSnapshotStore _snapshotStore;
+        private readonly Func<string> _currentClientIdProvider;
 
         public LicenseAccessPolicy(
             LicenseEnforcementMode mode,
-            ILicenseObservationSnapshotStore snapshotStore)
+            ILicenseObservationSnapshotStore snapshotStore,
+            Func<string> currentClientIdProvider = null)
         {
             _mode = mode;
             _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
+            _currentClientIdProvider = currentClientIdProvider;
         }
 
         public LicenseAccessResult Check(LicenseOperation operation)
@@ -31,6 +34,16 @@ namespace HonestFlow.Application.Licensing
                     false,
                     "LICENSE_DECISION_PENDING",
                     "Заявка на лицензирование ещё не подтверждена.");
+
+            string currentClientId = _currentClientIdProvider?.Invoke();
+            if (!string.IsNullOrWhiteSpace(currentClientId) &&
+                !string.Equals(currentClientId, snapshot.ClientId, StringComparison.Ordinal))
+            {
+                return new LicenseAccessResult(
+                    false,
+                    "LICENSE_CLIENT_CONTEXT_MISMATCH",
+                    "Лицензия ещё не проверена для выбранной торговой точки.");
+            }
 
             IReadOnlyCollection<LicenseFeature> allowed = GetAllowedFeatures(snapshot);
             return IsGranted(allowed, operation)

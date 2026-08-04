@@ -68,7 +68,7 @@ namespace HonestFlow.Infrastructure.Licensing
                 byte[] protectedBytes = ProtectedData.Protect(
                     json,
                     Entropy,
-                    DataProtectionScope.CurrentUser);
+                    DataProtectionScope.LocalMachine);
                 string temporary = Path.Combine(
                     directory,
                     ".device-registration-" + Guid.NewGuid().ToString("N") + ".tmp");
@@ -89,10 +89,22 @@ namespace HonestFlow.Infrastructure.Licensing
                     return new HashSet<string>(StringComparer.Ordinal);
 
                 byte[] protectedBytes = await File.ReadAllBytesAsync(_path, cancellationToken);
-                byte[] json = ProtectedData.Unprotect(
-                    protectedBytes,
-                    Entropy,
-                    DataProtectionScope.CurrentUser);
+                byte[] json;
+                try
+                {
+                    json = ProtectedData.Unprotect(
+                        protectedBytes,
+                        Entropy,
+                        DataProtectionScope.LocalMachine);
+                }
+                catch (CryptographicException)
+                {
+                    // Read the previous per-user format once; the next write migrates it.
+                    json = ProtectedData.Unprotect(
+                        protectedBytes,
+                        Entropy,
+                        DataProtectionScope.CurrentUser);
+                }
                 return JsonConvert.DeserializeObject<HashSet<string>>(Encoding.UTF8.GetString(json)) ??
                        new HashSet<string>(StringComparer.Ordinal);
             }

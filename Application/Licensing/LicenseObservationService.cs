@@ -21,6 +21,7 @@ namespace HonestFlow.Application.Licensing
         private readonly LicenseEnforcementMode _mode;
         private readonly Func<DateTimeOffset> _utcNowProvider;
         private readonly Func<Version> _versionProvider;
+        private readonly ITrustedLicenseClock _trustedClock;
 
         public LicenseObservationService(
             ILicenseManifestRepository remoteRepository,
@@ -30,7 +31,8 @@ namespace HonestFlow.Application.Licensing
             ILicenseObservationSnapshotStore snapshotStore,
             LicenseEnforcementMode mode,
             Func<DateTimeOffset> utcNowProvider = null,
-            Func<Version> versionProvider = null)
+            Func<Version> versionProvider = null,
+            ITrustedLicenseClock trustedClock = null)
         {
             _remoteRepository = remoteRepository ?? throw new ArgumentNullException(nameof(remoteRepository));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
@@ -38,7 +40,8 @@ namespace HonestFlow.Application.Licensing
             _decisionService = decisionService ?? throw new ArgumentNullException(nameof(decisionService));
             _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
             _mode = mode;
-            _utcNowProvider = utcNowProvider ?? (() => DateTimeOffset.UtcNow);
+            _trustedClock = trustedClock;
+            _utcNowProvider = utcNowProvider ?? (() => _trustedClock?.UtcNow ?? DateTimeOffset.UtcNow);
             _versionProvider = versionProvider ?? (() =>
                 Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0, 0));
         }
@@ -78,6 +81,12 @@ namespace HonestFlow.Application.Licensing
                 LicenseManifestReadResult remote = await _remoteRepository.ReadAsync(cancellationToken);
                 if (remote.IsSuccess)
                 {
+                    _trustedClock?.ObserveTrustedTime(
+                        remote.Manifest.IssuedAtUtc,
+                        remote.Manifest.ValidUntilUtc,
+                        remote.ServerDateUtc);
+                    observedAtUtc = _utcNowProvider().ToUniversalTime();
+
                     LicenseCacheWriteResult cacheWrite = await _cache.SaveAsync(
                         remote,
                         observedAtUtc,

@@ -10,7 +10,7 @@ namespace HonestFlow.Infrastructure.Licensing
         public Uri SignatureUrl { get; set; }
         public string KeyId { get; set; }
         public string PublicKeySubjectPublicKeyInfoBase64 { get; set; }
-        public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(15);
+        public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(8);
         public int MaxManifestBytes { get; set; } = 1024 * 1024;
 
         public static LicenseRuntimeConfiguration FromEnvironment()

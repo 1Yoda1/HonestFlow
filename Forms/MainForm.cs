@@ -47,6 +47,7 @@ namespace HonestFlow
         private readonly RuDesktopService _ruDesktopService;
         private readonly IRuDesktopInstaller _ruDesktopInstaller;
         private readonly HelpRequestEmailSender _helpRequestEmailSender;
+        private readonly HelpRequestDeliveryService _helpRequestDeliveryService;
         private readonly AppRatingEmailSender _appRatingEmailSender;
         private readonly WindowsServiceControlService _serviceControlService;
         private readonly ExternalApplicationLauncher _externalApplicationLauncher;
@@ -67,6 +68,8 @@ namespace HonestFlow
         private readonly IPData _startupAuthorizedClient;
         private readonly bool _startupAuthenticationHandled;
         private readonly CancellationTokenSource _lifetimeCancellation = new();
+        private readonly HashSet<string> _registrationPromptsShown =
+            new(StringComparer.Ordinal);
 
         private static readonly Color StatusGreen = Color.FromArgb(34, 197, 94);
         private static readonly Color StatusYellow = Color.FromArgb(251, 191, 36);
@@ -98,6 +101,9 @@ namespace HonestFlow
             _diagnosticArchiveService = new DiagnosticArchiveService(_logService);
             _diagnosticsEmailSender = new DiagnosticsEmailSender(_logService, _ruDesktopService);
             _helpRequestEmailSender = new HelpRequestEmailSender(_logService);
+            _helpRequestDeliveryService = new HelpRequestDeliveryService(
+                _helpRequestEmailSender,
+                new UnlicensedHelpRequestStore());
             _appRatingEmailSender = new AppRatingEmailSender(_logService);
             _pointAddressService = new PointAddressService(_logService);
             _serviceControlService = new WindowsServiceControlService();
@@ -109,7 +115,10 @@ namespace HonestFlow
                 new DpapiDeviceRegistrationDeliveryStateStore());
             _licenseSnapshotStore = LicenseObservationSnapshotStore.Instance;
             LicenseEnforcementMode licenseMode = LicenseRuntimeConfiguration.FromEnvironment().EnforcementMode;
-            _licenseAccessPolicy = new LicenseAccessPolicy(licenseMode, _licenseSnapshotStore);
+            _licenseAccessPolicy = new LicenseAccessPolicy(
+                licenseMode,
+                _licenseSnapshotStore,
+                () => _selectedIP?.ClientId);
             _licenseSnapshotStore.SnapshotChanged += LicenseSnapshotChanged;
             FormClosed += (_, _) =>
             {
@@ -271,6 +280,46 @@ namespace HonestFlow
             else if (!_startupAuthenticationHandled)
             {
                 await PromptSellerLoginAsync();
+            }
+
+            _ = RunPeriodicLicenseRefreshAsync(_lifetimeCancellation.Token);
+        }
+
+        private async Task RunPeriodicLicenseRefreshAsync(CancellationToken cancellationToken)
+        {
+            if (_authService is not ILicenseObservationRefresher refresher)
+                return;
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    TimeSpan delay = TimeSpan.FromMinutes(60 + Random.Shared.NextDouble() * 15);
+                    await Task.Delay(delay, cancellationToken);
+
+                    IPData client = _selectedIP;
+                    if (client == null)
+                        continue;
+
+                    LicenseObservationSnapshot snapshot = await refresher.RefreshLicenseAsync(
+                        client,
+                        null,
+                        cancellationToken);
+                    Logger.Info(
+                        $"Event=PeriodicLicenseRefresh Decision={snapshot?.Decision} " +
+                        $"TechnicalCode={snapshot?.TechnicalCode}",
+                        nameof(MainForm));
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(
+                        $"Event=PeriodicLicenseRefresh Status=Failed ErrorType={ex.GetType().Name}",
+                        nameof(MainForm));
+                }
             }
         }
 
@@ -1873,7 +1922,18 @@ namespace HonestFlow
                     : null;
 
                 HelpRequestData request = BuildHelpRequestData(helpRequest, _selectedIP, lastClient, ruDesktopId);
-                await _helpRequestEmailSender.Send(request);
+                LicenseObservationSnapshot licenseSnapshot = _licenseSnapshotStore.Current;
+                bool hasActiveLicense = licenseSnapshot?.Decision == LicenseDecision.Allowed &&
+                    string.Equals(
+                        licenseSnapshot.ClientId,
+                        _selectedIP?.ClientId ?? lastClient?.ClientId,
+                        StringComparison.Ordinal);
+                await _helpRequestDeliveryService.SendAsync(
+                    request,
+                    hasActiveLicense,
+                    _selectedIP?.ClientId ?? lastClient?.ClientId,
+                    licenseSnapshot?.DeviceId,
+                    _lifetimeCancellation.Token);
 
                 MessageBox.Show(
                     "Заявка отправлена.",
@@ -1922,7 +1982,7 @@ namespace HonestFlow
                 }
 
                 LogOperatorAction("запрос помощи: требуется настройка постоянного пароля RuDesktop");
-                IPData selectedClient = ResolveClientForRuDesktopSetup();
+                IPData selectedClient = await ResolveClientForRuDesktopSetupAsync();
                 if (selectedClient == null)
                     return false;
 
@@ -1943,7 +2003,7 @@ namespace HonestFlow
             return false;
         }
 
-        private IPData ResolveClientForRuDesktopSetup()
+        private async Task<IPData> ResolveClientForRuDesktopSetupAsync()
         {
             if (_selectedIP != null)
                 return _selectedIP;
@@ -1955,7 +2015,8 @@ namespace HonestFlow
                 return null;
             }
 
-            IPData selectedClient = _authService.Authenticate(enteredPassword);
+            LicenseAuthenticationResult authentication = await AuthenticateWithLicenseAsync(enteredPassword);
+            IPData selectedClient = authentication.Client;
             if (selectedClient == null)
             {
                 LogOperatorAction("запрос помощи: настройка RuDesktop отклонена, неверный пароль точки", isError: true);
@@ -2404,7 +2465,8 @@ namespace HonestFlow
                 return;
             }
 
-            var selectedIP = _authService.Authenticate(enteredPassword);
+            LicenseAuthenticationResult authentication = await AuthenticateWithLicenseAsync(enteredPassword);
+            var selectedIP = authentication.Client;
             if (selectedIP == null)
             {
                 LogOperatorAction("RuDesktop: первичная настройка отклонена, неверный пароль точки", isError: true);
@@ -2832,7 +2894,7 @@ namespace HonestFlow
             }
         }
 
-        private void HandleLicenseSnapshot(LicenseObservationSnapshot snapshot)
+        private async void HandleLicenseSnapshot(LicenseObservationSnapshot snapshot)
         {
             PointAddressResult resolvedAddress = _pointAddressService.Resolve(snapshot);
 
@@ -2842,12 +2904,45 @@ namespace HonestFlow
 
             if ((needsRegistration || needsAddressSync) && _selectedIP != null)
             {
+                if (needsRegistration)
+                {
+                    bool alreadySent = await _deviceRegistrationCoordinator.WasSentAsync(
+                        snapshot,
+                        CancellationToken.None);
+                    if (alreadySent)
+                    {
+                        lblStatus.Text = "Заявка на регистрацию этого компьютера уже отправлена.";
+                        PresentLicenseDecision(snapshot);
+                        return;
+                    }
+
+                    string promptKey = snapshot.ClientId + "/" + snapshot.DeviceId;
+                    if (!_registrationPromptsShown.Add(promptKey))
+                    {
+                        PresentLicenseDecision(snapshot);
+                        return;
+                    }
+
+                    DialogResult confirmation = MessageBox.Show(
+                        this,
+                        $"Компьютер не зарегистрирован для точки «{_selectedIP.Name}».\n\n" +
+                        "Отправить заявку на регистрацию?",
+                        "Регистрация устройства",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+                    if (confirmation != DialogResult.Yes)
+                    {
+                        PresentLicenseDecision(snapshot);
+                        return;
+                    }
+                }
+
                 string pointAddress = resolvedAddress.Address ?? ResolvePointAddressForOnlineAction(
                     needsRegistration ? "Заявка на лицензию" : "Адрес торговой точки",
                     needsRegistration
                         ? "Для отправки заявки укажите адрес торговой точки."
                         : "В лицензии этого устройства нет адреса. Укажите адрес торговой точки для его добавления.");
-                _ = SendDeviceRegistrationRequestSafelyAsync(snapshot, pointAddress);
+                await SendDeviceRegistrationRequestSafelyAsync(snapshot, pointAddress);
             }
 
             PresentLicenseDecision(snapshot);

@@ -167,7 +167,12 @@ namespace HonestFlow.Infrastructure.Licensing
                     $"Event=LicenseManifestReadFinished Status=Success SchemaVersion={manifest.SchemaVersion} " +
                     $"Revision={manifest.Revision} Bytes={bytes.Length} ElapsedMs={stopwatch.ElapsedMilliseconds}",
                     ModuleName);
-                return LicenseManifestReadResult.Success(manifest, bytes, signatureFileBytes);
+                DateTimeOffset? serverDateUtc = signatureResponse.Headers.Date ?? response.Headers.Date;
+                return LicenseManifestReadResult.Success(
+                    manifest,
+                    bytes,
+                    signatureFileBytes,
+                    serverDateUtc);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {

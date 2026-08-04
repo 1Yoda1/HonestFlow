@@ -130,6 +130,26 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public void Enforced_RejectsDecisionForDifferentSelectedClient()
+        {
+            var store = new LicenseObservationSnapshotStore();
+            LicenseObservationSnapshot snapshot = Snapshot(
+                LicenseDecision.Allowed,
+                LicenseFeature.InstallAndMaintenance);
+            snapshot.ClientId = "client-from-license";
+            store.Set(snapshot);
+            var policy = new LicenseAccessPolicy(
+                LicenseEnforcementMode.Enforced,
+                store,
+                () => "currently-selected-client");
+
+            LicenseAccessResult result = policy.Check(LicenseOperation.InstallComponents);
+
+            Assert.False(result.IsAllowed);
+            Assert.Equal("LICENSE_CLIENT_CONTEXT_MISMATCH", result.TechnicalCode);
+        }
+
+        [Fact]
         public void DecisionServiceAndEnforcementPolicy_BlockUnregisteredDevice()
         {
             LicenseDecisionResult decision = new LicenseDecisionService(

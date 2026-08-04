@@ -22,6 +22,23 @@ namespace HonestFlow.Application.Licensing
             _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
         }
 
+        public Task<bool> WasSentAsync(
+            LicenseObservationSnapshot snapshot,
+            CancellationToken cancellationToken)
+        {
+            if (snapshot == null ||
+                string.IsNullOrWhiteSpace(snapshot.ClientId) ||
+                string.IsNullOrWhiteSpace(snapshot.DeviceId))
+            {
+                return Task.FromResult(false);
+            }
+
+            return _stateStore.WasSentAsync(
+                snapshot.ClientId,
+                snapshot.DeviceId,
+                cancellationToken);
+        }
+
         public async Task<DeviceRegistrationDeliveryStatus> TrySendAsync(
             LicenseObservationSnapshot snapshot,
             string deviceName,

@@ -25,17 +25,21 @@ namespace HonestFlow.Infrastructure.Licensing
 
             var signatureVerifier = new EcdsaLicenseSignatureVerifier(new LicensePublicKeyRegistry(keys));
             ILicenseManifestRepository remoteRepository = CreateRemoteRepository(configuration, signatureVerifier);
+            var trustedClock = new DpapiTrustedLicenseClock();
             var observer = new LicenseObservationService(
                 remoteRepository,
                 new FileLicenseManifestCache(signatureVerifier, new DpapiLicenseCacheMetadataProtector()),
                 new FileDeviceIdentityService(new DpapiDeviceIdentityStateProtector()),
-                new LicenseDecisionService(new LicenseDecisionPolicy
-                {
-                    AllowDiagnosticsWhenDenied = true,
-                    AllowSendLogsWhenDenied = true
-                }),
+                new LicenseDecisionService(
+                    new LicenseDecisionPolicy
+                    {
+                        AllowDiagnosticsWhenDenied = true,
+                        AllowSendLogsWhenDenied = true
+                    },
+                    () => trustedClock.UtcNow),
                 LicenseObservationSnapshotStore.Instance,
-                configuration.EnforcementMode);
+                configuration.EnforcementMode,
+                trustedClock: trustedClock);
 
             Logger.Info(
                 $"Event=LicenseObservationConfigured Mode={configuration.EnforcementMode} " +
