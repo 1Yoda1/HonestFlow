@@ -34,6 +34,7 @@ namespace HonestFlow.Application.Bootstrap
                 var result = ConfigManager.LoadRemoteConfig();
                 if (result.Success && result.Ips != null && result.Ips.Count > 0)
                 {
+                    new VersionConfigurationCache().Save(result.Versions);
                     RemoveLegacyFullClientList();
                     _progressService.SetProgress(70, "\u0421\u043f\u0438\u0441\u043a\u0438 \u0442\u043e\u0447\u0435\u043a \u0438 \u0432\u0435\u0440\u0441\u0438\u0438 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u044b");
                     ConfigManager.InitYandexDiskDownloader();
@@ -58,6 +59,7 @@ namespace HonestFlow.Application.Bootstrap
             {
                 _progressService.SetProgress(58, "\u041e\u0431\u043b\u0430\u043a\u043e \u043d\u0435 \u043e\u0442\u0432\u0435\u0442\u0438\u043b\u043e, \u0431\u0435\u0440\u0435\u043c \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0435 \u0441\u043f\u0438\u0441\u043a\u0438...");
                 IPData cachedClient = new AuthorizedClientCache().Load();
+                VersionsData cachedVersions = new VersionConfigurationCache().Load();
                 var offlineClients = cachedClient == null
                     ? new System.Collections.Generic.List<IPData>()
                     : new System.Collections.Generic.List<IPData> { cachedClient };
@@ -65,12 +67,14 @@ namespace HonestFlow.Application.Bootstrap
                 _progressService.SetProgress(78, "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0435 \u0441\u043f\u0438\u0441\u043a\u0438 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u044b");
                 Logger.LogToFile(
                     $"Remote config unavailable, using single-client protected cache. " +
-                    $"CachedClientAvailable={cachedClient != null}. Error: {ex.Message}");
+                    $"CachedClientAvailable={cachedClient != null}. " +
+                    $"CachedVersionsAvailable={cachedVersions != null}. Error: {ex.Message}");
 
                 return new StartupResult
                 {
                     UseRemoteConfigMode = false,
                     Ips = new System.Collections.Generic.List<IPData>(authService.Ips),
+                    RemoteVersions = cachedVersions,
                     AuthService = authService
                 };
             }

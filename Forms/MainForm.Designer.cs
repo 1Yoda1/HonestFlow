@@ -46,11 +46,6 @@
             this.pointStatusHeaderLayout = new System.Windows.Forms.TableLayoutPanel();
             this.lblNodesTitle = new System.Windows.Forms.Label();
             this.btnPointStatusDetails = new System.Windows.Forms.Button();
-            this.versionTable = new System.Windows.Forms.TableLayoutPanel();
-            this.lblLmVersion = new System.Windows.Forms.Label();
-            this.lblAtolVersion = new System.Windows.Forms.Label();
-            this.lblEsmVersion = new System.Windows.Forms.Label();
-            this.lblControllerVersion = new System.Windows.Forms.Label();
             this.nodeTable = new System.Windows.Forms.TableLayoutPanel();
 
             this.lblLmNode = new System.Windows.Forms.Label();
@@ -289,12 +284,10 @@
             this.nodesLayout.ColumnCount = 1;
             this.nodesLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.nodesLayout.Controls.Add(this.pointStatusHeaderLayout, 0, 0);
-            this.nodesLayout.Controls.Add(this.versionTable, 0, 1);
-            this.nodesLayout.Controls.Add(this.nodeTable, 0, 2);
+            this.nodesLayout.Controls.Add(this.nodeTable, 0, 1);
             this.nodesLayout.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.nodesLayout.RowCount = 3;
+            this.nodesLayout.RowCount = 2;
             this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 46F));
-            this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 84F));
             this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
 
             // pointStatusHeaderLayout
@@ -326,27 +319,6 @@
             this.btnPointStatusDetails.Text = "Подробнее  →";
             this.btnPointStatusDetails.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
-            // versionTable
-            this.versionTable.BackColor = System.Drawing.Color.FromArgb(248, 250, 252);
-            this.versionTable.ColumnCount = 2;
-            this.versionTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
-            this.versionTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
-            this.versionTable.Controls.Add(this.lblLmVersion, 0, 0);
-            this.versionTable.Controls.Add(this.lblAtolVersion, 1, 0);
-            this.versionTable.Controls.Add(this.lblEsmVersion, 0, 1);
-            this.versionTable.Controls.Add(this.lblControllerVersion, 1, 1);
-            this.versionTable.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.versionTable.Margin = new System.Windows.Forms.Padding(0, 0, 0, 6);
-            this.versionTable.Padding = new System.Windows.Forms.Padding(6, 4, 6, 4);
-            this.versionTable.RowCount = 2;
-            this.versionTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 50F));
-            this.versionTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 50F));
-
-            ConfigureVersionLabel(this.lblLmVersion, "ЛМ ЧЗ");
-            ConfigureVersionLabel(this.lblAtolVersion, "Драйвер ККТ");
-            ConfigureVersionLabel(this.lblEsmVersion, "ЕСМ");
-            ConfigureVersionLabel(this.lblControllerVersion, "Контроллер");
-
             // nodeTable
             this.nodeTable.ColumnCount = 4;
             this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 135F));
@@ -354,14 +326,14 @@
             this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 48F));
             this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 142F));
             this.nodeTable.Dock = System.Windows.Forms.DockStyle.Top;
-            this.nodeTable.Height = 348;
+            this.nodeTable.Height = 420;
             this.nodeTable.RowCount = 6;
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 58F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
 
             ConfigureNodeRow(0, this.lblLmNode, this.lblLmStatusText, this.lblLmCircle, this.btnLmAction,
                 "ЛМ ЧЗ", System.Drawing.Color.FromArgb(34, 197, 94), "Обновить");
@@ -488,11 +460,6 @@
         private System.Windows.Forms.Panel panelNodes;
         private System.Windows.Forms.TableLayoutPanel nodesLayout;
         private System.Windows.Forms.TableLayoutPanel pointStatusHeaderLayout;
-        private System.Windows.Forms.TableLayoutPanel versionTable;
-        private System.Windows.Forms.Label lblLmVersion;
-        private System.Windows.Forms.Label lblAtolVersion;
-        private System.Windows.Forms.Label lblEsmVersion;
-        private System.Windows.Forms.Label lblControllerVersion;
         private System.Windows.Forms.Label lblNodesTitle;
         private System.Windows.Forms.Button btnPointStatusDetails;
         private System.Windows.Forms.TableLayoutPanel nodeTable;

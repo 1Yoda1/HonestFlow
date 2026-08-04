@@ -237,20 +237,6 @@ namespace HonestFlow
             button.UseVisualStyleBackColor = false;
         }
 
-        public void ConfigureVersionLabel(Label label, string componentName)
-        {
-            label.AutoEllipsis = true;
-            label.BackColor = Color.White;
-            label.BorderStyle = BorderStyle.FixedSingle;
-            label.Dock = DockStyle.Fill;
-            label.Font = new Font("Segoe UI", 8.5F, FontStyle.Regular);
-            label.ForeColor = Color.FromArgb(30, 41, 59);
-            label.Margin = new Padding(3);
-            label.Padding = new Padding(8, 1, 8, 1);
-            label.Text = $"{componentName}\nПроверка версии…";
-            label.TextAlign = ContentAlignment.MiddleLeft;
-        }
-
         public void ConfigureNodeRow(
             int row,
             System.Windows.Forms.Label nodeLabel,
@@ -1474,7 +1460,7 @@ namespace HonestFlow
                     ApplyNodeStatus(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, result.Controller, "Контроллер");
                     ApplyNodeStatus(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, result.Esm, "ЕСМ");
                     ApplyNodeStatus(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, result.Kkt, "ККТ");
-                    ApplyComponentVersionStatuses(versionStatuses);
+                    ApplyVersionMarkers(versionStatuses);
                     _lastPointStatusResult = result;
                 }
                 else
@@ -1483,7 +1469,6 @@ namespace HonestFlow
                     SetNodeLicenseRequired(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, "Контроллер");
                     SetNodeLicenseRequired(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, "ЕСМ");
                     SetNodeLicenseRequired(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, "ККТ");
-                    SetVersionStatusUnavailable();
                     _lastPointStatusResult = null;
                 }
                 ApplyNodeStatus(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, result.Cloud, "Облако");
@@ -1558,6 +1543,7 @@ namespace HonestFlow
             string defaultLabel)
         {
             nodeLabel.Text = defaultLabel;
+            nodeLabel.ForeColor = Color.FromArgb(15, 23, 42);
             statusTextLabel.Text = "Доступно после лицензирования.";
             circle.Text = "●";
             circle.ForeColor = StatusGray;
@@ -1576,6 +1562,7 @@ namespace HonestFlow
         private void SetNodeChecking(Label nodeLabel, Label statusTextLabel, Label circle, Button actionButton, string defaultLabel)
         {
             nodeLabel.Text = defaultLabel;
+            nodeLabel.ForeColor = Color.FromArgb(15, 23, 42);
             statusTextLabel.Text = "Проверка...";
             SetNode(circle, actionButton, StatusGray, "Проверка");
             actionButton.Tag = null;
@@ -1600,6 +1587,7 @@ namespace HonestFlow
             };
 
             nodeLabel.Text = defaultLabel;
+            nodeLabel.ForeColor = Color.FromArgb(15, 23, 42);
             statusTextLabel.Text = string.IsNullOrWhiteSpace(status.StatusText) ? status.ShortText : status.StatusText;
             SetNode(circle, actionButton, color, status.ShortText);
             actionButton.Text = status.ActionText;
@@ -2264,9 +2252,7 @@ namespace HonestFlow
 
         private ComponentVersionStatus[] BuildComponentVersionStatuses()
         {
-            VersionsData configured = _useRemoteConfigMode
-                ? _remoteVersions ?? new VersionsData()
-                : ConfigManager.LoadVersions();
+            VersionsData configured = _remoteVersions ?? ConfigManager.LoadVersions();
             VersionsData clientVersions = _selectedIP?.Versions;
             var expected = new VersionsData
             {
@@ -2309,60 +2295,28 @@ namespace HonestFlow
             };
         }
 
-        private void ApplyComponentVersionStatuses(ComponentVersionStatus[] statuses)
+        private void ApplyVersionMarkers(ComponentVersionStatus[] statuses)
         {
-            Label[] labels = { lblLmVersion, lblAtolVersion, lblEsmVersion, lblControllerVersion };
+            Label[] labels = { lblLmNode, lblKktNode, lblEsmNode, lblControllerNode };
+            string[] names = { "ЛМ ЧЗ", "ККТ", "ЕСМ", "Контроллер" };
             for (int index = 0; index < labels.Length; index++)
             {
                 if (statuses == null || index >= statuses.Length)
-                {
-                    SetVersionLabelUnavailable(labels[index]);
                     continue;
-                }
 
                 ComponentVersionStatus status = statuses[index];
-                string marker = status.State switch
-                {
-                    ComponentVersionState.Current => "✓",
-                    ComponentVersionState.UpdateRequired => "⚠",
-                    ComponentVersionState.NotInstalled => "✕",
-                    _ => "•"
-                };
-                labels[index].Text = BuildVersionLabelText(status, marker);
-                labels[index].ForeColor = Color.FromArgb(30, 41, 59);
+                bool current = status.State == ComponentVersionState.Current;
+                labels[index].Text = $"{(current ? "✓" : "✕")} {names[index]}";
+                labels[index].ForeColor = current ? StatusGreen : StatusRed;
+                _licenseToolTip.SetToolTip(labels[index], BuildVersionTooltip(status));
             }
         }
 
-        private void SetVersionStatusUnavailable()
+        private static string BuildVersionTooltip(ComponentVersionStatus status)
         {
-            SetVersionLabelUnavailable(lblLmVersion);
-            SetVersionLabelUnavailable(lblAtolVersion);
-            SetVersionLabelUnavailable(lblEsmVersion);
-            SetVersionLabelUnavailable(lblControllerVersion);
-        }
-
-        private static void SetVersionLabelUnavailable(Label label)
-        {
-            string component = label.Text?.Split('\n')[0] ?? "Компонент";
-            label.Text = $"{component}\nДоступно после лицензирования";
-            label.ForeColor = Color.FromArgb(100, 116, 139);
-        }
-
-        private static string BuildVersionLabelText(ComponentVersionStatus status, string marker)
-        {
-            if (status.State == ComponentVersionState.NotInstalled)
-            {
-                string requirement = string.IsNullOrWhiteSpace(status.ExpectedVersion)
-                    ? string.Empty
-                    : $"; требуется {status.ExpectedVersion}";
-                return $"{status.ComponentName}\n{marker} Не установлен{requirement}";
-            }
-
-            string installed = status.InstalledVersion ?? "версия неизвестна";
-            if (string.IsNullOrWhiteSpace(status.ExpectedVersion))
-                return $"{status.ComponentName}: {installed}\n{marker} Нет данных для сравнения";
-
-            return $"{status.ComponentName}: {installed} → {status.ExpectedVersion}\n{marker} {status.StateText}";
+            string installed = status.InstalledVersion ?? "не установлен";
+            string expected = status.ExpectedVersion ?? "не загружена";
+            return $"Установленная версия: {installed}\nТребуемая версия: {expected}\n{status.StateText}";
         }
 
         private static string FirstConfigured(string clientValue, string defaultValue) =>
