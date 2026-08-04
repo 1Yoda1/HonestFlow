@@ -17,6 +17,7 @@ namespace HonestFlow.Application.RemoteAccess
         public string ClientId { get; set; }
         public string Name { get; set; }
         public string Inn { get; set; }
+        public string AuthorizationPasswordFingerprint { get; set; }
         public DateTime AuthorizedAt { get; set; }
     }
 }

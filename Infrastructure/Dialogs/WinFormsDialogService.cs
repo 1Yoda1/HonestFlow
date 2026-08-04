@@ -11,19 +11,28 @@ namespace HonestFlow.Infrastructure.Dialogs
             _owner = owner;
         }
 
-        public void ShowInformation(string message, string title)
-        {
-            Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
+        public void ShowInformation(string message, string title) =>
+            ShowNotificationOrDialog(message, title, UserNotificationSeverity.Success, MessageBoxIcon.Information);
 
-        public void ShowWarning(string message, string title)
-        {
-            Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
+        public void ShowWarning(string message, string title) =>
+            ShowNotificationOrDialog(message, title, UserNotificationSeverity.Warning, MessageBoxIcon.Warning);
 
-        public void ShowError(string message, string title)
+        public void ShowError(string message, string title) =>
+            ShowNotificationOrDialog(message, title, UserNotificationSeverity.Error, MessageBoxIcon.Error);
+
+        private void ShowNotificationOrDialog(
+            string message,
+            string title,
+            UserNotificationSeverity severity,
+            MessageBoxIcon fallbackIcon)
         {
-            Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (_owner is IUserNotificationSink sink)
+            {
+                sink.ShowNotification(message, title, severity);
+                return;
+            }
+
+            Show(message, title, MessageBoxButtons.OK, fallbackIcon);
         }
 
         public bool Confirm(string message, string title, UserDialogIcon icon = UserDialogIcon.Warning)

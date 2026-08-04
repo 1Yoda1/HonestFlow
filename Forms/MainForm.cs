@@ -30,7 +30,7 @@ using System.Windows.Forms;
 
 namespace HonestFlow
 {
-    public partial class MainForm : Form
+    public partial class MainForm : Form, IUserNotificationSink
     {
         private readonly ILogService _logService;
         private readonly IProgressService _progressService;
@@ -65,6 +65,7 @@ namespace HonestFlow
         private readonly ILicenseAccessPolicy _licenseAccessPolicy;
         private readonly ILicenseOperationGuard _licenseOperationGuard;
         private readonly ToolTip _licenseToolTip = new();
+        private readonly System.Windows.Forms.Timer _notificationTimer = new();
         private readonly DeviceRegistrationRequestService _deviceRegistrationRequestService = new();
         private readonly DeviceRegistrationCoordinator _deviceRegistrationCoordinator;
         private readonly IPointAddressService _pointAddressService;
@@ -124,9 +125,11 @@ namespace HonestFlow
             _licenseOperationGuard = new LicenseOperationGuard(_licenseAccessPolicy);
             _serviceControlService = new WindowsServiceControlService(_licenseOperationGuard);
             _licenseSnapshotStore.SnapshotChanged += LicenseSnapshotChanged;
+            _notificationTimer.Tick += (_, _) => ClearTransientNotification();
             FormClosed += (_, _) =>
             {
                 _lifetimeCancellation.Cancel();
+                _notificationTimer.Stop();
                 _licenseSnapshotStore.SnapshotChanged -= LicenseSnapshotChanged;
             };
 
@@ -157,6 +160,59 @@ namespace HonestFlow
             ApplyLicenseAccessToUi();
             _windowIconService.ApplyExecutableIcon(this);
         }
+
+        public void ShowNotification(
+            string message,
+            string title,
+            UserNotificationSeverity severity)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => ShowNotification(message, title, severity)));
+                return;
+            }
+
+            _notificationTimer.Stop();
+            string prefix = severity switch
+            {
+                UserNotificationSeverity.Success => "✓ ",
+                UserNotificationSeverity.Warning => "⚠ ",
+                UserNotificationSeverity.Error => "✕ ",
+                _ => "• "
+            };
+            lblStatus.Text = prefix + message.Replace(Environment.NewLine, " ");
+            lblStatus.ForeColor = severity switch
+            {
+                UserNotificationSeverity.Success => Color.FromArgb(22, 163, 74),
+                UserNotificationSeverity.Warning => Color.FromArgb(180, 83, 9),
+                UserNotificationSeverity.Error => Color.FromArgb(220, 38, 38),
+                _ => Color.FromArgb(37, 99, 235)
+            };
+            _licenseToolTip.SetToolTip(
+                lblStatus,
+                string.IsNullOrWhiteSpace(title) ? message : $"{title}: {message}");
+
+            _notificationTimer.Interval = severity switch
+            {
+                UserNotificationSeverity.Error => 12000,
+                UserNotificationSeverity.Warning => 9000,
+                _ => 5000
+            };
+            _notificationTimer.Start();
+        }
+
+        private void ClearTransientNotification()
+        {
+            _notificationTimer.Stop();
+            lblStatus.ForeColor = Color.FromArgb(51, 65, 85);
+            _licenseToolTip.SetToolTip(lblStatus, string.Empty);
+        }
+
+        private void ShowInlineWarning(string message, string title = null) =>
+            ShowNotification(message, title, UserNotificationSeverity.Warning);
+
+        private void ShowInlineError(string message, string title = null) =>
+            ShowNotification(message, title, UserNotificationSeverity.Error);
 
         public void ConfigureButton(System.Windows.Forms.Button button, string text, bool primary)
         {
@@ -342,21 +398,13 @@ namespace HonestFlow
         {
             if (_selectedIP == null)
             {
-                MessageBox.Show(
-                    "Сначала войдите как продавец.",
-                    "Обновление лицензии",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                ShowInlineWarning("Сначала войдите как продавец.", "Обновление лицензии");
                 return;
             }
 
             if (_authService is not ILicenseObservationRefresher refresher)
             {
-                MessageBox.Show(
-                    "Повторная проверка лицензии недоступна в текущем режиме.",
-                    "Обновление лицензии",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                ShowInlineWarning("Повторная проверка лицензии недоступна в текущем режиме.", "Обновление лицензии");
                 return;
             }
 
@@ -401,11 +449,7 @@ namespace HonestFlow
                     nameof(MainForm));
                 _logService.LogDebug($"Ошибка ручного обновления лицензии: {ex}");
                 lblStatus.Text = "Не удалось обновить сведения о лицензии.";
-                MessageBox.Show(
-                    "Не удалось обновить лицензию. Проверьте подключение к интернету и повторите попытку.",
-                    "Обновление лицензии",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                ShowInlineError("Не удалось обновить лицензию. Проверьте подключение к интернету.", "Обновление лицензии");
             }
             finally
             {
@@ -429,11 +473,7 @@ namespace HonestFlow
         {
             if (_selectedIP == null)
             {
-                MessageBox.Show(
-                    "Сначала войдите как продавец.",
-                    "Оценить HonestFlow",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                ShowInlineWarning("Сначала войдите как продавец.", "Оценить HonestFlow");
                 return;
             }
 
@@ -454,11 +494,7 @@ namespace HonestFlow
             catch (Exception ex)
             {
                 _logService.LogDebug($"Ошибка отправки оценки HonestFlow: {ex.Message}");
-                MessageBox.Show(
-                    $"Не удалось отправить оценку:\n{ex.Message}",
-                    "Оценить HonestFlow",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                ShowInlineError($"Не удалось отправить оценку: {ex.Message}", "Оценить HonestFlow");
                 lblStatus.Text = "Не удалось отправить оценку";
             }
             finally
@@ -489,22 +525,14 @@ namespace HonestFlow
                 LogOperatorAction($"не удалось открыть {title}: файл не найден", isError: true);
                 _logService.LogDebug($"Не найден файл для запуска {title}: {ex.FileName}");
 
-                MessageBox.Show(
-                    $"Не найден файл:\n{ex.FileName}",
-                    title,
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                ShowInlineWarning($"Не найден файл: {ex.FileName}", title);
             }
             catch (Exception ex)
             {
                 LogOperatorAction($"не удалось открыть {title}: {ex.Message}", isError: true);
                 _logService.LogDebug($"Ошибка запуска {title}: {ex}");
 
-                MessageBox.Show(
-                    $"Не удалось открыть {title}:\n{ex.Message}",
-                    title,
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                ShowInlineError($"Не удалось открыть {title}: {ex.Message}", title);
             }
         }
 
@@ -537,7 +565,7 @@ namespace HonestFlow
             if (selectedIP == null)
             {
                 LogOperatorAction("вход отклонен: неверный пароль", isError: true);
-                MessageBox.Show("Неверный пароль!\nДоступ запрещен.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowInlineError("Неверный пароль. Доступ запрещён.", "Авторизация");
                 return;
             }
 
@@ -591,7 +619,7 @@ namespace HonestFlow
             if (selectedIP == null)
             {
                 LogOperatorAction("запуск проверки отменен: пользователь не авторизован", isError: true);
-                MessageBox.Show("Сначала выполните вход.", "Авторизация", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowInlineWarning("Сначала выполните вход.", "Авторизация");
                 return;
             }
 
@@ -622,7 +650,7 @@ namespace HonestFlow
                 if (!success)
                 {
                     LogOperatorAction("проверка и установка завершены с ошибкой", isError: true);
-                    MessageBox.Show("Установка не выполнена. Смотрите лог.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    ShowInlineError("Установка не выполнена. Подробности записаны в журнал.", "Установка");
                 }
                 else
                 {
@@ -850,7 +878,7 @@ namespace HonestFlow
                 if (!success)
                 {
                     LogOperatorAction("ручная переустановка завершена с ошибками", isError: true);
-                    MessageBox.Show("Ручная переустановка завершена с ошибками. Смотрите лог.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    ShowInlineError("Ручная переустановка завершена с ошибками. Подробности записаны в журнал.", "Переустановка");
                 }
                 else
                 {
@@ -945,7 +973,7 @@ namespace HonestFlow
             if (string.IsNullOrWhiteSpace(enteredPassword))
             {
                 LogOperatorAction("ручная операция отменена: пароль точки не введен", isError: true);
-                MessageBox.Show("Введите пароль точки перед ручной переустановкой.", "Авторизация", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowInlineWarning("Введите пароль точки перед ручной переустановкой.", "Авторизация");
                 textBox1.Focus();
                 return null;
             }
@@ -955,7 +983,7 @@ namespace HonestFlow
             if (selectedIP == null)
             {
                 LogOperatorAction("ручная операция отклонена: неверный пароль", isError: true);
-                MessageBox.Show("Неверный пароль!\nДоступ запрещен.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowInlineError("Неверный пароль. Доступ запрещён.", "Авторизация");
                 textBox1.Clear();
                 textBox1.Focus();
                 return null;
@@ -999,7 +1027,7 @@ namespace HonestFlow
             if (!selection.HasAnySelection)
             {
                 LogOperatorAction("сбор диагностики: оператор не выбрал ни одной группы логов");
-                MessageBox.Show("Выберите хотя бы одну группу логов.", "Диагностика", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowInlineWarning("Выберите хотя бы одну группу логов.", "Диагностика");
                 return null;
             }
 
@@ -1028,7 +1056,7 @@ namespace HonestFlow
             if (selected.Count == 0)
             {
                 LogOperatorAction("ручная переустановка: оператор не выбрал ни одного компонента");
-                MessageBox.Show("Выберите хотя бы один компонент.", "Ручная переустановка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowInlineWarning("Выберите хотя бы один компонент.", "Ручная переустановка");
                 return null;
             }
 
@@ -2001,11 +2029,7 @@ namespace HonestFlow
                     licenseSnapshot?.DeviceId,
                     _lifetimeCancellation.Token);
 
-                MessageBox.Show(
-                    "Заявка отправлена.",
-                    "Запрос помощи",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                ShowNotification("Заявка помощи отправлена.", "Запрос помощи", UserNotificationSeverity.Success);
 
                 lblStatus.Text = "Заявка помощи отправлена";
             }
@@ -2013,11 +2037,7 @@ namespace HonestFlow
             {
                 LogOperatorAction($"не удалось отправить запрос помощи: {ex.Message}", isError: true);
                 _logService.LogDebug($"Ошибка отправки запроса помощи: {ex}");
-                MessageBox.Show(
-                    $"Не удалось отправить заявку:\n{ex.Message}",
-                    "Запрос помощи",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                ShowInlineError($"Не удалось отправить заявку: {ex.Message}", "Запрос помощи");
                 lblStatus.Text = $"Ошибка запроса помощи: {ex.Message}";
             }
             finally
@@ -2086,7 +2106,7 @@ namespace HonestFlow
             if (selectedClient == null)
             {
                 LogOperatorAction("запрос помощи: настройка RuDesktop отклонена, неверный пароль точки", isError: true);
-                MessageBox.Show("Неверный пароль точки. Запрос помощи не отправлен.", "Запрос помощи", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowInlineWarning("Неверный пароль точки. Запрос помощи не отправлен.", "Запрос помощи");
                 return null;
             }
 
@@ -2520,7 +2540,7 @@ namespace HonestFlow
                 }
 
                 LogOperatorAction("журнал выполнения не найден", isError: true);
-                MessageBox.Show("Файл лога не найден.", "Журнал выполнения", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowInlineWarning("Файл журнала не найден.", "Журнал выполнения");
             }
             catch (Exception ex)
             {
@@ -2592,7 +2612,7 @@ namespace HonestFlow
             if (selectedIP == null)
             {
                 LogOperatorAction("RuDesktop: первичная настройка отклонена, неверный пароль точки", isError: true);
-                MessageBox.Show("Неверный пароль точки. RuDesktop не настроен.", "Настройка RuDesktop", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ShowInlineWarning("Неверный пароль точки. RuDesktop не настроен.", "RuDesktop");
                 return;
             }
 
@@ -2778,7 +2798,7 @@ namespace HonestFlow
 
             string message = $"Сейчас выполняется операция: {_longOperationName}. Дождитесь завершения.";
             LogOperatorAction($"{requestedAction} не запущено: {message}");
-            MessageBox.Show(message, "Операция уже выполняется", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ShowNotification(message, "Операция уже выполняется", UserNotificationSeverity.Information);
             return false;
         }
 
@@ -2857,11 +2877,7 @@ namespace HonestFlow
                 $"Event=LicenseOperationDenied Operation={operation} TechnicalCode={access.TechnicalCode}",
                 nameof(MainForm));
             LogOperatorAction($"{operationName} заблокировано лицензией (код: {access.TechnicalCode})", isError: true);
-            MessageBox.Show(
-                access.Message,
-                "Функция недоступна",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            ShowInlineWarning(access.Message, "Функция недоступна");
             return false;
         }
 
@@ -3197,7 +3213,7 @@ namespace HonestFlow
         {
             lblStatus.Visible = true;
             lblStatus.Text = message;
-            MessageBox.Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowInlineWarning(message, title);
         }
 
         private static string GetHonestFlowVersion() =>

@@ -99,6 +99,7 @@ namespace HonestFlow.Application.RemoteAccess
                 ClientId = client.ClientId,
                 Name = client.Name,
                 Inn = client.Inn,
+                AuthorizationPasswordFingerprint = GetPasswordFingerprint(client.Password),
                 AuthorizedAt = DateTime.Now
             };
 
@@ -109,6 +110,35 @@ namespace HonestFlow.Application.RemoteAccess
         public LastAuthorizedClientState GetLastAuthorizedClient()
         {
             return LoadState().LastAuthorizedClient;
+        }
+
+        public static bool IsRememberedAuthorizationCurrent(
+            LastAuthorizedClientState remembered,
+            IPData currentClient)
+        {
+            if (remembered == null || currentClient == null ||
+                string.IsNullOrWhiteSpace(remembered.ClientId) ||
+                string.IsNullOrWhiteSpace(remembered.AuthorizationPasswordFingerprint) ||
+                string.IsNullOrEmpty(currentClient.Password) ||
+                !string.Equals(remembered.ClientId, currentClient.ClientId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            byte[] rememberedHash;
+            byte[] currentHash;
+            try
+            {
+                rememberedHash = Convert.FromBase64String(remembered.AuthorizationPasswordFingerprint);
+                currentHash = Convert.FromBase64String(GetPasswordFingerprint(currentClient.Password));
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+
+            return rememberedHash.Length == currentHash.Length &&
+                   CryptographicOperations.FixedTimeEquals(rememberedHash, currentHash);
         }
 
         public string GetLastKnownId()

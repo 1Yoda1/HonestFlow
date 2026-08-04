@@ -220,20 +220,19 @@ namespace HonestFlow
                     return null;
                 }
 
-                string displayName = string.IsNullOrWhiteSpace(client.Name)
-                    ? "сохранённым продавцом"
-                    : $"продавцом «{client.Name.Trim()}»";
-                DialogResult answer = MessageBox.Show(
-                    _startupForm,
-                    $"Вы уже авторизованы под {displayName}. Войти?",
-                    "Вход в HonestFlow",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
-                if (answer != DialogResult.Yes)
+                if (!RuDesktopService.IsRememberedAuthorizationCurrent(remembered, client))
+                {
+                    Logger.Info(
+                        "Event=RememberedSellerLogin Status=PasswordChangedOrUnverified",
+                        nameof(Program));
                     return null;
+                }
 
                 try
                 {
+                    _startupForm.ShowPreparationStatus(
+                        $"Сохранённый вход для точки «{client.Name}» подтверждён. Проверяем лицензию...",
+                        isError: false);
                     if (startup.AuthService is ILicenseObservationRefresher refresher)
                     {
                         var progress = new Progress<LicenseAuthenticationProgress>(
@@ -256,12 +255,9 @@ namespace HonestFlow
                     Logger.Warning(
                         $"Event=RememberedSellerLogin Status=Failed ErrorType={ex.GetType().Name}",
                         nameof(Program));
-                    MessageBox.Show(
-                        _startupForm,
-                        "Не удалось проверить сохранённый вход. Введите пароль продавца.",
-                        "Вход в HonestFlow",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
+                    _startupForm.ShowPreparationStatus(
+                        "Сохранённый вход не подтверждён. Введите актуальный пароль.",
+                        isError: true);
                     return null;
                 }
             }
