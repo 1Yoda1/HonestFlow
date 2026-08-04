@@ -133,80 +133,23 @@ namespace HonestFlow.Infrastructure.Updates
 
         private void CreateAndRunUpdateScript(string newExePath, string backupPath)
         {
-            string currentExe = Environment.ProcessPath;
-            string appDir = AppPaths.BaseFolder.TrimEnd('\\');
+            string runningExe = Environment.ProcessPath;
+            string targetExe = ResolveCanonicalUpdateTarget(runningExe);
+            string appDir = Path.GetDirectoryName(targetExe) ?? AppPaths.BaseFolder.TrimEnd('\\');
             int currentPid = Environment.ProcessId;
 
             string scriptPath = Path.Combine(AppPaths.ProgramDataFolder, "update", "apply_update.ps1");
             string scriptLogPath = Path.Combine(AppPaths.ProgramDataFolder, "update", "apply_update.log");
             string backupExe = Path.Combine(backupPath, "HonestFlow.backup.exe");
-            string currentExePs = ToPowerShellSingleQuotedString(currentExe);
-            string newExePathPs = ToPowerShellSingleQuotedString(newExePath);
-            string backupPathPs = ToPowerShellSingleQuotedString(backupPath);
-            string backupExePs = ToPowerShellSingleQuotedString(backupExe);
-            string appDirPs = ToPowerShellSingleQuotedString(appDir);
-            string scriptLogPathPs = ToPowerShellSingleQuotedString(scriptLogPath);
-
-            string script = $@"
-$ErrorActionPreference = 'Stop'
-$log = {scriptLogPathPs}
-$currentExe = {currentExePs}
-$newExe = {newExePathPs}
-$backupDir = {backupPathPs}
-$backupExe = {backupExePs}
-$appDir = {appDirPs}
-$pidToWait = {currentPid}
-
-function Write-UpdateLog([string]$message) {{
-    Add-Content -LiteralPath $log -Value ""[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] $message"" -Encoding UTF8
-}}
-
-try {{
-    Set-Content -LiteralPath $log -Value ""[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] Updating HonestFlow..."" -Encoding UTF8
-    Write-UpdateLog ""Current exe: $currentExe""
-    Write-UpdateLog ""New exe: $newExe""
-    Write-UpdateLog ""Backup exe: $backupExe""
-
-    Start-Sleep -Seconds 2
-    while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {{
-        Write-UpdateLog ""Waiting for process $pidToWait""
-        Start-Sleep -Seconds 1
-    }}
-
-    New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-
-    Write-UpdateLog ""Backing up current exe""
-    Copy-Item -LiteralPath $currentExe -Destination $backupExe -Force
-
-    Write-UpdateLog ""Replacing current exe""
-    Copy-Item -LiteralPath $newExe -Destination $currentExe -Force
-
-    Write-UpdateLog ""Update applied successfully""
-    Start-Process -FilePath $currentExe -WorkingDirectory $appDir
-    exit 0
-}}
-catch {{
-    Write-UpdateLog ""Update failed: $($_.Exception.Message)""
-    try {{
-        if (Test-Path -LiteralPath $backupExe) {{
-            Write-UpdateLog ""Restoring backup""
-            Copy-Item -LiteralPath $backupExe -Destination $currentExe -Force
-        }}
-    }}
-    catch {{
-        Write-UpdateLog ""Backup restore failed: $($_.Exception.Message)""
-    }}
-
-    try {{
-        Start-Process -FilePath $currentExe -WorkingDirectory $appDir
-    }}
-    catch {{
-        Write-UpdateLog ""Restart failed: $($_.Exception.Message)""
-    }}
-
-    exit 1
-}}
-";
+            string script = BuildUpdateScript(
+                runningExe,
+                targetExe,
+                newExePath,
+                backupPath,
+                backupExe,
+                appDir,
+                scriptLogPath,
+                currentPid);
 
             File.WriteAllText(scriptPath, script, Encoding.UTF8);
 
@@ -220,6 +163,113 @@ catch {{
             });
 
             System.Windows.Forms.Application.Exit();
+        }
+
+        private static string ResolveCanonicalUpdateTarget(string runningExe)
+        {
+            if (string.IsNullOrWhiteSpace(runningExe))
+                throw new ArgumentException("Running executable path is required.", nameof(runningExe));
+
+            string directory = Path.GetDirectoryName(runningExe);
+            if (string.IsNullOrWhiteSpace(directory))
+                throw new ArgumentException("Running executable directory is unavailable.", nameof(runningExe));
+
+            return Path.Combine(directory, UpdateAssetName);
+        }
+
+        private static string BuildUpdateScript(
+            string runningExe,
+            string targetExe,
+            string newExePath,
+            string backupPath,
+            string backupExe,
+            string appDir,
+            string scriptLogPath,
+            int currentPid)
+        {
+            string runningExePs = ToPowerShellSingleQuotedString(runningExe);
+            string targetExePs = ToPowerShellSingleQuotedString(targetExe);
+            string newExePathPs = ToPowerShellSingleQuotedString(newExePath);
+            string backupPathPs = ToPowerShellSingleQuotedString(backupPath);
+            string backupExePs = ToPowerShellSingleQuotedString(backupExe);
+            string appDirPs = ToPowerShellSingleQuotedString(appDir);
+            string scriptLogPathPs = ToPowerShellSingleQuotedString(scriptLogPath);
+
+            return $@"
+$ErrorActionPreference = 'Stop'
+$log = {scriptLogPathPs}
+$runningExe = {runningExePs}
+$targetExe = {targetExePs}
+$newExe = {newExePathPs}
+$backupDir = {backupPathPs}
+$backupExe = {backupExePs}
+$appDir = {appDirPs}
+$pidToWait = {currentPid}
+$backupCreated = $false
+
+function Write-UpdateLog([string]$message) {{
+    Add-Content -LiteralPath $log -Value ""[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] $message"" -Encoding UTF8
+}}
+
+try {{
+    Set-Content -LiteralPath $log -Value ""[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] Updating HonestFlow..."" -Encoding UTF8
+    Write-UpdateLog ""Running exe: $runningExe""
+    Write-UpdateLog ""Target exe: $targetExe""
+    Write-UpdateLog ""New exe: $newExe""
+    Write-UpdateLog ""Backup exe: $backupExe""
+
+    Start-Sleep -Seconds 2
+    while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {{
+        Write-UpdateLog ""Waiting for process $pidToWait""
+        Start-Sleep -Seconds 1
+    }}
+
+    New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+
+    if (Test-Path -LiteralPath $targetExe) {{
+        Write-UpdateLog ""Backing up target exe""
+        Copy-Item -LiteralPath $targetExe -Destination $backupExe -Force
+        $backupCreated = $true
+    }}
+
+    Write-UpdateLog ""Replacing canonical exe""
+    Copy-Item -LiteralPath $newExe -Destination $targetExe -Force
+
+    Write-UpdateLog ""Update applied successfully""
+    Start-Process -FilePath $targetExe -WorkingDirectory $appDir
+    exit 0
+}}
+catch {{
+    Write-UpdateLog ""Update failed: $($_.Exception.Message)""
+    try {{
+        if ($backupCreated -and (Test-Path -LiteralPath $backupExe)) {{
+            Write-UpdateLog ""Restoring backup""
+            Copy-Item -LiteralPath $backupExe -Destination $targetExe -Force
+        }}
+        elseif (Test-Path -LiteralPath $targetExe) {{
+            Write-UpdateLog ""Removing incomplete target""
+            Remove-Item -LiteralPath $targetExe -Force
+        }}
+    }}
+    catch {{
+        Write-UpdateLog ""Backup restore failed: $($_.Exception.Message)""
+    }}
+
+    try {{
+        if (Test-Path -LiteralPath $targetExe) {{
+            Start-Process -FilePath $targetExe -WorkingDirectory $appDir
+        }}
+        else {{
+            Start-Process -FilePath $runningExe -WorkingDirectory $appDir
+        }}
+    }}
+    catch {{
+        Write-UpdateLog ""Restart failed: $($_.Exception.Message)""
+    }}
+
+    exit 1
+}}
+";
         }
 
         private static string ToPowerShellSingleQuotedString(string value)

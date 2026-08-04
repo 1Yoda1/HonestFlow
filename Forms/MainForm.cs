@@ -637,6 +637,16 @@ namespace HonestFlow
                 return;
             }
 
+            LmSystemRequirementsResult requirements = LmSystemRequirements.Check();
+            if (!requirements.MeetsMinimum)
+            {
+                ShowNotification(
+                    "ПК ниже минимальных требований ЛМ ЧЗ. Установка продолжится, но возможна нестабильная работа:\n" +
+                    string.Join("; ", requirements.MinimumWarnings),
+                    "Системные требования ЛМ ЧЗ",
+                    UserNotificationSeverity.Warning);
+            }
+
             if (!TryBeginLongOperation(
                 "проверка и установка компонентов",
                 LicenseOperation.InstallComponents))

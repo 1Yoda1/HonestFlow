@@ -5,6 +5,7 @@ using System.Linq;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using HonestFlow.Application.Lm;
 using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Infrastructure.Api;
 using HonestFlow.Models;
@@ -75,6 +76,7 @@ namespace HonestFlow.Application.PointStatus
             Task<NodeStatus> ruDesktopTask = CheckRuDesktopStatusAsync();
             await Task.WhenAll(controllerTask, kktTask, esmTask, lmTask, cloudTask, ruDesktopTask).ConfigureAwait(false);
             (NodeStatus lmStatus, bool lmReady) = await lmTask.ConfigureAwait(false);
+            lmStatus = ApplyLmSystemRequirements(lmStatus, LmSystemRequirements.Check());
 
             return new PointStatusResult
             {
@@ -108,6 +110,35 @@ namespace HonestFlow.Application.PointStatus
                 EsmStatusResultKind.NotConfigured => EsmRegistrationResult.NotConfigured(),
                 _ => EsmRegistrationResult.Unavailable()
             };
+        }
+
+        public static NodeStatus ApplyLmSystemRequirements(
+            NodeStatus status,
+            LmSystemRequirementsResult requirements)
+        {
+            if (status == null || requirements == null || !requirements.HasWarnings)
+                return status;
+
+            var messages = requirements.MinimumWarnings
+                .Concat(requirements.Recommendations)
+                .ToArray();
+            string requirementDetails = "Требования к ПК:\n- " + string.Join("\n- ", messages);
+            NodeLevel level = status.Level == NodeLevel.Error ? NodeLevel.Error : NodeLevel.Warning;
+            string statusText = status.StatusText;
+            if (!requirements.MeetsMinimum)
+                statusText = string.IsNullOrWhiteSpace(statusText)
+                    ? "ПК ниже требований ЛМ ЧЗ"
+                    : statusText + "\nПК ниже требований ЛМ ЧЗ";
+
+            return new NodeStatus(
+                level,
+                status.ShortText,
+                string.IsNullOrWhiteSpace(status.Details)
+                    ? requirementDetails
+                    : status.Details + "\n\n" + requirementDetails,
+                status.Services,
+                statusText,
+                status.ActionKind);
         }
 
         public static NodeStatus BuildEsmStatus(
