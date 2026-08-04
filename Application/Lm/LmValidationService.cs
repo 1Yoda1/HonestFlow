@@ -114,6 +114,12 @@ namespace HonestFlow.Application.Lm
             return (result.NeedsInstall, result.DisplayStatus);
         }
 
+        public string GetInstalledPhysicalVersion()
+        {
+            var physical = GetPhysicalState();
+            return physical.IsInstalled ? physical.Version : null;
+        }
+
         private static void ApplyApiStatus(LmValidationResult result, LmStatus status)
         {
             result.ApiStatus = status;

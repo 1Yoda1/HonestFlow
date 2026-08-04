@@ -1,5 +1,6 @@
 using HonestFlow.Application.Bootstrap;
 using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Models;
 using HonestFlow.Application.Auth;
@@ -234,6 +235,19 @@ namespace HonestFlow
             button.Margin = new System.Windows.Forms.Padding(0, 4, 0, 4);
             button.Text = text;
             button.UseVisualStyleBackColor = false;
+        }
+
+        public void ConfigureVersionLabel(Label label, string componentName)
+        {
+            label.AutoEllipsis = true;
+            label.BackColor = Color.FromArgb(248, 250, 252);
+            label.Dock = DockStyle.Fill;
+            label.Font = new Font("Segoe UI", 8.5F, FontStyle.Regular);
+            label.ForeColor = StatusGray;
+            label.Margin = new Padding(4, 0, 4, 0);
+            label.Padding = new Padding(6, 2, 6, 2);
+            label.Text = $"{componentName}\nПроверка версии…";
+            label.TextAlign = ContentAlignment.MiddleLeft;
         }
 
         public void ConfigureNodeRow(
@@ -1435,6 +1449,9 @@ namespace HonestFlow
             _statusRefreshRunning = true;
             btnCheckWithoutPassword.Enabled = false;
             SetNodeChecking(canViewAndRepair);
+            Task<ComponentVersionStatus[]> versionStatusTask = canViewAndRepair
+                ? Task.Run(BuildComponentVersionStatuses)
+                : Task.FromResult(Array.Empty<ComponentVersionStatus>());
             lblStatus.Text = "Проверка служб и связи...";
             lblHeaderStatus.Text = "● Проверка";
             lblHeaderStatus.ForeColor = StatusYellow;
@@ -1442,6 +1459,7 @@ namespace HonestFlow
             try
             {
                 var result = await _pointStatusService.CheckAsync(_lifetimeCancellation.Token);
+                ComponentVersionStatus[] versionStatuses = await versionStatusTask;
 
                 if (!allowDuringLongOperation && IsLongOperationRunning)
                 {
@@ -1455,6 +1473,7 @@ namespace HonestFlow
                     ApplyNodeStatus(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, result.Controller, "Контроллер");
                     ApplyNodeStatus(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, result.Esm, "ЕСМ");
                     ApplyNodeStatus(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, result.Kkt, "ККТ");
+                    ApplyComponentVersionStatuses(versionStatuses);
                     _lastPointStatusResult = result;
                 }
                 else
@@ -1463,6 +1482,7 @@ namespace HonestFlow
                     SetNodeLicenseRequired(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, "Контроллер");
                     SetNodeLicenseRequired(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, "ЕСМ");
                     SetNodeLicenseRequired(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, "ККТ");
+                    SetVersionStatusUnavailable();
                     _lastPointStatusResult = null;
                 }
                 ApplyNodeStatus(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, result.Cloud, "Облако");
@@ -2239,6 +2259,105 @@ namespace HonestFlow
                     pointStatusCheckedAt,
                     pointStatusError)
             };
+        }
+
+        private ComponentVersionStatus[] BuildComponentVersionStatuses()
+        {
+            VersionsData configured = _useRemoteConfigMode
+                ? _remoteVersions ?? ConfigManager.LoadRemoteVersions()
+                : ConfigManager.LoadVersions();
+            VersionsData clientVersions = _selectedIP?.Versions;
+            var expected = new VersionsData
+            {
+                LmModule = FirstConfigured(clientVersions?.LmModule, configured?.LmModule),
+                AtolDriver = FirstConfigured(clientVersions?.AtolDriver, configured?.AtolDriver),
+                ESM = FirstConfigured(clientVersions?.ESM, configured?.ESM),
+                Controller = FirstConfigured(clientVersions?.Controller, configured?.Controller)
+            };
+
+            var checker = new VersionCheckService(_logService);
+            string lmVersion = new LmValidationService(_logService).GetInstalledPhysicalVersion();
+            string atolVersion = checker.GetAtolDriverInfo();
+            string esmVersion = checker.GetEsmVersion();
+            string controllerVersion = checker.GetControllerVersion();
+
+            return new[]
+            {
+                ComponentVersionStatus.Create(
+                    "ЛМ ЧЗ",
+                    lmVersion,
+                    expected.LmModule,
+                    CompareVersion(lmVersion, expected.LmModule)),
+                ComponentVersionStatus.Create(
+                    "Драйвер ККТ",
+                    atolVersion,
+                    expected.AtolDriver,
+                    HasExpected(expected.AtolDriver)
+                        ? checker.NeedAtolInstall(_selectedIP, expected.AtolDriver)
+                        : null),
+                ComponentVersionStatus.Create(
+                    "ЕСМ",
+                    esmVersion,
+                    expected.ESM,
+                    HasExpected(expected.ESM) ? checker.NeedEsmInstall(expected.ESM) : null),
+                ComponentVersionStatus.Create(
+                    "Контроллер",
+                    controllerVersion,
+                    expected.Controller,
+                    HasExpected(expected.Controller) ? checker.NeedControllerInstall(expected.Controller) : null)
+            };
+        }
+
+        private void ApplyComponentVersionStatuses(ComponentVersionStatus[] statuses)
+        {
+            Label[] labels = { lblLmVersion, lblAtolVersion, lblEsmVersion, lblControllerVersion };
+            for (int index = 0; index < labels.Length; index++)
+            {
+                if (statuses == null || index >= statuses.Length)
+                {
+                    SetVersionLabelUnavailable(labels[index]);
+                    continue;
+                }
+
+                ComponentVersionStatus status = statuses[index];
+                string installed = status.InstalledVersion ?? "—";
+                string expected = status.ExpectedVersion ?? "—";
+                labels[index].Text = $"{status.ComponentName}\n{installed} → {expected}\n{status.StateText}";
+                labels[index].ForeColor = status.State switch
+                {
+                    ComponentVersionState.Current => StatusGreen,
+                    ComponentVersionState.UpdateRequired => StatusYellow,
+                    ComponentVersionState.NotInstalled => StatusRed,
+                    _ => StatusGray
+                };
+            }
+        }
+
+        private void SetVersionStatusUnavailable()
+        {
+            SetVersionLabelUnavailable(lblLmVersion);
+            SetVersionLabelUnavailable(lblAtolVersion);
+            SetVersionLabelUnavailable(lblEsmVersion);
+            SetVersionLabelUnavailable(lblControllerVersion);
+        }
+
+        private static void SetVersionLabelUnavailable(Label label)
+        {
+            string component = label.Text?.Split('\n')[0] ?? "Компонент";
+            label.Text = $"{component}\nДоступно после лицензирования";
+            label.ForeColor = StatusGray;
+        }
+
+        private static string FirstConfigured(string clientValue, string defaultValue) =>
+            !string.IsNullOrWhiteSpace(clientValue) ? clientValue.Trim() : defaultValue?.Trim();
+
+        private static bool HasExpected(string version) => !string.IsNullOrWhiteSpace(version);
+
+        private static bool? CompareVersion(string installed, string expected)
+        {
+            if (!HasExpected(expected))
+                return null;
+            return !string.Equals(installed?.Trim(), expected.Trim(), StringComparison.OrdinalIgnoreCase);
         }
 
         private static HelpRequestPointStatus BuildHelpRequestPointStatus(
