@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HonestFlow.Infrastructure
@@ -49,21 +50,27 @@ namespace HonestFlow.Infrastructure
                 Task<string> outputTask = !asAdmin ? process.StandardOutput.ReadToEndAsync() : Task.FromResult(string.Empty);
                 Task<string> errorTask = !asAdmin ? process.StandardError.ReadToEndAsync() : Task.FromResult(string.Empty);
 
-                bool exited;
+                bool exited = true;
                 if (timeoutSeconds > 0)
-                    exited = await Task.Run(() => process.WaitForExit(timeoutSeconds * 1000));
+                {
+                    using var timeout = new CancellationTokenSource(
+                        TimeSpan.FromSeconds(timeoutSeconds));
+                    try
+                    {
+                        await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+                    {
+                        exited = process.HasExited;
+                        if (!exited)
+                        {
+                            result.TimedOut = true;
+                            await TerminateProcessAsync(process).ConfigureAwait(false);
+                        }
+                    }
+                }
                 else
-                {
-                    await Task.Run(() => process.WaitForExit());
-                    exited = true;
-                }
-
-                if (!exited)
-                {
-                    result.TimedOut = true;
-                    try { process.Kill(true); } catch { }
-                    try { await Task.Run(() => process.WaitForExit(5000)); } catch { }
-                }
+                    await process.WaitForExitAsync().ConfigureAwait(false);
 
                 result.StandardOutput = await CompleteReadTask(outputTask, TimeSpan.FromSeconds(5));
                 result.StandardError = await CompleteReadTask(errorTask, TimeSpan.FromSeconds(5));
@@ -87,8 +94,35 @@ namespace HonestFlow.Infrastructure
 
         private static async Task<string> CompleteReadTask(Task<string> readTask, TimeSpan timeout)
         {
-            Task completed = await Task.WhenAny(readTask, Task.Delay(timeout));
-            return ReferenceEquals(completed, readTask) ? await readTask : string.Empty;
+            try
+            {
+                return await readTask.WaitAsync(timeout).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                return string.Empty;
+            }
+        }
+
+        private static async Task TerminateProcessAsync(Process process)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                return;
+            }
+
+            using var shutdownTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await process.WaitForExitAsync(shutdownTimeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
     }
 }

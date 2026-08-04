@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
-		<TargetFramework>net6.0-windows</TargetFramework>
+		<TargetFramework>net10.0-windows</TargetFramework>
 		<Nullable>disable</Nullable>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ImplicitUsings>disable</ImplicitUsings>
@@ -11,7 +11,7 @@
 		<AssemblyName>HonestFlow</AssemblyName>
 		<RootNamespace>HonestFlow</RootNamespace>
 
-		<!-- Один компактный EXE для безопасной замены текущим updater; .NET 6 уже установлен на рабочих точках -->
+		<!-- Один компактный EXE для безопасной замены текущим updater; .NET 10 Desktop Runtime поставляется отдельно -->
 		<SelfContained>false</SelfContained>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<PublishSingleFile>true</PublishSingleFile>
@@ -20,10 +20,10 @@
 		<ApplicationManifest>app.manifest</ApplicationManifest>
 
 		<!-- Версии и информация -->
-		<AssemblyVersion>2.6.2.0</AssemblyVersion>
-		<FileVersion>2.6.2.0</FileVersion>
-		<Version>2.6.2</Version>
-		<InformationalVersion>2.6.2</InformationalVersion>
+		<AssemblyVersion>3.0.0.0</AssemblyVersion>
+		<FileVersion>3.0.0.0</FileVersion>
+		<Version>3.0.0</Version>
+		<InformationalVersion>3.0.0</InformationalVersion>
 		<Authors>Pavel Shadrov</Authors>
 		<Company>OOO "Morkovka"</Company>
 		<Product>Honest Flow</Product>
@@ -46,7 +46,6 @@
 	<ItemGroup>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 		<PackageReference Include="Newtonsoft.Json.Bson" Version="1.0.3" />
-		<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="6.0.0" />
 	</ItemGroup>
 
 </Project>

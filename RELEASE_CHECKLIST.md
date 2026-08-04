@@ -14,9 +14,12 @@ Use this checklist before creating a public GitHub release.
 - [ ] `dotnet restore`
 - [ ] `dotnet build HonestFlow.csproj -c Release`
 - [ ] `dotnet test HonestFlow.Tests\HonestFlow.Tests.csproj -c Release`
-- [ ] Target framework support status is accepted for this release. `net6.0-windows` is out of support and should be upgraded before a broad public release.
+- [ ] Target framework support status is accepted for this release. HonestFlow targets `net10.0-windows`.
 - [ ] Published executable starts on a clean Windows x64 machine.
 - [ ] UI text is readable in Russian.
+- [ ] Web Setup compiles with `scripts\build-web-installer.ps1`.
+- [ ] Web Setup installs and uninstalls successfully on Windows x64.
+- [ ] Web Setup downloads and installs the pinned .NET Desktop Runtime when runtime 10 is absent.
 
 ## Smoke Tests
 

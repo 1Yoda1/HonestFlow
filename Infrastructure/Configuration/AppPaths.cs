@@ -66,7 +66,6 @@ namespace HonestFlow.Infrastructure.Configuration
         public static string RuDesktopStateFile => Path.Combine(ProgramDataFolder, "rudesktop_state.json");
         public static string RuDesktopInstallerCacheFolder => Path.Combine(ProgramDataFolder, "rudesktop-installer");
         public static string RuDesktopInstallerLogFile => Path.Combine(LogsFolder, "rudesktop-msi-install.log");
-        public static string DotNetRuntimeCacheFolder => Path.Combine(ProgramDataFolder, "dotnet-runtime");
         public static string PointAddressFile => Path.Combine(ProgramDataFolder, "point-address.json");
 
         public static void EnsureRuntimeFolders()
@@ -76,7 +75,6 @@ namespace HonestFlow.Infrastructure.Configuration
             Directory.CreateDirectory(DiagnosticsFolder);
             Directory.CreateDirectory(InstallerCacheFolder);
             Directory.CreateDirectory(RuDesktopInstallerCacheFolder);
-            Directory.CreateDirectory(DotNetRuntimeCacheFolder);
         }
 
         private static System.Collections.Generic.IEnumerable<string> EnumerateInstallerCacheReadFolders()

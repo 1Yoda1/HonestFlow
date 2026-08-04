@@ -200,7 +200,7 @@ namespace HonestFlow.Application.RemoteAccess
 
             try
             {
-                using var certificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(path));
+                using var certificate = X509CertificateLoader.LoadCertificateFromFile(path);
                 string actualThumbprint = certificate.Thumbprint?.Replace(" ", string.Empty);
                 if (!string.Equals(actualThumbprint, package.SignerThumbprint, StringComparison.OrdinalIgnoreCase))
                     return "Издатель установщика RuDesktop не соответствует ожидаемому.";
