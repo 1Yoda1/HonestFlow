@@ -737,7 +737,7 @@ namespace HonestFlow
                 return;
             }
 
-            var selectedIP = GetAuthorizedIpForManualAction();
+            var selectedIP = await GetAuthorizedIpForManualActionAsync();
             if (selectedIP == null)
             {
                 LogOperatorAction("ручная переустановка отменена: авторизация не пройдена", isError: true);
@@ -823,7 +823,7 @@ namespace HonestFlow
                 return;
             }
 
-            var selectedIP = GetAuthorizedIpForManualAction();
+            var selectedIP = await GetAuthorizedIpForManualActionAsync();
             if (selectedIP == null)
             {
                 LogOperatorAction("восстановление базы ЛМ ЧЗ отменено: авторизация не пройдена", isError: true);
@@ -869,7 +869,7 @@ namespace HonestFlow
             }
         }
 
-        private IPData GetAuthorizedIpForManualAction()
+        private async Task<IPData> GetAuthorizedIpForManualActionAsync()
         {
             if (_selectedIP != null)
             {
@@ -886,7 +886,8 @@ namespace HonestFlow
                 return null;
             }
 
-            var selectedIP = _authService.Authenticate(enteredPassword);
+            LicenseAuthenticationResult authentication = await AuthenticateWithLicenseAsync(enteredPassword);
+            var selectedIP = authentication.Client;
             if (selectedIP == null)
             {
                 LogOperatorAction("ручная операция отклонена: неверный пароль", isError: true);

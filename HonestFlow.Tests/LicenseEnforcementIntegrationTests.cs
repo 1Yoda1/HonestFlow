@@ -21,6 +21,46 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public void RuntimeConfiguration_UserEnvironmentCannotDisableEnforcementOrReplaceTrust()
+        {
+            const string modeName = "HONESTFLOW_LICENSE_ENFORCEMENT_MODE";
+            const string manifestName = "HONESTFLOW_LICENSE_MANIFEST_URL";
+            const string signatureName = "HONESTFLOW_LICENSE_SIGNATURE_URL";
+            const string keyIdName = "HONESTFLOW_LICENSE_KEY_ID";
+            const string publicKeyName = "HONESTFLOW_LICENSE_PUBLIC_KEY";
+            string oldMode = Environment.GetEnvironmentVariable(modeName);
+            string oldManifest = Environment.GetEnvironmentVariable(manifestName);
+            string oldSignature = Environment.GetEnvironmentVariable(signatureName);
+            string oldKeyId = Environment.GetEnvironmentVariable(keyIdName);
+            string oldPublicKey = Environment.GetEnvironmentVariable(publicKeyName);
+
+            try
+            {
+                Environment.SetEnvironmentVariable(modeName, "Disabled");
+                Environment.SetEnvironmentVariable(manifestName, "https://attacker.invalid/licenses.json");
+                Environment.SetEnvironmentVariable(signatureName, "https://attacker.invalid/licenses.json.sig");
+                Environment.SetEnvironmentVariable(keyIdName, "attacker-key");
+                Environment.SetEnvironmentVariable(publicKeyName, "attacker-public-key");
+
+                LicenseRuntimeConfiguration configuration = LicenseRuntimeConfiguration.FromEnvironment();
+
+                Assert.Equal(LicenseEnforcementMode.Enforced, configuration.EnforcementMode);
+                Assert.Null(configuration.ManifestUrl);
+                Assert.Null(configuration.SignatureUrl);
+                Assert.Null(configuration.KeyId);
+                Assert.Null(configuration.PublicKeySubjectPublicKeyInfoBase64);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(modeName, oldMode);
+                Environment.SetEnvironmentVariable(manifestName, oldManifest);
+                Environment.SetEnvironmentVariable(signatureName, oldSignature);
+                Environment.SetEnvironmentVariable(keyIdName, oldKeyId);
+                Environment.SetEnvironmentVariable(publicKeyName, oldPublicKey);
+            }
+        }
+
+        [Fact]
         public void ManifestFeatureEnum_ContainsExactlyTwoTags()
         {
             Assert.Equal(
