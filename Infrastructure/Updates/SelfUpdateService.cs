@@ -1,6 +1,7 @@
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Downloads;
+using HonestFlow.Infrastructure.Licensing;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -12,17 +13,25 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Threading;
 
 namespace HonestFlow.Infrastructure.Updates
 {
     public class SelfUpdateService
     {
-        private const string UpdateAssetName = "HonestFlow.exe";
+        private const string UpdateManifestName = "update.json";
+        private const string UpdateSignatureName = "update.json.sig";
         private readonly IUserDialogService _dialogService;
+        private readonly SelfUpdateManifestVerifier _manifestVerifier;
 
-        public SelfUpdateService(IUserDialogService dialogService = null)
+        public SelfUpdateService(
+            IUserDialogService dialogService = null,
+            SelfUpdateManifestVerifier manifestVerifier = null)
         {
             _dialogService = dialogService ?? new WinFormsDialogService();
+            _manifestVerifier = manifestVerifier ?? new SelfUpdateManifestVerifier(
+                new EcdsaLicenseSignatureVerifier(
+                    new LicensePublicKeyRegistry(EmbeddedLicenseTrust.CreateKeyRegistry())));
         }
 
         public async Task<bool> CheckDownloadAndRunUpdateIfNeeded()
@@ -67,10 +76,12 @@ namespace HonestFlow.Infrastructure.Updates
                     return false;
                 }
 
+                await _manifestVerifier.VerifyDownloadedFileAsync(newExePath, latest.Manifest);
+
                 Version downloadedVersion = GetExecutableVersion(newExePath);
                 Logger.Info($"Auto-update: downloaded exe version {downloadedVersion}", nameof(SelfUpdateService));
 
-                if (downloadedVersion < latestVersion)
+                if (downloadedVersion != latestVersion)
                 {
                     Logger.Error(
                         $"Auto-update: downloaded exe version {downloadedVersion} is lower than advertised {latestVersion}",
@@ -81,7 +92,7 @@ namespace HonestFlow.Infrastructure.Updates
                     return false;
                 }
 
-                CreateAndRunUpdateScript(newExePath, backupPath);
+                CreateAndRunUpdateScript(newExePath, backupPath, latest.Manifest);
 
                 return true;
             }
@@ -95,14 +106,31 @@ namespace HonestFlow.Infrastructure.Updates
         private async Task<SelfUpdateInfo> GetLatestReleaseInfo()
         {
             using var client = YandexDiskDownloader.CreateClient(TimeSpan.FromSeconds(30));
-            var manifest = await TryLoadUpdateFromVersionFolder(client);
-            if (manifest == null)
+            var releaseFolder = await TryLoadUpdateFromVersionFolder(client);
+            if (releaseFolder == null)
                 return null;
 
-            string assetName = manifest.AssetName ?? UpdateAssetName;
-            if (string.IsNullOrWhiteSpace(manifest.Version))
+            string folderName = releaseFolder.AssetName?.Trim('/');
+            string manifestPath = $"/{folderName}/{UpdateManifestName}";
+            string signaturePath = $"/{folderName}/{UpdateSignatureName}";
+            string manifestUrl = await TryGetYandexDownloadUrl(client, manifestPath);
+            string signatureUrl = await TryGetYandexDownloadUrl(client, signaturePath);
+            if (string.IsNullOrWhiteSpace(manifestUrl) || string.IsNullOrWhiteSpace(signatureUrl))
+            {
+                Logger.Warning("Auto-update: signed update manifest was not found", nameof(SelfUpdateService));
                 return null;
+            }
 
+            byte[] manifestBytes = await DownloadBytes(client, manifestUrl, 64 * 1024);
+            byte[] signatureBytes = await DownloadBytes(client, signatureUrl, 16 * 1024);
+            SelfUpdateManifest manifest = _manifestVerifier.VerifyManifest(manifestBytes, signatureBytes);
+
+            Version folderVersion = NormalizeVersion(releaseFolder.Version);
+            Version manifestVersion = NormalizeVersion(manifest.Version);
+            if (folderVersion != manifestVersion)
+                throw new InvalidDataException("UpdateManifestFolderVersionMismatch");
+
+            string assetName = folderName + "/" + manifest.AssetName;
             string downloadUrl = await TryGetYandexDownloadUrl(client, "/" + assetName);
             if (string.IsNullOrWhiteSpace(downloadUrl))
             {
@@ -114,24 +142,61 @@ namespace HonestFlow.Infrastructure.Updates
             {
                 Version = manifest.Version,
                 AssetName = assetName,
-                DownloadUrl = downloadUrl
+                DownloadUrl = downloadUrl,
+                Manifest = manifest
             };
+        }
+
+        private static async Task<byte[]> DownloadBytes(HttpClient client, string url, int maximumBytes)
+        {
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+            if (response.Content.Headers.ContentLength > maximumBytes)
+                throw new InvalidDataException("UpdateMetadataTooLarge");
+
+            await using Stream input = await response.Content.ReadAsStreamAsync();
+            using var output = new MemoryStream();
+            var buffer = new byte[8192];
+            int read;
+            while ((read = await input.ReadAsync(buffer)) > 0)
+            {
+                if (output.Length + read > maximumBytes)
+                    throw new InvalidDataException("UpdateMetadataTooLarge");
+                output.Write(buffer, 0, read);
+            }
+
+            return output.ToArray();
         }
 
         private async Task DownloadFile(string url, string destinationPath)
         {
             using var client = YandexDiskDownloader.CreateClient(TimeSpan.FromMinutes(5));
 
-            using var response = await client.GetAsync(url);
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
+
+            if (response.Content.Headers.ContentLength > SelfUpdateManifestVerifier.MaximumUpdateBytes)
+                throw new InvalidDataException("UpdateAssetTooLarge");
 
             await using var input = await response.Content.ReadAsStreamAsync();
             await using var output = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None);
 
-            await input.CopyToAsync(output);
+            var buffer = new byte[81920];
+            long total = 0;
+            int read;
+            while ((read = await input.ReadAsync(buffer)) > 0)
+            {
+                total += read;
+                if (total > SelfUpdateManifestVerifier.MaximumUpdateBytes)
+                    throw new InvalidDataException("UpdateAssetTooLarge");
+                await output.WriteAsync(buffer.AsMemory(0, read));
+            }
         }
 
-        private void CreateAndRunUpdateScript(string newExePath, string backupPath)
+        private void CreateAndRunUpdateScript(
+            string newExePath,
+            string backupPath,
+            SelfUpdateManifest manifest)
         {
             string currentExe = Environment.ProcessPath;
             string appDir = AppPaths.BaseFolder.TrimEnd('\\');
@@ -146,6 +211,7 @@ namespace HonestFlow.Infrastructure.Updates
             string backupExePs = ToPowerShellSingleQuotedString(backupExe);
             string appDirPs = ToPowerShellSingleQuotedString(appDir);
             string scriptLogPathPs = ToPowerShellSingleQuotedString(scriptLogPath);
+            string expectedSha256Ps = ToPowerShellSingleQuotedString(manifest.Sha256);
 
             string script = $@"
 $ErrorActionPreference = 'Stop'
@@ -156,6 +222,8 @@ $backupDir = {backupPathPs}
 $backupExe = {backupExePs}
 $appDir = {appDirPs}
 $pidToWait = {currentPid}
+$expectedSize = {manifest.Size}
+$expectedSha256 = {expectedSha256Ps}
 
 function Write-UpdateLog([string]$message) {{
     Add-Content -LiteralPath $log -Value ""[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')] $message"" -Encoding UTF8
@@ -174,6 +242,15 @@ try {{
     }}
 
     New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+
+    $newExeInfo = Get-Item -LiteralPath $newExe
+    if ($newExeInfo.Length -ne $expectedSize) {{
+        throw ""Update size changed after verification""
+    }}
+    $actualSha256 = (Get-FileHash -LiteralPath $newExe -Algorithm SHA256).Hash
+    if ($actualSha256 -ne $expectedSha256) {{
+        throw ""Update SHA-256 changed after verification""
+    }}
 
     Write-UpdateLog ""Backing up current exe""
     Copy-Item -LiteralPath $currentExe -Destination $backupExe -Force
@@ -278,7 +355,7 @@ catch {{
                 return new SelfUpdateInfo
                 {
                     Version = versionFolder.VersionText,
-                    AssetName = versionFolder.Name.Trim('/') + "/" + UpdateAssetName
+                    AssetName = versionFolder.Name.Trim('/')
                 };
             }
             catch (HttpRequestException)

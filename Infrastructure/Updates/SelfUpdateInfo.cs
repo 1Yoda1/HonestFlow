@@ -5,5 +5,6 @@
         public string Version { get; set; }
         public string DownloadUrl { get; set; }
         public string AssetName { get; set; }
+        public SelfUpdateManifest Manifest { get; set; }
     }
 }
