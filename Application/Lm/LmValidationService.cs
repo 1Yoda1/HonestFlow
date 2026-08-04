@@ -117,7 +117,9 @@ namespace HonestFlow.Application.Lm
         public string GetInstalledPhysicalVersion()
         {
             var physical = GetPhysicalState();
-            return physical.IsInstalled ? physical.Version : null;
+            return physical.IsInstalled
+                ? physical.Version ?? "версия не определена"
+                : null;
         }
 
         private static void ApplyApiStatus(LmValidationResult result, LmStatus status)
@@ -398,7 +400,7 @@ namespace HonestFlow.Application.Lm
                     using var subKey = key.OpenSubKey(subKeyName);
                     string displayName = subKey?.GetValue("DisplayName")?.ToString() ?? string.Empty;
 
-                    if (!displayName.Contains("Regime", StringComparison.OrdinalIgnoreCase))
+                    if (!IsLmUninstallDisplayName(displayName))
                         continue;
 
                     yield return new LmRegistryInfo
@@ -409,6 +411,12 @@ namespace HonestFlow.Application.Lm
                 }
             }
         }
+
+        public static bool IsLmUninstallDisplayName(string displayName) =>
+            !string.IsNullOrWhiteSpace(displayName) &&
+            (displayName.Contains("Regime", StringComparison.OrdinalIgnoreCase) ||
+             (displayName.Contains("Локальный модуль", StringComparison.OrdinalIgnoreCase) &&
+              displayName.Contains("Честный Знак", StringComparison.OrdinalIgnoreCase)));
 
         private class LmPhysicalState
         {

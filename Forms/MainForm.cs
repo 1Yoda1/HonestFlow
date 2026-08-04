@@ -243,10 +243,10 @@ namespace HonestFlow
             label.BackColor = Color.White;
             label.BorderStyle = BorderStyle.FixedSingle;
             label.Dock = DockStyle.Fill;
-            label.Font = new Font("Segoe UI", 8.75F, FontStyle.Regular);
+            label.Font = new Font("Segoe UI", 8.5F, FontStyle.Regular);
             label.ForeColor = Color.FromArgb(30, 41, 59);
             label.Margin = new Padding(3);
-            label.Padding = new Padding(8, 3, 8, 3);
+            label.Padding = new Padding(8, 1, 8, 1);
             label.Text = $"{componentName}\nПроверка версии…";
             label.TextAlign = ContentAlignment.MiddleLeft;
         }
@@ -2265,7 +2265,7 @@ namespace HonestFlow
         private ComponentVersionStatus[] BuildComponentVersionStatuses()
         {
             VersionsData configured = _useRemoteConfigMode
-                ? MergeVersions(_remoteVersions, ConfigManager.LoadRemoteVersions())
+                ? _remoteVersions ?? new VersionsData()
                 : ConfigManager.LoadVersions();
             VersionsData clientVersions = _selectedIP?.Versions;
             var expected = new VersionsData
@@ -2354,25 +2354,16 @@ namespace HonestFlow
             {
                 string requirement = string.IsNullOrWhiteSpace(status.ExpectedVersion)
                     ? string.Empty
-                    : $" · требуется {status.ExpectedVersion}";
+                    : $"; требуется {status.ExpectedVersion}";
                 return $"{status.ComponentName}\n{marker} Не установлен{requirement}";
             }
 
             string installed = status.InstalledVersion ?? "версия неизвестна";
             if (string.IsNullOrWhiteSpace(status.ExpectedVersion))
-                return $"{status.ComponentName}\n{installed}\n{marker} Целевая версия не задана";
+                return $"{status.ComponentName}: {installed}\n{marker} Нет данных для сравнения";
 
-            return $"{status.ComponentName}\n{installed} → {status.ExpectedVersion}\n{marker} {status.StateText}";
+            return $"{status.ComponentName}: {installed} → {status.ExpectedVersion}\n{marker} {status.StateText}";
         }
-
-        private static VersionsData MergeVersions(VersionsData preferred, VersionsData fallback) => new()
-        {
-            LmModule = FirstConfigured(preferred?.LmModule, fallback?.LmModule),
-            AtolDriver = FirstConfigured(preferred?.AtolDriver, fallback?.AtolDriver),
-            ESM = FirstConfigured(preferred?.ESM, fallback?.ESM),
-            Controller = FirstConfigured(preferred?.Controller, fallback?.Controller),
-            HonestFlow = FirstConfigured(preferred?.HonestFlow, fallback?.HonestFlow)
-        };
 
         private static string FirstConfigured(string clientValue, string defaultValue) =>
             !string.IsNullOrWhiteSpace(clientValue) ? clientValue.Trim() : defaultValue?.Trim();

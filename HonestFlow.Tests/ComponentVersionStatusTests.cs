@@ -1,4 +1,5 @@
 using HonestFlow.Application.Installation;
+using HonestFlow.Application.Lm;
 using Xunit;
 
 namespace HonestFlow.Tests
@@ -25,6 +26,17 @@ namespace HonestFlow.Tests
                 updateRequired);
 
             Assert.Equal(expectedState, result.State);
+        }
+
+        [Theory]
+        [InlineData("Regime", true)]
+        [InlineData("Regime Local Module", true)]
+        [InlineData("Локальный модуль Честный Знак", true)]
+        [InlineData("Локальный модуль другой системы", false)]
+        [InlineData("Честный Знак", false)]
+        public void LmDisplayName_RecognizesSupportedUninstallNames(string displayName, bool expected)
+        {
+            Assert.Equal(expected, LmValidationService.IsLmUninstallDisplayName(displayName));
         }
     }
 }
