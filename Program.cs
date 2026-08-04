@@ -44,16 +44,18 @@ namespace HonestFlow
                 try
                 {
                     Logger.Initialize();
-                    Logger.Info("Application startup", nameof(Program));
                     int registeredLegacyCaches = new InstallerCacheLocationStore()
                         .RegisterLocations(new[]
                         {
                             AppPaths.LegacyYandexDiskCacheFolder,
                             AppPaths.LegacyRemoteCacheFolder
                         });
-                    Logger.Info(
-                        $"Event=InstallerCacheLocations Registered={registeredLegacyCaches}",
-                        nameof(Program));
+                    if (registeredLegacyCaches > 0)
+                    {
+                        Logger.Info(
+                            $"Зарегистрировано папок кэша установщиков: {registeredLegacyCaches}",
+                            nameof(Program));
+                    }
 
                     var deviceIdentityService = new FileDeviceIdentityService(
                         new DpapiDeviceIdentityStateProtector());

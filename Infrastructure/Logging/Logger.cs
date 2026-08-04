@@ -47,12 +47,11 @@ namespace HonestFlow.Infrastructure
                 CleanupOldLogs(daysToKeep: 30);
 
                 _sessionId = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-                _logFilePath = Path.Combine(AppPaths.LogsFolder, $"install_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log");
+                _logFilePath = CreateSessionLogPath(DateTime.Now);
                 _initialized = true;
                 _flushTimer ??= new Timer(_ => Flush(), null, 1000, 1000);
 
                 WriteSessionHeader();
-                Info("Логгер инициализирован", nameof(Logger));
             }
             catch (Exception ex)
             {
@@ -248,28 +247,7 @@ namespace HonestFlow.Infrastructure
         {
             lock (Sync)
             {
-                var assembly = Assembly.GetExecutingAssembly();
-                string version = assembly.GetName().Version?.ToString() ?? "unknown";
-
-                var sb = new StringBuilder();
-                sb.AppendLine();
-                sb.AppendLine(new string('=', 100));
-                sb.AppendLine($"HONESTFLOW SESSION START: {_sessionId}");
-                sb.AppendLine(new string('-', 100));
-                sb.AppendLine($"Время запуска:      {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
-                sb.AppendLine($"Версия приложения:  {version}");
-                sb.AppendLine($"ОС:                 {Environment.OSVersion}");
-                sb.AppendLine($"64-bit OS:          {Environment.Is64BitOperatingSystem}");
-                sb.AppendLine($"64-bit process:     {Environment.Is64BitProcess}");
-                sb.AppendLine($"MachineName:        {Environment.MachineName}");
-                sb.AppendLine($"UserName:           {Environment.UserName}");
-                sb.AppendLine($"Admin:              {IsAdministratorSafe()}");
-                sb.AppendLine($"BaseFolder:         {AppPaths.BaseFolder}");
-                sb.AppendLine($"ProgramDataFolder:  {AppPaths.ProgramDataFolder}");
-                sb.AppendLine($"LogsFolder:         {AppPaths.LogsFolder}");
-                sb.AppendLine($"LogFile:            {_logFilePath}");
-                sb.AppendLine(new string('=', 100));
-                File.AppendAllText(_logFilePath, sb.ToString(), Encoding.UTF8);
+                File.AppendAllText(_logFilePath, BuildSessionHeader(DateTime.Now), Encoding.UTF8);
             }
         }
 
@@ -282,7 +260,7 @@ namespace HonestFlow.Infrastructure
             {
                 Directory.CreateDirectory(AppPaths.LogsFolder);
                 _sessionId = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-                _logFilePath ??= Path.Combine(AppPaths.LogsFolder, $"install_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log");
+                _logFilePath ??= CreateSessionLogPath(DateTime.Now);
                 _initialized = true;
                 WriteSessionHeader();
             }
@@ -331,6 +309,39 @@ namespace HonestFlow.Infrastructure
             return text.Substring(0, maxLength) + "...";
         }
 
+        private static string CreateSessionLogPath(DateTime timestamp)
+        {
+            return Path.Combine(AppPaths.LogsFolder, $"session_{timestamp:yyyy-MM-dd_HH-mm-ss}.log");
+        }
+
+        private static string BuildSessionHeader(DateTime timestamp)
+        {
+            string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown";
+            string osArchitecture = Environment.Is64BitOperatingSystem ? "x64" : "x86";
+            string processArchitecture = Environment.Is64BitProcess ? "x64" : "x86";
+            var sb = new StringBuilder();
+            sb.AppendLine();
+            sb.AppendLine(new string('=', 100));
+            sb.AppendLine($"HONESTFLOW SESSION START: {_sessionId}");
+            sb.AppendLine(new string('-', 100));
+            sb.AppendLine($"Время:              {timestamp:yyyy-MM-dd HH:mm:ss.fff}");
+            sb.AppendLine($"Версия:            {version}");
+            sb.AppendLine($"ОС:                 {Environment.OSVersion}");
+            sb.AppendLine($"Архитектура:       ОС {osArchitecture}, процесс {processArchitecture}");
+            sb.AppendLine($"Компьютер:         {Environment.MachineName}");
+            sb.AppendLine($"Пользователь:       {Environment.UserName}");
+            sb.AppendLine($"Администратор:      {IsAdministratorSafe()}");
+            sb.AppendLine($"Папка запуска:      {AppPaths.BaseFolder}");
+            sb.AppendLine($"Файл журнала:       {_logFilePath}");
+            sb.AppendLine(new string('=', 100));
+            return sb.ToString();
+        }
+
+        private static string FormatOperationCompletion(string operationName, TimeSpan elapsed)
+        {
+            return $"{operationName}: выполнение закончено за {elapsed.TotalSeconds:F2} сек";
+        }
+
         private static bool IsAdministratorSafe()
         {
             try
@@ -372,7 +383,7 @@ namespace HonestFlow.Infrastructure
 
                 _disposed = true;
                 _stopwatch.Stop();
-                End($"{_operationName} завершено за {_stopwatch.Elapsed.TotalSeconds:F2} сек", _module);
+                End(FormatOperationCompletion(_operationName, _stopwatch.Elapsed), _module);
                 CurrentOperationId.Value = _previousOperationId;
             }
         }

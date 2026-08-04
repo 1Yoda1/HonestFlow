@@ -38,7 +38,9 @@ namespace HonestFlow.Application.Bootstrap
                     _progressService.SetProgress(70, "\u0421\u043f\u0438\u0441\u043a\u0438 \u0442\u043e\u0447\u0435\u043a \u0438 \u0432\u0435\u0440\u0441\u0438\u0438 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u044b");
                     ConfigManager.InitYandexDiskDownloader();
                     _progressService.SetProgress(82, "\u0413\u043e\u0442\u043e\u0432\u0438\u043c \u0437\u0430\u0433\u0440\u0443\u0437\u0447\u0438\u043a \u0434\u0438\u0441\u0442\u0440\u0438\u0431\u0443\u0442\u0438\u0432\u043e\u0432...");
-                    Logger.LogToFile("Remote mode: configs loaded from Yandex Disk");
+                    Logger.Info(
+                        $"Удалённая конфигурация загружена с Яндекс Диска: {result.Ips.Count} точек",
+                        nameof(ApplicationStartupService));
 
                     return new StartupResult
                     {

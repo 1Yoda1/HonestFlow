@@ -20,7 +20,6 @@ namespace HonestFlow.Application.Auth
         {
             _ipList = ips;
             _logService = logService;
-            _logService.LogDebug($"Loaded {_ipList.Count} IP entries from Yandex Disk");
         }
 
         public IReadOnlyList<IPData> Ips => _ipList ?? new List<IPData>();
