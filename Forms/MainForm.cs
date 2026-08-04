@@ -1286,6 +1286,7 @@ namespace HonestFlow
             if (!TryBeginLongOperation("управление службами", serviceFeature))
                 return;
 
+            using var audit = Logger.BeginOperation("Управление службами точки", nameof(MainForm));
             try
             {
                 LogOperatorAction($"операция со службами начата: {actionName} ({serviceList})");
@@ -1517,8 +1518,10 @@ namespace HonestFlow
             if (!TryBeginLongOperation("восстановление служб ЛМ ЧЗ", LicenseOperation.RecoverLmServices))
                 return;
 
+            using var audit = Logger.BeginOperation("Восстановление служб ЛМ ЧЗ", nameof(MainForm));
             try
             {
+                LogOperatorAction("восстановление служб ЛМ ЧЗ начато");
                 lblStatus.Text = "Запускаем службу Regime...";
                 await _serviceControlService.StartServiceAsync(
                     "regime",
@@ -1538,12 +1541,15 @@ namespace HonestFlow
                 lblStatus.Text = "Ожидаем готовность API ЛМ ЧЗ...";
                 await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
                 await RefreshPointStatusAsync(allowDuringLongOperation: true);
+                LogOperatorAction("восстановление служб ЛМ ЧЗ завершено");
             }
             catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
             {
+                LogOperatorAction("восстановление служб ЛМ ЧЗ отменено");
             }
             catch (Exception ex)
             {
+                LogOperatorAction($"восстановление служб ЛМ ЧЗ завершилось ошибкой: {ex.Message}", isError: true);
                 MessageBox.Show(
                     $"Не удалось восстановить службы ЛМ ЧЗ:\n{ex.Message}",
                     "ЛМ ЧЗ",
@@ -1580,12 +1586,17 @@ namespace HonestFlow
                 return;
             }
 
+            using var audit = Logger.BeginOperation("Ручная инициализация ЛМ ЧЗ", nameof(MainForm));
             try
             {
+                LogOperatorAction("ручная инициализация ЛМ ЧЗ начата");
                 lblStatus.Text = "Инициализируем ЛМ ЧЗ...";
                 ApiSimpleResponse result = await _lmInitializationService.InitializeAsync(_selectedIP.Token);
                 if (!result.IsSuccess)
                 {
+                    LogOperatorAction(
+                        $"ручная инициализация ЛМ ЧЗ отклонена API: HTTP {(int)result.StatusCode}",
+                        isError: true);
                     MessageBox.Show(
                         $"ЛМ ЧЗ не удалось инициализировать: HTTP {(int)result.StatusCode}.",
                         "Инициализация ЛМ ЧЗ",
@@ -1597,6 +1608,7 @@ namespace HonestFlow
                 lblStatus.Text = "Инициализация отправлена. Ожидаем изменение статуса...";
                 await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
                 await RefreshPointStatusAsync(allowDuringLongOperation: true);
+                LogOperatorAction("ручная инициализация ЛМ ЧЗ завершена");
                 MessageBox.Show(
                     "Запрос инициализации выполнен. Актуальный результат показан в строке «ЛМ ЧЗ».",
                     "Инициализация ЛМ ЧЗ",
@@ -1605,9 +1617,11 @@ namespace HonestFlow
             }
             catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
             {
+                LogOperatorAction("ручная инициализация ЛМ ЧЗ отменена");
             }
             catch (Exception ex)
             {
+                LogOperatorAction($"ручная инициализация ЛМ ЧЗ завершилась ошибкой: {ex.Message}", isError: true);
                 MessageBox.Show(
                     $"Ошибка инициализации ЛМ ЧЗ:\n{ex.Message}",
                     "Инициализация ЛМ ЧЗ",

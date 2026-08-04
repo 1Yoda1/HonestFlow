@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Licensing;
 using HonestFlow.Models.Licensing;
+using HonestFlow.Infrastructure;
 
 namespace HonestFlow.Application.PointStatus
 {
@@ -22,6 +23,7 @@ namespace HonestFlow.Application.PointStatus
             IReadOnlyList<ServiceSnapshot> services,
             LicenseOperation operation)
         {
+            using var audit = Logger.BeginOperation("Запуск остановленных служб", nameof(WindowsServiceControlService));
             _licenseGuard.Demand(operation);
             foreach (var service in services.Where(x => !x.IsRunning))
                 await StartServiceCoreAsync(service.ServiceName).ConfigureAwait(false);
@@ -31,6 +33,7 @@ namespace HonestFlow.Application.PointStatus
             IReadOnlyList<ServiceSnapshot> services,
             LicenseOperation operation)
         {
+            using var audit = Logger.BeginOperation("Перезапуск служб", nameof(WindowsServiceControlService));
             _licenseGuard.Demand(operation);
             foreach (var service in services)
                 await RestartServiceCoreAsync(service.ServiceName).ConfigureAwait(false);
@@ -38,6 +41,7 @@ namespace HonestFlow.Application.PointStatus
 
         public Task StartServiceAsync(string serviceName, LicenseOperation operation)
         {
+            using var audit = Logger.BeginOperation("Запуск службы " + serviceName, nameof(WindowsServiceControlService));
             _licenseGuard.Demand(operation);
             return StartServiceCoreAsync(serviceName);
         }

@@ -10,6 +10,7 @@ using HonestFlow.Models;
 using Microsoft.Win32;
 using HonestFlow.Application.Licensing;
 using HonestFlow.Models.Licensing;
+using HonestFlow.Infrastructure;
 
 namespace HonestFlow.Application.Lm
 {
@@ -37,6 +38,7 @@ namespace HonestFlow.Application.Lm
 
         public async Task<bool> Restore(IPData selectedIP)
         {
+            using var audit = Logger.BeginOperation("Восстановление базы ЛМ ЧЗ", nameof(LmDatabaseRestoreService));
             if (selectedIP == null)
                 throw new ArgumentNullException(nameof(selectedIP));
 

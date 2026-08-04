@@ -13,6 +13,7 @@ using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Application.Lm;
 using HonestFlow.Application.Licensing;
 using HonestFlow.Models.Licensing;
+using HonestFlow.Infrastructure;
 
 namespace HonestFlow.Application.Installation
 {
@@ -49,6 +50,7 @@ namespace HonestFlow.Application.Installation
 
         public async Task<bool> CheckLmAndInstall(IPData selectedIP)
         {
+            using var audit = Logger.BeginOperation("Проверка и установка компонентов", nameof(InstallationService));
             _progress.SetProgress(5, "Проверка локального модуля...");
 
             try
@@ -80,13 +82,12 @@ namespace HonestFlow.Application.Installation
                     status.Inn != selectedIP.Inn)
                 {
                     forceLmInstall = true;
-                    lmPlanReason = $"INN mismatch: в ЛМ {MaskInnForLog(status.Inn)}, ожидается {MaskInnForLog(selectedIP.Inn)}";
+                lmPlanReason = $"INN mismatch: в ЛМ {status.Inn}, ожидается {selectedIP.Inn}";
 
-                    _log.LogUser($"ИНН ЛМ ЧЗ не совпадает: в ЛМ {MaskInnForLog(status.Inn)}, нужно {MaskInnForLog(selectedIP.Inn)}", true);
+                    _log.LogUser($"ИНН ЛМ ЧЗ не совпадает: в ЛМ {status.Inn}, нужно {selectedIP.Inn}", true);
                     _log.LogDebug($"ЛМ ЧЗ будет передан в ветку forced reinstall из-за INN mismatch. {lmPlanReason}");
                 }
 
-                _licenseGuard.Demand(LicenseOperation.InstallComponents);
                 return await PerformInstallation(selectedIP, versions, lmCheck, forceLmInstall, lmPlanReason);
             }
             catch (Exception ex)
@@ -100,6 +101,7 @@ namespace HonestFlow.Application.Installation
 
         public async Task<bool> ReinstallSelectedComponents(IPData selectedIP, IReadOnlyCollection<InstallationComponent> components)
         {
+            using var audit = Logger.BeginOperation("Ручная переустановка компонентов", nameof(InstallationService));
             if (selectedIP == null)
                 throw new ArgumentNullException(nameof(selectedIP));
 
@@ -119,7 +121,7 @@ namespace HonestFlow.Application.Installation
                 var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
                 var plan = BuildManualReinstallPlan(selectedComponents, selectedIP, effectiveVersions);
 
-                LogPlan(plan);
+                LogPlan(plan, "ПЛАН РУЧНОЙ ПЕРЕУСТАНОВКИ");
 
                 _progress.SetProgress(15, "Подготовка установщиков...");
                 if (!await ResolveInstallerPaths(plan, selectedIP, effectiveVersions))
@@ -127,7 +129,11 @@ namespace HonestFlow.Application.Installation
 
                 _progress.SetProgress(70, "Ручная переустановка компонентов...");
                 _licenseGuard.Demand(LicenseOperation.ReinstallComponents);
-                bool success = await ExecuteInstallationPlan(plan, selectedIP, effectiveVersions);
+                bool success = await ExecuteInstallationPlan(
+                    plan,
+                    selectedIP,
+                    effectiveVersions,
+                    "РУЧНАЯ ПЕРЕУСТАНОВКА");
 
                 _progress.SetProgress(100, success ? "Ручная переустановка завершена" : "Ручная переустановка завершена с ошибками");
 
@@ -178,14 +184,6 @@ namespace HonestFlow.Application.Installation
             return lmVersion;
         }
 
-        private static string MaskInnForLog(string inn)
-        {
-            if (string.IsNullOrWhiteSpace(inn) || inn.Length < 6)
-                return inn ?? string.Empty;
-
-            return inn.Substring(0, 4) + new string('*', Math.Max(0, inn.Length - 6)) + inn.Substring(inn.Length - 2);
-        }
-
         private async Task<bool> PerformInstallation(
             IPData selectedIP,
             VersionsData versions,
@@ -198,7 +196,7 @@ namespace HonestFlow.Application.Installation
             var plan = await BuildInstallationPlan(selectedIP, effectiveVersions, precheckedLm, forceLmInstall, lmPlanReason);
             _progress.SetProgress(12, "Проверка версий и компонентов...");
 
-            LogPlan(plan);
+            LogPlan(plan, "ПЛАН УСТАНОВКИ");
 
             if (!plan.HasWork)
             {
@@ -212,7 +210,12 @@ namespace HonestFlow.Application.Installation
             if (!await ResolveInstallerPaths(plan, selectedIP, effectiveVersions)) return false;
 
             _progress.SetProgress(70, "Запуск установки компонентов...");
-            bool success = await ExecuteInstallationPlan(plan, selectedIP, effectiveVersions);
+            _licenseGuard.Demand(LicenseOperation.InstallComponents);
+            bool success = await ExecuteInstallationPlan(
+                plan,
+                selectedIP,
+                effectiveVersions,
+                "УСТАНОВКА");
 
             _progress.SetProgress(100, success ? "Установка завершена!" : "Установка завершена с ошибками");
 
@@ -422,15 +425,14 @@ namespace HonestFlow.Application.Installation
             return result;
         }
 
-        private void LogPlan(InstallationPlan plan)
+        private void LogPlan(InstallationPlan plan, string title)
         {
-            _log.LogUser("");
-            _log.LogUser("=== ПЛАН УСТАНОВКИ ===");
+            _log.LogUser($"=== {title} ===");
 
             foreach (var item in plan.Items)
             {
-                string marker = item.HasWork ? "❌" : "✅";
-                _log.LogUser($"{item.DisplayName}: {marker} {item.StatusText}");
+                string marker = item.HasWork ? "→ требуется действие" : "✓ готово";
+                _log.LogUser($"{item.DisplayName}: {marker}; {item.StatusText}");
             }
 
             _log.LogUser("======================");
@@ -528,13 +530,17 @@ namespace HonestFlow.Application.Installation
             return true;
         }
 
-        private async Task<bool> ExecuteInstallationPlan(InstallationPlan plan, IPData selectedIP, VersionsData versions)
+        private async Task<bool> ExecuteInstallationPlan(
+            InstallationPlan plan,
+            IPData selectedIP,
+            VersionsData versions,
+            string executionTitle)
         {
             int total = plan.RequiredCount;
             int completed = 0;
             bool allSuccess = true;
 
-            _log.LogUser("=== НАЧАЛО УСТАНОВКИ ===");
+            _log.LogUser($"=== НАЧАЛО: {executionTitle} ===");
 
             foreach (var item in plan.RequiredItems)
             {
@@ -569,7 +575,10 @@ namespace HonestFlow.Application.Installation
                         ? await lm.ReinstallAndInitialize(selectedIP.Token, selectedIP.Inn, "ручная переустановка оператором")
                         : await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
                     SetComponentProgress(progressStart, progressEnd, 100, lmSuccess ? "ЛМ ЧЗ: готов" : "ЛМ ЧЗ: ошибка");
-                    _log.LogUser(lmSuccess ? "✅ ЛМ ЧЗ установлен" : "❌ ЛМ ЧЗ не установлен", !lmSuccess);
+                    string lmAction = item.NeedInstall ? "установлен" : "инициализирован";
+                    _log.LogUser(
+                        lmSuccess ? $"✅ ЛМ ЧЗ {lmAction}" : $"❌ ЛМ ЧЗ не {lmAction}",
+                        !lmSuccess);
                     return lmSuccess;
 
                 case InstallationComponent.AtolDriver:

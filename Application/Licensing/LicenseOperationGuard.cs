@@ -17,7 +17,13 @@ namespace HonestFlow.Application.Licensing
         {
             LicenseAccessResult access = _policy.Check(operation);
             if (access.IsAllowed)
+            {
+                Logger.Info(
+                    $"Event=LicenseServiceBoundaryAllowed Operation={operation} " +
+                    $"TechnicalCode={access.TechnicalCode}",
+                    nameof(LicenseOperationGuard));
                 return;
+            }
 
             Logger.Warning(
                 $"Event=LicenseServiceBoundaryDenied Operation={operation} " +

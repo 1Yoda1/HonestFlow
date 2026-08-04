@@ -28,15 +28,12 @@ namespace HonestFlow.Infrastructure
             @"(?i)(""(?:token|password|passwd|pwd|secret|api[_-]?key)""\s*:\s*"")[^""]*("")",
             RegexOptions.Compiled);
 
-        private static readonly Regex InnInTextRegex = new(
-            @"(?i)\b(инн\s*[:=]?\s*)(\d{10,12})\b",
-            RegexOptions.Compiled);
-
         private static string _logFilePath;
         private static string _sessionId;
         private static bool _initialized;
         private static readonly StringBuilder PendingWrites = new();
         private static Timer _flushTimer;
+        private static readonly AsyncLocal<string> CurrentOperationId = new();
         private const int FlushThreshold = 16 * 1024;
 
         public static bool EnableDebug { get; set; } = true;
@@ -195,7 +192,10 @@ namespace HonestFlow.Infrastructure
             string safeMessage = MaskSecrets(message ?? string.Empty).Replace(Environment.NewLine, " | ");
             string safeModule = string.IsNullOrWhiteSpace(module) ? "General" : module.Trim();
             int threadId = Thread.CurrentThread.ManagedThreadId;
-            return $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level,-9}] [{safeModule}] [T:{threadId:00}] {safeMessage}";
+            string operation = string.IsNullOrWhiteSpace(CurrentOperationId.Value)
+                ? string.Empty
+                : $" [OP:{CurrentOperationId.Value}]";
+            return $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level,-9}] [{safeModule}] [T:{threadId:00}]{operation} {safeMessage}";
         }
 
         private static void AppendBuffered(string text, bool flushImmediately = false)
@@ -320,16 +320,7 @@ namespace HonestFlow.Infrastructure
 
             string masked = SecretKeyValueRegex.Replace(text, "$1=***");
             masked = JsonSecretRegex.Replace(masked, "$1***$2");
-            masked = InnInTextRegex.Replace(masked, m => m.Groups[1].Value + MaskInn(m.Groups[2].Value));
             return masked;
-        }
-
-        private static string MaskInn(string inn)
-        {
-            if (string.IsNullOrWhiteSpace(inn) || inn.Length < 6)
-                return "***";
-
-            return inn.Substring(0, 4) + new string('*', inn.Length - 6) + inn.Substring(inn.Length - 2);
         }
 
         private static string Truncate(string text, int maxLength)
@@ -359,12 +350,17 @@ namespace HonestFlow.Infrastructure
             private readonly Stopwatch _stopwatch;
             private readonly string _operationName;
             private readonly string _module;
+            private readonly string _previousOperationId;
             private bool _disposed;
 
             public LogOperation(string operationName, string module)
             {
                 _operationName = string.IsNullOrWhiteSpace(operationName) ? "Операция" : operationName;
                 _module = module;
+                _previousOperationId = CurrentOperationId.Value;
+                CurrentOperationId.Value = string.IsNullOrWhiteSpace(_previousOperationId)
+                    ? Guid.NewGuid().ToString("N").Substring(0, 8)
+                    : _previousOperationId;
                 _stopwatch = Stopwatch.StartNew();
                 Start(_operationName, _module);
             }
@@ -377,6 +373,7 @@ namespace HonestFlow.Infrastructure
                 _disposed = true;
                 _stopwatch.Stop();
                 End($"{_operationName} завершено за {_stopwatch.Elapsed.TotalSeconds:F2} сек", _module);
+                CurrentOperationId.Value = _previousOperationId;
             }
         }
     }
