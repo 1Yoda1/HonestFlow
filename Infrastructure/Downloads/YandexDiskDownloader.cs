@@ -29,14 +29,16 @@ namespace HonestFlow.Infrastructure.Downloads
                 Directory.CreateDirectory(_cacheFolder);
         }
 
-        public async Task<Dictionary<string, (string Url, long Size)>> GetReleaseAssets(bool forceRefresh = false)
+        public async Task<Dictionary<string, (string Url, long Size)>> GetReleaseAssets(
+            bool forceRefresh = false,
+            CancellationToken cancellationToken = default)
         {
             if (!forceRefresh && _cachedAssets != null)
                 return _cachedAssets;
 
             using var client = CreateClient(TimeSpan.FromSeconds(60));
             string listUrl = BuildPublicResourcesUrl();
-            string resourcesJson = await client.GetStringAsync(listUrl);
+            string resourcesJson = await client.GetStringAsync(listUrl, cancellationToken);
             var root = JObject.Parse(resourcesJson);
             var items = root["_embedded"]?["items"] as JArray;
 
@@ -58,7 +60,7 @@ namespace HonestFlow.Infrastructure.Downloads
                 string url = (string)item["file"];
 
                 if (string.IsNullOrWhiteSpace(url))
-                    url = await GetDownloadUrl(client, "/" + name);
+                    url = await GetDownloadUrl(client, "/" + name, cancellationToken);
 
                 assets[name] = (url, size);
                 Logger.LogToFile($"Yandex Disk asset found: {name}");
@@ -134,6 +136,19 @@ namespace HonestFlow.Infrastructure.Downloads
 
                 Logger.LogToFile($"Downloaded: {Path.GetFileName(destinationPath)}");
                 return true;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    if (File.Exists(temporaryPath))
+                        File.Delete(temporaryPath);
+                }
+                catch
+                {
+                }
+
+                throw;
             }
             catch (Exception ex)
             {
@@ -225,9 +240,14 @@ namespace HonestFlow.Infrastructure.Downloads
                 "&path=" + Uri.EscapeDataString(path);
         }
 
-        internal async Task<string> GetDownloadUrl(HttpClient client, string path)
+        internal async Task<string> GetDownloadUrl(
+            HttpClient client,
+            string path,
+            CancellationToken cancellationToken = default)
         {
-            string json = await client.GetStringAsync(BuildPublicDownloadUrl(path, _publicKey));
+            string json = await client.GetStringAsync(
+                BuildPublicDownloadUrl(path, _publicKey),
+                cancellationToken);
             var payload = JObject.Parse(json);
             return (string)payload["href"];
         }

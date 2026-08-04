@@ -1,6 +1,7 @@
 using HonestFlow.Application.Core;
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HonestFlow.Infrastructure.Installers
@@ -21,7 +22,7 @@ namespace HonestFlow.Infrastructure.Installers
             _log = logService ?? throw new ArgumentNullException(nameof(logService));
         }
 
-        public async Task<bool> InstallEsm()
+        public async Task<bool> InstallEsm(CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(_esmPath))
             {
@@ -36,13 +37,13 @@ namespace HonestFlow.Infrastructure.Installers
             }
 
             _log.LogDebug($"Запуск установки ЕСМ: {_esmPath}");
-            int code = await ProcessRunner.RunAsync(_esmPath, "/S", true);
+            int code = await ProcessRunner.RunAsync(_esmPath, "/S", true, cancellationToken);
             _log.LogDebug($"Установка ЕСМ завершена с кодом: {code}");
 
             return code == 0;
         }
 
-        public async Task<bool> InstallController()
+        public async Task<bool> InstallController(CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(_controllerPath))
             {
@@ -57,7 +58,7 @@ namespace HonestFlow.Infrastructure.Installers
             }
 
             _log.LogDebug($"Запуск установки Контроллера: {_controllerPath}");
-            int code = await ProcessRunner.RunAsync(_controllerPath, "/S", true);
+            int code = await ProcessRunner.RunAsync(_controllerPath, "/S", true, cancellationToken);
             _log.LogDebug($"Установка Контроллера завершена с кодом: {code}");
 
             return code == 0;

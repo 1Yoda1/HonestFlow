@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Helpers;
 using HonestFlow.Infrastructure.Configuration;
@@ -48,13 +49,16 @@ namespace HonestFlow.Application.Installation
             _versionChecker = new VersionCheckService(_log);
         }
 
-        public async Task<bool> CheckLmAndInstall(IPData selectedIP)
+        public async Task<bool> CheckLmAndInstall(
+            IPData selectedIP,
+            CancellationToken cancellationToken = default)
         {
             using var audit = Logger.BeginOperation("Проверка и установка компонентов", nameof(InstallationService));
             _progress.SetProgress(5, "Проверка локального модуля...");
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 _licenseGuard.Demand(LicenseOperation.InstallComponents);
                 _progress.SetProgress(6, "Загрузка конфигурации версий...");
                 var versions = LoadVersions();
@@ -88,7 +92,12 @@ namespace HonestFlow.Application.Installation
                     _log.LogDebug($"ЛМ ЧЗ будет передан в ветку forced reinstall из-за INN mismatch. {lmPlanReason}");
                 }
 
-                return await PerformInstallation(selectedIP, versions, lmCheck, forceLmInstall, lmPlanReason);
+                return await PerformInstallation(selectedIP, versions, lmCheck, forceLmInstall, lmPlanReason, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                _log.LogUser("Установка прервана пользователем.");
+                throw;
             }
             catch (Exception ex)
             {
@@ -189,10 +198,12 @@ namespace HonestFlow.Application.Installation
             VersionsData versions,
             LmValidationResult precheckedLm,
             bool forceLmInstall,
-            string lmPlanReason)
+            string lmPlanReason,
+            CancellationToken cancellationToken)
         {
             var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
             _progress.SetProgress(10, "Формирование плана установки...");
+            cancellationToken.ThrowIfCancellationRequested();
             var plan = await BuildInstallationPlan(selectedIP, effectiveVersions, precheckedLm, forceLmInstall, lmPlanReason);
             _progress.SetProgress(12, "Проверка версий и компонентов...");
 
@@ -207,7 +218,7 @@ namespace HonestFlow.Application.Installation
             }
 
             _progress.SetProgress(15, "Подготовка установщиков...");
-            if (!await ResolveInstallerPaths(plan, selectedIP, effectiveVersions)) return false;
+            if (!await ResolveInstallerPaths(plan, selectedIP, effectiveVersions, cancellationToken)) return false;
 
             _progress.SetProgress(70, "Запуск установки компонентов...");
             _licenseGuard.Demand(LicenseOperation.InstallComponents);
@@ -215,7 +226,8 @@ namespace HonestFlow.Application.Installation
                 plan,
                 selectedIP,
                 effectiveVersions,
-                "УСТАНОВКА");
+                "УСТАНОВКА",
+                cancellationToken);
 
             _progress.SetProgress(100, success ? "Установка завершена!" : "Установка завершена с ошибками");
 
@@ -438,16 +450,23 @@ namespace HonestFlow.Application.Installation
             _log.LogUser("======================");
         }
 
-        private async Task<bool> ResolveInstallerPaths(InstallationPlan plan, IPData selectedIP, VersionsData versions)
+        private async Task<bool> ResolveInstallerPaths(
+            InstallationPlan plan,
+            IPData selectedIP,
+            VersionsData versions,
+            CancellationToken cancellationToken = default)
         {
             if (_useRemoteConfigMode)
-                return await DownloadAndResolveRemoteInstallers(plan);
+                return await DownloadAndResolveRemoteInstallers(plan, cancellationToken);
 
+            cancellationToken.ThrowIfCancellationRequested();
             ResolveLocalInstallerPaths(plan, selectedIP);
             return ValidateRequiredInstallerPaths(plan);
         }
 
-        private async Task<bool> DownloadAndResolveRemoteInstallers(InstallationPlan plan)
+        private async Task<bool> DownloadAndResolveRemoteInstallers(
+            InstallationPlan plan,
+            CancellationToken cancellationToken)
         {
             int total = plan.RequiredItems.Count(x => x.NeedInstall);
             if (total == 0)
@@ -457,6 +476,7 @@ namespace HonestFlow.Application.Installation
 
             foreach (var item in plan.RequiredItems)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!item.NeedInstall)
                     continue;
 
@@ -471,7 +491,10 @@ namespace HonestFlow.Application.Installation
                     _progress.SetProgress(currentPercent, $"Скачивание {item.DisplayName}: {percent}%");
                 });
 
-                bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(item.FileName, downloadProgress);
+                bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(
+                    item.FileName,
+                    downloadProgress,
+                    cancellationToken);
                 if (!downloaded)
                 {
                     _log.LogUser($"❌ Не удалось скачать {item.DisplayName}: {item.FileName}", true);
@@ -534,7 +557,8 @@ namespace HonestFlow.Application.Installation
             InstallationPlan plan,
             IPData selectedIP,
             VersionsData versions,
-            string executionTitle)
+            string executionTitle,
+            CancellationToken cancellationToken = default)
         {
             int total = plan.RequiredCount;
             int completed = 0;
@@ -544,20 +568,34 @@ namespace HonestFlow.Application.Installation
 
             foreach (var item in plan.RequiredItems)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 completed++;
                 int startPercent = 70 + (completed - 1) * 25 / total;
                 int endPercent = 70 + completed * 25 / total;
                 _progress.SetProgress(startPercent, $"{item.DisplayName}: подготовка...");
 
-                bool success = await InstallComponent(item, selectedIP, versions, startPercent, endPercent);
+                bool success = await InstallComponent(
+                    item,
+                    selectedIP,
+                    versions,
+                    startPercent,
+                    endPercent,
+                    cancellationToken);
                 allSuccess &= success;
             }
 
             return allSuccess;
         }
 
-        private async Task<bool> InstallComponent(ComponentPlanItem item, IPData selectedIP, VersionsData versions, int progressStart, int progressEnd)
+        private async Task<bool> InstallComponent(
+            ComponentPlanItem item,
+            IPData selectedIP,
+            VersionsData versions,
+            int progressStart,
+            int progressEnd,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             _log.LogUser(item.NeedInstall
                 ? $"Установка: {item.DisplayName}..."
                 : $"Инициализация: {item.DisplayName}...");
@@ -570,7 +608,15 @@ namespace HonestFlow.Application.Installation
                 case InstallationComponent.LmModule:
                     string lmVersion = EnsureLmVersionConfigured(versions);
                     SetComponentProgress(progressStart, progressEnd, 5, "ЛМ ЧЗ: подготовка");
-                    var lm = new LmModuleService(item.InstallerPath, lmVersion, _log, _progress, _dialogService, progressStart, progressEnd);
+                    var lm = new LmModuleService(
+                        item.InstallerPath,
+                        lmVersion,
+                        _log,
+                        _progress,
+                        _dialogService,
+                        progressStart,
+                        progressEnd,
+                        cancellationToken);
                     bool lmSuccess = item.ForceReinstall
                         ? await lm.ReinstallAndInitialize(selectedIP.Token, selectedIP.Inn, "ручная переустановка оператором")
                         : await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
@@ -589,7 +635,7 @@ namespace HonestFlow.Application.Installation
 
                     SetComponentProgress(progressStart, progressEnd, 20, "Драйвер АТОЛ: проверка установщика");
                     SetComponentProgress(progressStart, progressEnd, 45, "Драйвер АТОЛ: запуск установки");
-                    bool atolSuccess = await new AtolInstaller(item.InstallerPath, _log, with1C).Install();
+                    bool atolSuccess = await new AtolInstaller(item.InstallerPath, _log, with1C).Install(cancellationToken);
                     SetComponentProgress(progressStart, progressEnd, 100, atolSuccess ? "Драйвер АТОЛ: готов" : "Драйвер АТОЛ: ошибка");
 
                     _log.LogUser(atolSuccess ? "✅ Драйвер АТОЛ установлен" : "❌ Драйвер АТОЛ не установлен", !atolSuccess);
@@ -598,7 +644,7 @@ namespace HonestFlow.Application.Installation
                 case InstallationComponent.Esm:
                     SetComponentProgress(progressStart, progressEnd, 20, "ЕСМ: проверка установщика");
                     SetComponentProgress(progressStart, progressEnd, 45, "ЕСМ: запуск установки");
-                    bool esmSuccess = await new EsmInstaller(item.InstallerPath, null, _log).InstallEsm();
+                    bool esmSuccess = await new EsmInstaller(item.InstallerPath, null, _log).InstallEsm(cancellationToken);
                     SetComponentProgress(progressStart, progressEnd, 100, esmSuccess ? "ЕСМ: готов" : "ЕСМ: ошибка");
                     _log.LogUser(esmSuccess ? "✅ ЕСМ установлен" : "❌ ЕСМ не установлен", !esmSuccess);
                     return esmSuccess;
@@ -606,7 +652,7 @@ namespace HonestFlow.Application.Installation
                 case InstallationComponent.Controller:
                     SetComponentProgress(progressStart, progressEnd, 20, "Контроллер ЛМ: проверка установщика");
                     SetComponentProgress(progressStart, progressEnd, 45, "Контроллер ЛМ: запуск установки");
-                    bool controllerSuccess = await new EsmInstaller(null, item.InstallerPath, _log).InstallController();
+                    bool controllerSuccess = await new EsmInstaller(null, item.InstallerPath, _log).InstallController(cancellationToken);
                     SetComponentProgress(progressStart, progressEnd, 100, controllerSuccess ? "Контроллер ЛМ: готов" : "Контроллер ЛМ: ошибка");
                     _log.LogUser(controllerSuccess ? "✅ Контроллер установлен" : "❌ Контроллер не установлен", !controllerSuccess);
                     return controllerSuccess;

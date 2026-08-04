@@ -1,6 +1,7 @@
 using HonestFlow.Application.Core;
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HonestFlow.Infrastructure.Installers
@@ -18,7 +19,7 @@ namespace HonestFlow.Infrastructure.Installers
             _with1C = with1C;
         }
 
-        public async Task<bool> Install()
+        public async Task<bool> Install(CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(_installerPath))
             {
@@ -40,7 +41,7 @@ namespace HonestFlow.Infrastructure.Installers
             _log.LogDebug($"Запуск установки АТОЛ: {_installerPath}");
             _log.LogDebug($"Аргументы АТОЛ: {arguments}");
 
-            int code = await ProcessRunner.RunAsync(_installerPath, arguments, true);
+            int code = await ProcessRunner.RunAsync(_installerPath, arguments, true, cancellationToken);
 
             _log.LogDebug($"Установка АТОЛ завершена с кодом: {code}");
 

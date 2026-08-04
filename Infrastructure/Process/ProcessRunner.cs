@@ -13,9 +13,14 @@ namespace HonestFlow.Infrastructure
             return result.ExitCode;
         }
 
-        public static async Task<int> RunAsync(string fileName, string arguments, bool asAdmin = false)
+        public static async Task<int> RunAsync(
+            string fileName,
+            string arguments,
+            bool asAdmin = false,
+            CancellationToken cancellationToken = default)
         {
-            var result = await RunDetailed(fileName, arguments, asAdmin);
+            var result = await RunDetailed(fileName, arguments, asAdmin, cancellationToken: cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             return result.ExitCode;
         }
 
@@ -24,7 +29,8 @@ namespace HonestFlow.Infrastructure
             string arguments,
             bool asAdmin = false,
             int timeoutSeconds = 0,
-            string logArguments = null)
+            string logArguments = null,
+            CancellationToken cancellationToken = default)
         {
             var watch = Stopwatch.StartNew();
             var result = new ProcessExecutionResult();
@@ -55,26 +61,46 @@ namespace HonestFlow.Infrastructure
                 {
                     using var timeout = new CancellationTokenSource(
                         TimeSpan.FromSeconds(timeoutSeconds));
+                    using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                        timeout.Token,
+                        cancellationToken);
                     try
                     {
-                        await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+                        await process.WaitForExitAsync(linkedCancellation.Token).ConfigureAwait(false);
                     }
-                    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+                    catch (OperationCanceledException)
                     {
                         exited = process.HasExited;
                         if (!exited)
                         {
-                            result.TimedOut = true;
+                            result.TimedOut = timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
                             await TerminateProcessAsync(process).ConfigureAwait(false);
                         }
+                        cancellationToken.ThrowIfCancellationRequested();
                     }
                 }
                 else
-                    await process.WaitForExitAsync().ConfigureAwait(false);
+                {
+                    try
+                    {
+                        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        await TerminateProcessAsync(process).ConfigureAwait(false);
+                        throw;
+                    }
+                }
 
                 result.StandardOutput = await CompleteReadTask(outputTask, TimeSpan.FromSeconds(5));
                 result.StandardError = await CompleteReadTask(errorTask, TimeSpan.FromSeconds(5));
                 result.ExitCode = exited ? process.ExitCode : -1;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                result.Exception = new OperationCanceledException(cancellationToken);
+                result.ExitCode = -1;
+                throw;
             }
             catch (Exception ex)
             {

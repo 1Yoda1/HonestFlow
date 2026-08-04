@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Models;
@@ -11,7 +12,7 @@ namespace HonestFlow.Application.Installation
     public interface IInstallationService
     {
         /// <summary>Проверить ЛМ ЧЗ и выполнить установку при необходимости</summary>
-        Task<bool> CheckLmAndInstall(IPData selectedIP);
+        Task<bool> CheckLmAndInstall(IPData selectedIP, CancellationToken cancellationToken = default);
 
         /// <summary>Принудительно переустановить выбранные компоненты</summary>
         Task<bool> ReinstallSelectedComponents(IPData selectedIP, IReadOnlyCollection<InstallationComponent> components);

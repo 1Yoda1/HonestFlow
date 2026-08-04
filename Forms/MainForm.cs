@@ -72,6 +72,7 @@ namespace HonestFlow
         private readonly IPData _startupAuthorizedClient;
         private readonly bool _startupAuthenticationHandled;
         private readonly CancellationTokenSource _lifetimeCancellation = new();
+        private CancellationTokenSource _installationCancellation;
         private readonly HashSet<string> _registrationPromptsShown =
             new(StringComparer.Ordinal);
 
@@ -576,6 +577,23 @@ namespace HonestFlow
 
         private async void BtnStartInstallation_Click(object sender, EventArgs e)
         {
+            if (_installationCancellation != null)
+            {
+                if (!_installationCancellation.IsCancellationRequested)
+                {
+                    LogOperatorAction("пользователь запросил прерывание установки");
+                    _installationCancellation.Cancel();
+                    btnStartInstallation.Enabled = false;
+                    btnStartInstallation.Text = "Прерывание...";
+                    ShowNotification(
+                        "Останавливаем текущую операцию. Уже завершённые компоненты останутся установленными.",
+                        "Прерывание установки",
+                        UserNotificationSeverity.Warning);
+                }
+
+                return;
+            }
+
             await StartInstallationForAuthorizedUser();
         }
 
@@ -652,12 +670,18 @@ namespace HonestFlow
                 LicenseOperation.InstallComponents))
                 return;
 
+            _installationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                _lifetimeCancellation.Token);
+            btnStartInstallation.Text = "Прервать установку";
+            btnStartInstallation.Enabled = true;
             progressBar.Visible = true;
             lblStatus.Visible = true;
 
             try
             {
-                bool success = await _installationService.CheckLmAndInstall(selectedIP);
+                bool success = await _installationService.CheckLmAndInstall(
+                    selectedIP,
+                    _installationCancellation.Token);
                 if (!success)
                 {
                     LogOperatorAction("проверка и установка завершены с ошибкой", isError: true);
@@ -676,8 +700,20 @@ namespace HonestFlow
                     "Установка",
                     success ? UserNotificationSeverity.Success : UserNotificationSeverity.Error);
             }
+            catch (OperationCanceledException) when (_installationCancellation.IsCancellationRequested)
+            {
+                LogOperatorAction("установка прервана пользователем");
+                await RefreshPointStatusAsync(allowDuringLongOperation: true);
+                ShowNotification(
+                    "Установка прервана. Уже завершённые компоненты не удалялись.",
+                    "Установка",
+                    UserNotificationSeverity.Warning);
+            }
             finally
             {
+                _installationCancellation.Dispose();
+                _installationCancellation = null;
+                btnStartInstallation.Text = "Запустить установку";
                 progressBar.Visible = false;
                 EndLongOperation();
             }

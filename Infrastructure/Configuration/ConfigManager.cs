@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure.Downloads;
 using HonestFlow.Models;
@@ -60,11 +61,15 @@ namespace HonestFlow.Infrastructure.Configuration
             return DefaultYandexPublicKey;
         }
 
-        public static async Task<bool> DownloadInstallerIfNeeded(string fileName, IProgress<int> progress)
+        public static async Task<bool> DownloadInstallerIfNeeded(
+            string fileName,
+            IProgress<int> progress,
+            CancellationToken cancellationToken = default)
         {
             InitYandexDiskDownloader();
 
-            var assets = await _downloader.GetReleaseAssets();
+            cancellationToken.ThrowIfCancellationRequested();
+            var assets = await _downloader.GetReleaseAssets(cancellationToken: cancellationToken);
             if (!assets.TryGetValue(fileName, out var asset))
             {
                 Logger.LogToFile($"File not found in Yandex Disk public folder: {fileName}", true);
@@ -101,7 +106,8 @@ namespace HonestFlow.Infrastructure.Configuration
                 asset.Url,
                 destination,
                 progress,
-                asset.Size);
+                asset.Size,
+                cancellationToken: cancellationToken);
         }
 
         public static string GetInstallersFolder()

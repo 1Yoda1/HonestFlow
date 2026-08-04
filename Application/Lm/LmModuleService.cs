@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Api;
@@ -25,6 +26,7 @@ namespace HonestFlow.Application.Lm
         private readonly IUserDialogService _dialogService;
         private readonly int _progressStart;
         private readonly int _progressEnd;
+        private readonly CancellationToken _cancellationToken;
 
         public LmModuleService(string installerPath, string expectedVersion)
     : this(installerPath, expectedVersion, null)
@@ -54,19 +56,28 @@ namespace HonestFlow.Application.Lm
         {
         }
 
-        public LmModuleService(string installerPath, string expectedVersion, ILogService log, IProgressService progress, IUserDialogService dialogService, int progressStart, int progressEnd)
+        public LmModuleService(
+            string installerPath,
+            string expectedVersion,
+            ILogService log,
+            IProgressService progress,
+            IUserDialogService dialogService,
+            int progressStart,
+            int progressEnd,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(expectedVersion))
                 throw new ArgumentException("Версия ЛМ ЧЗ не задана.", nameof(expectedVersion));
 
             _apiClient = new LmApiClient(true);
             _dialogService = dialogService ?? new WinFormsDialogService();
-            _installer = new LmModuleInstaller(installerPath, _dialogService);
+            _installer = new LmModuleInstaller(installerPath, _dialogService, cancellationToken);
             _expectedVersion = expectedVersion;
             _log = log ?? new LogService();
             _progress = progress;
             _progressStart = progressStart;
             _progressEnd = progressEnd;
+            _cancellationToken = cancellationToken;
         }
 
         public async Task<bool> IsApiAvailable()
@@ -94,6 +105,7 @@ namespace HonestFlow.Application.Lm
 
         public async Task<bool> EnsureInstalledAndInitialized(string token, string expectedInn)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             using var operation = Logger.BeginOperation("EnsureInstalledAndInitialized ЛМ ЧЗ", nameof(LmModuleService));
             SetProgress(10, "ЛМ ЧЗ: проверка GUID продукта");
             _log.LogUser(" Проверка ЛМ ЧЗ...");
@@ -201,6 +213,7 @@ namespace HonestFlow.Application.Lm
 
         public async Task<bool> ReinstallAndInitialize(string token, string expectedInn, string reason)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             using var operation = Logger.BeginOperation("Ручная переустановка ЛМ ЧЗ", nameof(LmModuleService));
 
             SetProgress(10, "ЛМ ЧЗ: ручная переустановка");
@@ -261,7 +274,7 @@ namespace HonestFlow.Application.Lm
                         currentInterval = maxIntervalMs;
                 }
 
-                await Task.Delay(currentInterval);
+                await Task.Delay(currentInterval, _cancellationToken);
             }
 
             _log.LogUser($"❌ Таймаут {timeoutSeconds} сек: {conditionName} не готов");
@@ -353,7 +366,7 @@ namespace HonestFlow.Application.Lm
         {
             for (int attempt = 1; attempt <= 8; attempt++)
             {
-                await Task.Delay(attempt == 1 ? 1500 : 3000);
+                await Task.Delay(attempt == 1 ? 1500 : 3000, _cancellationToken);
 
                 var statusResponse = await _apiClient.GetStatus();
                 if (!statusResponse.IsSuccess || statusResponse.Data == null)

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure;
 using Xunit;
@@ -58,6 +59,28 @@ namespace HonestFlow.Tests
             Assert.False(result.IsSuccess);
             Assert.True(result.Duration < TimeSpan.FromSeconds(7));
             Assert.Null(result.Exception);
+        }
+
+        [Fact]
+        public async Task RunDetailed_CancellationTerminatesProcessTreeAndThrows()
+        {
+            string windowsFolder = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            string powershell = Path.Combine(
+                windowsFolder,
+                "System32",
+                "WindowsPowerShell",
+                "v1.0",
+                "powershell.exe");
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+            var started = DateTime.UtcNow;
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                ProcessRunner.RunDetailed(
+                    powershell,
+                    "-NoProfile -Command \"Start-Sleep -Seconds 10\"",
+                    cancellationToken: cancellation.Token));
+
+            Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(7));
         }
 
         private static string GetCommandInterpreter() =>

@@ -37,11 +37,16 @@ namespace HonestFlow.Infrastructure.Installers
 
         private readonly string _installerPath;
         private readonly IUserDialogService _dialogService;
+        private readonly CancellationToken _cancellationToken;
 
-        public LmModuleInstaller(string installerPath, IUserDialogService dialogService = null)
+        public LmModuleInstaller(
+            string installerPath,
+            IUserDialogService dialogService = null,
+            CancellationToken cancellationToken = default)
         {
             _installerPath = installerPath;
             _dialogService = dialogService ?? new WinFormsDialogService();
+            _cancellationToken = cancellationToken;
         }
 
         public string GetInstalledGuid() => FindLmModuleGuid();
@@ -188,6 +193,7 @@ namespace HonestFlow.Infrastructure.Installers
 
         private async Task InstallCore()
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             using var operation = Logger.BeginOperation("Установка ЛМ ЧЗ", nameof(LmModuleInstaller));
 
             if (string.IsNullOrWhiteSpace(_installerPath) || !File.Exists(_installerPath))
@@ -200,7 +206,8 @@ namespace HonestFlow.Infrastructure.Installers
             int exitCode = await RunMsiWithRetryAsync(
                 arguments: $"/i \"{_installerPath}\" /qn /norestart",
                 actionName: "установка ЛМ ЧЗ",
-                acceptedExitCodes: new[] { MsiSuccess, MsiRestartRequired });
+                acceptedExitCodes: new[] { MsiSuccess, MsiRestartRequired },
+                cancellationToken: _cancellationToken);
 
             Logger.Info($"msiexec install exit code: {exitCode}", nameof(LmModuleInstaller));
 
@@ -236,7 +243,8 @@ namespace HonestFlow.Infrastructure.Installers
             int exitCode = await RunMsiWithRetryAsync(
                 arguments: $"/i \"{_installerPath}\" /qn /norestart /L*v \"{logPath}\" APPLICATIONFOLDER=\"{normalizedInstallFolder}\" REINSTALL_FLAG=1",
                 actionName: "установка ЛМ ЧЗ поверх восстановленной базы",
-                acceptedExitCodes: new[] { MsiSuccess, MsiRestartRequired });
+                acceptedExitCodes: new[] { MsiSuccess, MsiRestartRequired },
+                cancellationToken: _cancellationToken);
 
             Logger.Info($"msiexec restore install exit code: {exitCode}", nameof(LmModuleInstaller));
 
@@ -481,12 +489,17 @@ namespace HonestFlow.Infrastructure.Installers
             }
         }
 
-        private static async Task<int> RunMsiWithRetryAsync(string arguments, string actionName, int[] acceptedExitCodes)
+        private static async Task<int> RunMsiWithRetryAsync(
+            string arguments,
+            string actionName,
+            int[] acceptedExitCodes,
+            CancellationToken cancellationToken = default)
         {
             const int maxAttempts = 3;
 
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (attempt > 1)
                 {
                     Logger.Warning($"Повтор MSI: {actionName}, попытка {attempt}/{maxAttempts}", nameof(LmModuleInstaller));
@@ -494,7 +507,7 @@ namespace HonestFlow.Infrastructure.Installers
 
                 await WaitForMsiSystemIdleAsync($"перед MSI: {actionName}", 120);
 
-                int exitCode = await RunMsiOnceAsync(arguments, actionName, attempt);
+                int exitCode = await RunMsiOnceAsync(arguments, actionName, attempt, cancellationToken);
 
                 if (acceptedExitCodes.Contains(exitCode))
                     return exitCode;
@@ -503,7 +516,7 @@ namespace HonestFlow.Infrastructure.Installers
                 {
                     Logger.Warning("MSI вернул 1618: уже выполняется другая установка. Ждём освобождения Windows Installer.", nameof(LmModuleInstaller));
                     await WaitForMsiSystemIdleAsync("после 1618", 180);
-                    await Task.Delay(5000);
+                    await Task.Delay(5000, cancellationToken);
                     continue;
                 }
 
@@ -513,7 +526,11 @@ namespace HonestFlow.Infrastructure.Installers
             throw new Exception($"Ошибка MSI: {actionName}, код 1618 не исчез после {maxAttempts} попыток");
         }
 
-        private static async Task<int> RunMsiOnceAsync(string arguments, string actionName, int attempt)
+        private static async Task<int> RunMsiOnceAsync(
+            string arguments,
+            string actionName,
+            int attempt,
+            CancellationToken cancellationToken)
         {
             Logger.Info($"Запуск msiexec: {actionName}, попытка {attempt}. Аргументы: {arguments}", nameof(LmModuleInstaller));
 
@@ -530,7 +547,22 @@ namespace HonestFlow.Infrastructure.Installers
             if (process == null)
                 throw new Exception($"Не удалось запустить msiexec: {actionName}");
 
-            await process.WaitForExitAsync();
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                }
+
+                throw;
+            }
 
             Logger.Info($"msiexec завершён: {actionName}, ExitCode={process.ExitCode}", nameof(LmModuleInstaller));
             return process.ExitCode;
