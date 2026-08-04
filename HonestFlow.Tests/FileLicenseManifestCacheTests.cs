@@ -98,6 +98,33 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task Save_RemovesPreviousSnapshotsAndRejectsRestoredRollback()
+        {
+            using var fixture = CacheFixture.Create();
+            await fixture.SaveRevision(10);
+            string oldSnapshot = File.ReadAllText(Path.Combine(fixture.Root, "current")).Trim();
+            string backup = Path.Combine(fixture.Root, "saved-old-snapshot");
+            CopyDirectory(Path.Combine(fixture.Root, oldSnapshot), backup);
+
+            await fixture.SaveRevision(11);
+            Assert.False(Directory.Exists(Path.Combine(fixture.Root, oldSnapshot)));
+
+            CopyDirectory(backup, Path.Combine(fixture.Root, oldSnapshot));
+            File.WriteAllText(Path.Combine(fixture.Root, "current"), oldSnapshot);
+            LicenseCacheReadResult read = await fixture.Cache.ReadAsync(CancellationToken.None);
+
+            Assert.Equal(LicenseCacheStatus.InvalidCache, read.Status);
+            Assert.Equal("CacheRevisionRollbackDetected", read.ErrorCode);
+        }
+
+        private static void CopyDirectory(string source, string destination)
+        {
+            Directory.CreateDirectory(destination);
+            foreach (string file in Directory.GetFiles(source))
+                File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
+        }
+
+        [Fact]
         public void DpapiProtector_RoundTripsMetadataOnWindows()
         {
             var protector = new DpapiLicenseCacheMetadataProtector();

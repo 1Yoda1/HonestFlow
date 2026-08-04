@@ -18,6 +18,7 @@ namespace HonestFlow.Infrastructure.Licensing
         private const string ManifestFileName = "licenses.json";
         private const string SignatureFileName = "licenses.json.sig";
         private const string MetadataFileName = "metadata.dpapi";
+        private const string HighestRevisionFileName = "highest-revision.dpapi";
         private readonly string _cacheRoot;
         private readonly ILicenseSignatureVerifier _signatureVerifier;
         private readonly ILicenseCacheMetadataProtector _metadataProtector;
@@ -56,11 +57,13 @@ namespace HonestFlow.Infrastructure.Licensing
                 return LicenseCacheWriteResult.Failure(LicenseCacheStatus.WriteFailed, errorCode);
 
             LicenseCacheReadResult existing = await ReadAsync(cancellationToken);
-            if (existing.IsSuccess && existing.Manifest.Revision > manifest.Revision)
+            long highestRevision = ReadHighestRevision();
+            if ((existing.IsSuccess && existing.Manifest.Revision > manifest.Revision) ||
+                highestRevision > manifest.Revision)
             {
                 Logger.Warning(
                     $"Event=LicenseCacheWriteSkipped Status=StaleRevision " +
-                    $"IncomingRevision={manifest.Revision} CachedRevision={existing.Manifest.Revision}",
+                    $"IncomingRevision={manifest.Revision} HighestRevision={Math.Max(highestRevision, existing.Manifest?.Revision ?? 0)}",
                     ModuleName);
                 return LicenseCacheWriteResult.Failure(LicenseCacheStatus.StaleRevision, "RevisionOlderThanCache");
             }
@@ -101,7 +104,9 @@ namespace HonestFlow.Infrastructure.Licensing
 
                 Directory.Move(temporarySnapshot, finalSnapshot);
                 temporarySnapshot = null;
+                WriteHighestRevision(manifest.Revision);
                 await ReplaceCurrentPointerAsync(snapshotName, cancellationToken);
+                DeleteOldSnapshots(snapshotName);
 
                 Logger.Info(
                     $"Event=LicenseCacheWriteFinished Status=Success SchemaVersion={manifest.SchemaVersion} " +
@@ -184,6 +189,9 @@ namespace HonestFlow.Infrastructure.Licensing
 
                 if (metadata.Revision != manifest.Revision || metadata.SchemaVersion != manifest.SchemaVersion)
                     return InvalidCache("MetadataManifestMismatch");
+
+                if (manifest.Revision < ReadHighestRevision())
+                    return InvalidCache("CacheRevisionRollbackDetected");
 
                 Logger.Info(
                     $"Event=LicenseCacheReadFinished Status=Success SchemaVersion={manifest.SchemaVersion} " +
@@ -317,6 +325,46 @@ namespace HonestFlow.Infrastructure.Licensing
         {
             using SHA256 sha256 = SHA256.Create();
             return Convert.ToBase64String(sha256.ComputeHash(bytes));
+        }
+
+        private long ReadHighestRevision()
+        {
+            string path = Path.Combine(_cacheRoot, HighestRevisionFileName);
+            if (!File.Exists(path))
+                return 0;
+            byte[] plaintext = _metadataProtector.Unprotect(File.ReadAllBytes(path));
+            return long.TryParse(Encoding.UTF8.GetString(plaintext), out long revision) && revision >= 0
+                ? revision
+                : throw new InvalidDataException("Invalid highest license revision.");
+        }
+
+        private void WriteHighestRevision(long revision)
+        {
+            long existing = ReadHighestRevision();
+            if (existing >= revision)
+                return;
+            string path = Path.Combine(_cacheRoot, HighestRevisionFileName);
+            string temporary = Path.Combine(_cacheRoot, ".highest-revision-" + Guid.NewGuid().ToString("N") + ".tmp");
+            File.WriteAllBytes(temporary, _metadataProtector.Protect(Encoding.UTF8.GetBytes(revision.ToString())));
+            if (File.Exists(path))
+                File.Replace(temporary, path, null, true);
+            else
+                File.Move(temporary, path);
+        }
+
+        private void DeleteOldSnapshots(string currentSnapshotName)
+        {
+            foreach (string directory in Directory.EnumerateDirectories(_cacheRoot, "snapshot-*"))
+            {
+                if (!string.Equals(Path.GetFileName(directory), currentSnapshotName, StringComparison.Ordinal))
+                {
+                    try { Directory.Delete(directory, true); }
+                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                    {
+                        Logger.Warning($"Event=LicenseCacheCleanupFailed ErrorType={ex.GetType().Name}", ModuleName);
+                    }
+                }
+            }
         }
 
         private static bool FixedEquals(string left, string right)

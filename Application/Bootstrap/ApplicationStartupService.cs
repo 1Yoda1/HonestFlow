@@ -54,8 +54,10 @@ namespace HonestFlow.Application.Bootstrap
             catch (Exception ex)
             {
                 _progressService.SetProgress(58, "\u041e\u0431\u043b\u0430\u043a\u043e \u043d\u0435 \u043e\u0442\u0432\u0435\u0442\u0438\u043b\u043e, \u0431\u0435\u0440\u0435\u043c \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0435 \u0441\u043f\u0438\u0441\u043a\u0438...");
-                var authService = new AuthService(_logService);
-                authService.LoadIpList();
+                IPData cachedClient = new AuthorizedClientCache().Load();
+                var authService = cachedClient == null
+                    ? new AuthService(_logService)
+                    : new AuthService(new System.Collections.Generic.List<IPData> { cachedClient }, _logService);
                 _progressService.SetProgress(78, "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u044b\u0435 \u0441\u043f\u0438\u0441\u043a\u0438 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043d\u044b");
                 Logger.LogToFile($"Remote config unavailable, using local files. Error: {ex.Message}");
 

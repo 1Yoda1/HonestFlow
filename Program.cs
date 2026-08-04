@@ -177,6 +177,20 @@ namespace HonestFlow
                             continue;
                         }
 
+                        if (startup.UseRemoteConfigMode)
+                        {
+                            try
+                            {
+                                new AuthorizedClientCache().Save(client);
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Warning(
+                                    $"Event=AuthorizedClientCacheWriteFailed ErrorType={ex.GetType().Name}",
+                                    nameof(Program));
+                            }
+                        }
+
                         _startupForm.ShowAuthenticationSuccess(client.Name);
                         await Task.Delay(450);
                         return client;
