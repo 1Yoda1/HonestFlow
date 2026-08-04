@@ -35,6 +35,9 @@ namespace HonestFlow.Tests
             Assert.NotNull(result);
             Assert.Equal(5, gate.Entrants);
             Assert.Equal(0, esmClient.RegistrationRequests);
+            Assert.Equal("Доступно", result.Cloud.ShortText);
+            Assert.DoesNotContain("1", result.Cloud.ShortText);
+            Assert.DoesNotContain("1", result.Cloud.Details);
         }
 
         [Fact]

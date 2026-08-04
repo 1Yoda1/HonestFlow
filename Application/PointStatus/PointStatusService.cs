@@ -639,10 +639,10 @@ namespace HonestFlow.Application.PointStatus
                 if (_remoteConfigLoaded && _ipCount > 0)
                     return new NodeStatus(
                         internetOk ? NodeLevel.Ok : NodeLevel.Warning,
-                        $"{_ipCount} ИП",
+                        internetOk ? "Доступно" : "Загружено",
                         internetOk
-                            ? $"Списки ИП загружены с Яндекс Диска: {_ipCount}"
-                            : $"Списки ИП загружены, но проверка интернета не прошла: {_ipCount}");
+                            ? "Удалённая конфигурация загружена с Яндекс Диска"
+                            : "Удалённая конфигурация загружена, но проверка интернета не прошла");
 
                 return new NodeStatus(
                     internetOk ? NodeLevel.Warning : NodeLevel.Error,
@@ -655,7 +655,7 @@ namespace HonestFlow.Application.PointStatus
             {
                 return new NodeStatus(
                     _remoteConfigLoaded && _ipCount > 0 ? NodeLevel.Warning : NodeLevel.Error,
-                    _remoteConfigLoaded ? $"{_ipCount} ИП" : "Нет связи",
+                    _remoteConfigLoaded ? "Загружено" : "Нет связи",
                     $"Проверка облака не удалась: {ex.Message}");
             }
         }
