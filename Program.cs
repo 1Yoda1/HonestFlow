@@ -18,12 +18,29 @@ namespace HonestFlow
 {
     internal static class Program
     {
+        private const string SingleInstanceMutexName = @"Local\HonestFlow.SingleInstance.v3";
+
         [STAThread]
         private static void Main()
         {
-            System.Windows.Forms.Application.EnableVisualStyles();
-            System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
-            System.Windows.Forms.Application.Run(new StartupApplicationContext());
+            if (!ApplicationSingleInstance.TryAcquire(
+                    SingleInstanceMutexName,
+                    out ApplicationSingleInstance singleInstance))
+            {
+                MessageBox.Show(
+                    "HonestFlow уже запущен.",
+                    "HonestFlow",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            using (singleInstance)
+            {
+                System.Windows.Forms.Application.EnableVisualStyles();
+                System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+                System.Windows.Forms.Application.Run(new StartupApplicationContext());
+            }
         }
 
         private sealed class StartupApplicationContext : ApplicationContext

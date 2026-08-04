@@ -57,6 +57,7 @@ namespace HonestFlow
         private PointStatusService _pointStatusService;
         private PointStatusResult _lastPointStatusResult;
         private bool _statusRefreshRunning;
+        private bool _statusRefreshAfterLicenseChangePending;
         private bool _serviceActionRunning;
         private string _longOperationName;
         private LicenseObservationSnapshot _lastPresentedLicenseSnapshot;
@@ -1419,6 +1420,12 @@ namespace HonestFlow
                 btnCheckWithoutPassword.Enabled = !IsLongOperationRunning;
                 _statusRefreshRunning = false;
                 ApplyLicenseAccessToUi();
+
+                if (_statusRefreshAfterLicenseChangePending && !IsLongOperationRunning)
+                {
+                    _statusRefreshAfterLicenseChangePending = false;
+                    _ = RefreshPointStatusAsync();
+                }
             }
         }
 
@@ -2714,6 +2721,12 @@ namespace HonestFlow
         {
             _longOperationName = null;
             SetLongOperationControlsEnabled(true);
+
+            if (_statusRefreshAfterLicenseChangePending && !_statusRefreshRunning)
+            {
+                _statusRefreshAfterLicenseChangePending = false;
+                _ = RefreshPointStatusAsync();
+            }
         }
 
         private void SetLongOperationControlsEnabled(bool enabled)
@@ -2907,7 +2920,7 @@ namespace HonestFlow
             _licenseToolTip.SetToolTip(control, access.IsAllowed ? string.Empty : access.Message);
         }
 
-        private void LicenseSnapshotChanged(LicenseObservationSnapshot snapshot)
+        private async void LicenseSnapshotChanged(LicenseObservationSnapshot snapshot)
         {
             if (IsDisposed || Disposing)
                 return;
@@ -2922,11 +2935,35 @@ namespace HonestFlow
 
                 ApplyLicenseAccessToUi();
                 HandleLicenseSnapshot(snapshot);
+
+                if (!IsLicenseSnapshotForSelectedClient(_selectedIP, snapshot))
+                    return;
+
+                if (_statusRefreshRunning || IsLongOperationRunning)
+                {
+                    _statusRefreshAfterLicenseChangePending = true;
+                    return;
+                }
+
+                await RefreshPointStatusAsync();
             }
             catch (InvalidOperationException)
             {
                 // Окно уже закрывается; решение сохранено в snapshot store и в журнале.
             }
+        }
+
+        private static bool IsLicenseSnapshotForSelectedClient(
+            IPData selectedClient,
+            LicenseObservationSnapshot snapshot)
+        {
+            return selectedClient != null &&
+                   snapshot != null &&
+                   !string.IsNullOrWhiteSpace(selectedClient.ClientId) &&
+                   string.Equals(
+                       selectedClient.ClientId,
+                       snapshot.ClientId,
+                       StringComparison.Ordinal);
         }
 
         private async void HandleLicenseSnapshot(LicenseObservationSnapshot snapshot)
