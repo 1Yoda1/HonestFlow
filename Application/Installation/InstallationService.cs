@@ -11,6 +11,8 @@ using HonestFlow.Models;
 using HonestFlow.Application.Core;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Application.Lm;
+using HonestFlow.Application.Licensing;
+using HonestFlow.Models.Licensing;
 
 namespace HonestFlow.Application.Installation
 {
@@ -27,13 +29,20 @@ namespace HonestFlow.Application.Installation
         private readonly IVersionCheckService _versionChecker;
         private readonly IUserDialogService _dialogService;
         private readonly bool _useRemoteConfigMode;
+        private readonly ILicenseOperationGuard _licenseGuard;
 
-        public InstallationService(ILogService logService, IProgressService progressService, IUserDialogService dialogService, bool useRemoteConfigMode = false)
+        public InstallationService(
+            ILogService logService,
+            IProgressService progressService,
+            IUserDialogService dialogService,
+            ILicenseOperationGuard licenseGuard,
+            bool useRemoteConfigMode = false)
         {
             _log = logService;
             _progress = progressService;
             _dialogService = dialogService ?? new WinFormsDialogService();
             _useRemoteConfigMode = useRemoteConfigMode;
+            _licenseGuard = licenseGuard ?? throw new ArgumentNullException(nameof(licenseGuard));
             _lmValidator = new LmValidationService(_log);
             _versionChecker = new VersionCheckService(_log);
         }
@@ -44,6 +53,7 @@ namespace HonestFlow.Application.Installation
 
             try
             {
+                _licenseGuard.Demand(LicenseOperation.InstallComponents);
                 _progress.SetProgress(6, "Загрузка конфигурации версий...");
                 var versions = LoadVersions();
                 string expectedLmVersion = EnsureLmVersionConfigured(versions);
@@ -76,6 +86,7 @@ namespace HonestFlow.Application.Installation
                     _log.LogDebug($"ЛМ ЧЗ будет передан в ветку forced reinstall из-за INN mismatch. {lmPlanReason}");
                 }
 
+                _licenseGuard.Demand(LicenseOperation.InstallComponents);
                 return await PerformInstallation(selectedIP, versions, lmCheck, forceLmInstall, lmPlanReason);
             }
             catch (Exception ex)
@@ -103,6 +114,7 @@ namespace HonestFlow.Application.Installation
 
             try
             {
+                _licenseGuard.Demand(LicenseOperation.ReinstallComponents);
                 var versions = LoadVersions();
                 var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
                 var plan = BuildManualReinstallPlan(selectedComponents, selectedIP, effectiveVersions);
@@ -114,6 +126,7 @@ namespace HonestFlow.Application.Installation
                     return false;
 
                 _progress.SetProgress(70, "Ручная переустановка компонентов...");
+                _licenseGuard.Demand(LicenseOperation.ReinstallComponents);
                 bool success = await ExecuteInstallationPlan(plan, selectedIP, effectiveVersions);
 
                 _progress.SetProgress(100, success ? "Ручная переустановка завершена" : "Ручная переустановка завершена с ошибками");

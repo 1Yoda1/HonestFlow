@@ -46,8 +46,7 @@ namespace HonestFlow.Application.Bootstrap
                         Ips = result.Ips,
                         RemoteIps = result.Ips,
                         RemoteVersions = result.Versions,
-                        AuthService = new AuthService(result.Ips, _logService),
-                        InstallationService = new InstallationService(_logService, _progressService, _dialogService, true)
+                        AuthService = new AuthService(result.Ips, _logService)
                     };
                 }
 
@@ -70,8 +69,7 @@ namespace HonestFlow.Application.Bootstrap
                 {
                     UseRemoteConfigMode = false,
                     Ips = new System.Collections.Generic.List<IPData>(authService.Ips),
-                    AuthService = authService,
-                    InstallationService = new InstallationService(_logService, _progressService, _dialogService, false)
+                    AuthService = authService
                 };
             }
         }

@@ -8,6 +8,8 @@ using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Installers;
 using HonestFlow.Models;
 using Microsoft.Win32;
+using HonestFlow.Application.Licensing;
+using HonestFlow.Models.Licensing;
 
 namespace HonestFlow.Application.Lm
 {
@@ -17,16 +19,19 @@ namespace HonestFlow.Application.Lm
         private readonly IProgressService _progress;
         private readonly IUserDialogService _dialogService;
         private readonly bool _useRemoteConfigMode;
+        private readonly ILicenseOperationGuard _licenseGuard;
 
         public LmDatabaseRestoreService(
             ILogService log,
             IProgressService progress,
             IUserDialogService dialogService,
+            ILicenseOperationGuard licenseGuard,
             bool useRemoteConfigMode)
         {
             _log = log;
             _progress = progress;
             _dialogService = dialogService ?? new WinFormsDialogService();
+            _licenseGuard = licenseGuard ?? throw new ArgumentNullException(nameof(licenseGuard));
             _useRemoteConfigMode = useRemoteConfigMode;
         }
 
@@ -34,6 +39,17 @@ namespace HonestFlow.Application.Lm
         {
             if (selectedIP == null)
                 throw new ArgumentNullException(nameof(selectedIP));
+
+            try
+            {
+                _licenseGuard.Demand(LicenseOperation.RestoreLmDatabase);
+            }
+            catch (LicenseOperationDeniedException ex)
+            {
+                _log.LogUser($"Восстановление базы заблокировано лицензией: {ex.TechnicalCode}", true);
+                _dialogService.ShowWarning(ex.Message, "Восстановление базы ЛМ ЧЗ");
+                return false;
+            }
 
             if (!selectedIP.HasLmDatabaseBackup)
             {
@@ -100,6 +116,8 @@ namespace HonestFlow.Application.Lm
                 _log.LogUser("=== ВОССТАНОВЛЕНИЕ БАЗЫ ЛМ ЧЗ ===");
                 _log.LogDebug($"LM DB restore: inn={MaskInn(selectedIP.Inn)}, archive={archivePath}, installer={installerPath}, installFolder={installFolder}");
 
+                _licenseGuard.Demand(LicenseOperation.RestoreLmDatabase);
+
                 _progress.SetProgress(10, "ЛМ ЧЗ: подготовка восстановления базы");
                 _progress.SetProgress(20, "ЛМ ЧЗ: удаление текущего модуля");
 
@@ -110,6 +128,13 @@ namespace HonestFlow.Application.Lm
                 _log.LogUser("База ЛМ ЧЗ восстановлена.");
                 _dialogService.ShowInformation("База ЛМ ЧЗ восстановлена.", "Готово");
                 return true;
+            }
+            catch (LicenseOperationDeniedException ex)
+            {
+                _progress.SetProgress(100, "ЛМ ЧЗ: восстановление заблокировано лицензией");
+                _log.LogUser($"Восстановление базы заблокировано лицензией: {ex.TechnicalCode}", true);
+                _dialogService.ShowWarning(ex.Message, "Восстановление базы ЛМ ЧЗ");
+                return false;
             }
             catch (OperationCanceledException ex)
             {

@@ -44,6 +44,7 @@ namespace HonestFlow
         private readonly DiagnosticArchiveService _diagnosticArchiveService;
         private readonly DiagnosticsEmailSender _diagnosticsEmailSender;
         private readonly LmDatabaseRestoreService _lmDatabaseRestoreService;
+        private readonly LicensedLmInitializationService _lmInitializationService;
         private readonly RuDesktopService _ruDesktopService;
         private readonly IRuDesktopInstaller _ruDesktopInstaller;
         private readonly HelpRequestEmailSender _helpRequestEmailSender;
@@ -61,6 +62,7 @@ namespace HonestFlow
         private LicenseObservationSnapshot _lastPresentedLicenseSnapshot;
         private readonly ILicenseObservationSnapshotStore _licenseSnapshotStore;
         private readonly ILicenseAccessPolicy _licenseAccessPolicy;
+        private readonly ILicenseOperationGuard _licenseOperationGuard;
         private readonly ToolTip _licenseToolTip = new();
         private readonly DeviceRegistrationRequestService _deviceRegistrationRequestService = new();
         private readonly DeviceRegistrationCoordinator _deviceRegistrationCoordinator;
@@ -106,7 +108,6 @@ namespace HonestFlow
                 new UnlicensedHelpRequestStore());
             _appRatingEmailSender = new AppRatingEmailSender(_logService);
             _pointAddressService = new PointAddressService(_logService);
-            _serviceControlService = new WindowsServiceControlService();
             _externalApplicationLauncher = new ExternalApplicationLauncher();
             _windowIconService = new WindowIconService(_logService);
             _deviceRegistrationCoordinator = new DeviceRegistrationCoordinator(
@@ -119,6 +120,8 @@ namespace HonestFlow
                 licenseMode,
                 _licenseSnapshotStore,
                 () => _selectedIP?.ClientId);
+            _licenseOperationGuard = new LicenseOperationGuard(_licenseAccessPolicy);
+            _serviceControlService = new WindowsServiceControlService(_licenseOperationGuard);
             _licenseSnapshotStore.SnapshotChanged += LicenseSnapshotChanged;
             FormClosed += (_, _) =>
             {
@@ -133,8 +136,19 @@ namespace HonestFlow
             _authService = startup.AuthService;
             _startupAuthorizedClient = startup.AuthorizedClient;
             _startupAuthenticationHandled = startup.SellerAuthenticationHandled;
-            _installationService = new InstallationService(_logService, _progressService, _dialogService, _useRemoteConfigMode);
-            _lmDatabaseRestoreService = new LmDatabaseRestoreService(_logService, _progressService, _dialogService, _useRemoteConfigMode);
+            _installationService = new InstallationService(
+                _logService,
+                _progressService,
+                _dialogService,
+                _licenseOperationGuard,
+                _useRemoteConfigMode);
+            _lmDatabaseRestoreService = new LmDatabaseRestoreService(
+                _logService,
+                _progressService,
+                _dialogService,
+                _licenseOperationGuard,
+                _useRemoteConfigMode);
+            _lmInitializationService = new LicensedLmInitializationService(_licenseOperationGuard);
             _pointStatusService = new PointStatusService(_useRemoteConfigMode, _remoteIps?.Count ?? 0, _remoteIps, _ruDesktopService);
 
             InitializeUiState();
@@ -1281,9 +1295,13 @@ namespace HonestFlow
                 lblStatus.Text = $"Пытаюсь {actionName} службы: {serviceList}";
 
                 if (shouldStart)
-                    await _serviceControlService.StartStoppedServicesAsync(status.Services);
+                    await _serviceControlService.StartStoppedServicesAsync(
+                        status.Services,
+                        LicenseOperation.ManageServices);
                 else
-                    await _serviceControlService.RestartServicesAsync(status.Services);
+                    await _serviceControlService.RestartServicesAsync(
+                        status.Services,
+                        LicenseOperation.ManageServices);
 
                 lblStatus.Text = "Операция со службами завершена";
                 LogOperatorAction($"операция со службами завершена: {actionName} ({serviceList})");
@@ -1502,7 +1520,9 @@ namespace HonestFlow
             try
             {
                 lblStatus.Text = "Запускаем службу Regime...";
-                await _serviceControlService.StartServiceAsync("regime");
+                await _serviceControlService.StartServiceAsync(
+                    "regime",
+                    LicenseOperation.RecoverLmServices);
 
                 lblStatus.Text = "Ожидаем запуск Yenisei через Regime...";
                 await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
@@ -1510,7 +1530,9 @@ namespace HonestFlow
                 if (!_serviceControlService.IsServiceRunning("yenisei"))
                 {
                     lblStatus.Text = "Yenisei не запустилась автоматически. Запускаем...";
-                    await _serviceControlService.StartServiceAsync("yenisei");
+                    await _serviceControlService.StartServiceAsync(
+                        "yenisei",
+                        LicenseOperation.RecoverLmServices);
                 }
 
                 lblStatus.Text = "Ожидаем готовность API ЛМ ЧЗ...";
@@ -1561,8 +1583,7 @@ namespace HonestFlow
             try
             {
                 lblStatus.Text = "Инициализируем ЛМ ЧЗ...";
-                using var api = new LmApiClient(enableDetailedLogging: false);
-                ApiSimpleResponse result = await api.InitializeFull(_selectedIP.Token);
+                ApiSimpleResponse result = await _lmInitializationService.InitializeAsync(_selectedIP.Token);
                 if (!result.IsSuccess)
                 {
                     MessageBox.Show(

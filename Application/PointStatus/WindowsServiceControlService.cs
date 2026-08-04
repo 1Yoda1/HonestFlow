@@ -4,25 +4,41 @@ using System.Linq;
 using System.ServiceProcess;
 using System.Threading;
 using System.Threading.Tasks;
+using HonestFlow.Application.Licensing;
+using HonestFlow.Models.Licensing;
 
 namespace HonestFlow.Application.PointStatus
 {
     public sealed class WindowsServiceControlService
     {
-        public async Task StartStoppedServicesAsync(IReadOnlyList<ServiceSnapshot> services)
+        private readonly ILicenseOperationGuard _licenseGuard;
+
+        public WindowsServiceControlService(ILicenseOperationGuard licenseGuard)
         {
+            _licenseGuard = licenseGuard ?? throw new ArgumentNullException(nameof(licenseGuard));
+        }
+
+        public async Task StartStoppedServicesAsync(
+            IReadOnlyList<ServiceSnapshot> services,
+            LicenseOperation operation)
+        {
+            _licenseGuard.Demand(operation);
             foreach (var service in services.Where(x => !x.IsRunning))
                 await StartServiceCoreAsync(service.ServiceName).ConfigureAwait(false);
         }
 
-        public async Task RestartServicesAsync(IReadOnlyList<ServiceSnapshot> services)
+        public async Task RestartServicesAsync(
+            IReadOnlyList<ServiceSnapshot> services,
+            LicenseOperation operation)
         {
+            _licenseGuard.Demand(operation);
             foreach (var service in services)
                 await RestartServiceCoreAsync(service.ServiceName).ConfigureAwait(false);
         }
 
-        public Task StartServiceAsync(string serviceName)
+        public Task StartServiceAsync(string serviceName, LicenseOperation operation)
         {
+            _licenseGuard.Demand(operation);
             return StartServiceCoreAsync(serviceName);
         }
 
