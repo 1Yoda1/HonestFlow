@@ -38,6 +38,7 @@ namespace HonestFlow.Infrastructure
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = fileName,
@@ -71,25 +72,24 @@ namespace HonestFlow.Infrastructure
                     catch (OperationCanceledException)
                     {
                         exited = process.HasExited;
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            if (!exited)
+                                await process.WaitForExitAsync().ConfigureAwait(false);
+                            throw new OperationCanceledException(cancellationToken);
+                        }
+
                         if (!exited)
                         {
-                            result.TimedOut = timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
+                            result.TimedOut = true;
                             await TerminateProcessAsync(process).ConfigureAwait(false);
                         }
-                        cancellationToken.ThrowIfCancellationRequested();
                     }
                 }
                 else
                 {
-                    try
-                    {
-                        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        await TerminateProcessAsync(process).ConfigureAwait(false);
-                        throw;
-                    }
+                    await process.WaitForExitAsync().ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
 
                 result.StandardOutput = await CompleteReadTask(outputTask, TimeSpan.FromSeconds(5));

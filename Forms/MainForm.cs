@@ -586,7 +586,7 @@ namespace HonestFlow
                     btnStartInstallation.Enabled = false;
                     btnStartInstallation.Text = "Прерывание...";
                     ShowNotification(
-                        "Останавливаем текущую операцию. Уже завершённые компоненты останутся установленными.",
+                        "Новые компоненты не запустятся. Если установщик уже работает, дождёмся его безопасного завершения.",
                         "Прерывание установки",
                         UserNotificationSeverity.Warning);
                 }
@@ -705,7 +705,7 @@ namespace HonestFlow
                 LogOperatorAction("установка прервана пользователем");
                 await RefreshPointStatusAsync(allowDuringLongOperation: true);
                 ShowNotification(
-                    "Установка прервана. Уже завершённые компоненты не удалялись.",
+                    "Установка безопасно прервана после завершения текущего компонента.",
                     "Установка",
                     UserNotificationSeverity.Warning);
             }

@@ -62,7 +62,7 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public async Task RunDetailed_CancellationTerminatesProcessTreeAndThrows()
+        public async Task RunDetailed_CancellationWaitsForCurrentProcessAndThrows()
         {
             string windowsFolder = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
             string powershell = Path.Combine(
@@ -71,16 +71,18 @@ namespace HonestFlow.Tests
                 "WindowsPowerShell",
                 "v1.0",
                 "powershell.exe");
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
             var started = DateTime.UtcNow;
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
                 ProcessRunner.RunDetailed(
                     powershell,
-                    "-NoProfile -Command \"Start-Sleep -Seconds 10\"",
+                    "-NoProfile -Command \"Start-Sleep -Seconds 1\"",
                     cancellationToken: cancellation.Token));
 
-            Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(7));
+            TimeSpan duration = DateTime.UtcNow - started;
+            Assert.True(duration >= TimeSpan.FromMilliseconds(700));
+            Assert.True(duration < TimeSpan.FromSeconds(7));
         }
 
         private static string GetCommandInterpreter() =>

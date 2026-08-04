@@ -547,22 +547,8 @@ namespace HonestFlow.Infrastructure.Installers
             if (process == null)
                 throw new Exception($"Не удалось запустить msiexec: {actionName}");
 
-            try
-            {
-                await process.WaitForExitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch
-                {
-                }
-
-                throw;
-            }
+            await process.WaitForExitAsync();
+            cancellationToken.ThrowIfCancellationRequested();
 
             Logger.Info($"msiexec завершён: {actionName}, ExitCode={process.ExitCode}", nameof(LmModuleInstaller));
             return process.ExitCode;
