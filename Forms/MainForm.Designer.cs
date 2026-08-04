@@ -294,7 +294,7 @@
             this.nodesLayout.Dock = System.Windows.Forms.DockStyle.Fill;
             this.nodesLayout.RowCount = 3;
             this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 46F));
-            this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 76F));
+            this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 108F));
             this.nodesLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
 
             // pointStatusHeaderLayout
@@ -328,20 +328,19 @@
 
             // versionTable
             this.versionTable.BackColor = System.Drawing.Color.FromArgb(248, 250, 252);
-            this.versionTable.ColumnCount = 4;
-            this.versionTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F));
-            this.versionTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F));
-            this.versionTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F));
-            this.versionTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 25F));
+            this.versionTable.ColumnCount = 2;
+            this.versionTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
+            this.versionTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
             this.versionTable.Controls.Add(this.lblLmVersion, 0, 0);
             this.versionTable.Controls.Add(this.lblAtolVersion, 1, 0);
-            this.versionTable.Controls.Add(this.lblEsmVersion, 2, 0);
-            this.versionTable.Controls.Add(this.lblControllerVersion, 3, 0);
+            this.versionTable.Controls.Add(this.lblEsmVersion, 0, 1);
+            this.versionTable.Controls.Add(this.lblControllerVersion, 1, 1);
             this.versionTable.Dock = System.Windows.Forms.DockStyle.Fill;
             this.versionTable.Margin = new System.Windows.Forms.Padding(0, 0, 0, 6);
             this.versionTable.Padding = new System.Windows.Forms.Padding(6, 4, 6, 4);
-            this.versionTable.RowCount = 1;
-            this.versionTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.versionTable.RowCount = 2;
+            this.versionTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 50F));
+            this.versionTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 50F));
 
             ConfigureVersionLabel(this.lblLmVersion, "ЛМ ЧЗ");
             ConfigureVersionLabel(this.lblAtolVersion, "Драйвер ККТ");
@@ -355,14 +354,14 @@
             this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 48F));
             this.nodeTable.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 142F));
             this.nodeTable.Dock = System.Windows.Forms.DockStyle.Top;
-            this.nodeTable.Height = 420;
+            this.nodeTable.Height = 384;
             this.nodeTable.RowCount = 6;
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
-            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 70F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 64F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 64F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 64F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 64F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 64F));
+            this.nodeTable.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 64F));
 
             ConfigureNodeRow(0, this.lblLmNode, this.lblLmStatusText, this.lblLmCircle, this.btnLmAction,
                 "ЛМ ЧЗ", System.Drawing.Color.FromArgb(34, 197, 94), "Обновить");
