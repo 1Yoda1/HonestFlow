@@ -15,6 +15,7 @@ namespace HonestFlow.Application.Licensing
         public LicenseManifestSource? ManifestSource { get; set; }
         public LicenseManifestReadStatus RemoteStatus { get; set; }
         public LicenseCacheStatus? CacheStatus { get; set; }
+        public long? Revision { get; set; }
         public LicenseDecision Decision { get; set; }
         public string TechnicalCode { get; set; }
         public string Message { get; set; }

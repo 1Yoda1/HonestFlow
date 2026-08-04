@@ -1957,14 +1957,38 @@ namespace HonestFlow
             {
                 btnRuDesktopAction.Enabled = false;
                 lblStatus.Visible = true;
+                lblStatus.Text = "Проверка состояния точки для заявки...";
+
+                PointStatusResult pointStatus = null;
+                string pointStatusError = null;
+                DateTimeOffset pointStatusCheckedAt = DateTimeOffset.Now;
+                try
+                {
+                    pointStatus = await _pointStatusService.CheckAsync(_lifetimeCancellation.Token);
+                    pointStatusCheckedAt = DateTimeOffset.Now;
+                }
+                catch (Exception statusException)
+                {
+                    pointStatusError = statusException.Message;
+                    _logService.LogDebug($"Не удалось собрать статусы для заявки помощи: {statusException.Message}");
+                }
+
                 lblStatus.Text = "Отправка запроса помощи...";
 
                 LastAuthorizedClientState lastClient = _selectedIP == null
                     ? _ruDesktopService.GetLastAuthorizedClient()
                     : null;
 
-                HelpRequestData request = BuildHelpRequestData(helpRequest, _selectedIP, lastClient, ruDesktopId);
                 LicenseObservationSnapshot licenseSnapshot = _licenseSnapshotStore.Current;
+                HelpRequestData request = BuildHelpRequestData(
+                    helpRequest,
+                    _selectedIP,
+                    lastClient,
+                    ruDesktopId,
+                    pointStatus,
+                    pointStatusCheckedAt,
+                    pointStatusError,
+                    licenseSnapshot);
                 bool hasActiveLicense = licenseSnapshot?.Decision == LicenseDecision.Allowed &&
                     string.Equals(
                         licenseSnapshot.ClientId,
@@ -2109,7 +2133,11 @@ namespace HonestFlow
             HelpRequestDialogResult helpRequest,
             IPData selectedClient,
             LastAuthorizedClientState lastClient,
-            string ruDesktopId)
+            string ruDesktopId,
+            PointStatusResult pointStatus,
+            DateTimeOffset pointStatusCheckedAt,
+            string pointStatusError,
+            LicenseObservationSnapshot licenseSnapshot)
         {
             string clientName = selectedClient?.Name ?? lastClient?.Name;
             string clientInn = selectedClient?.Inn ?? lastClient?.Inn;
@@ -2123,10 +2151,62 @@ namespace HonestFlow
                 WindowsUser = Environment.UserName,
                 RuDesktopId = ValueOrDash(ruDesktopId),
                 HonestFlowVersion = System.Windows.Forms.Application.ProductVersion,
+                OsVersion = Environment.OSVersion.ToString(),
+                Architecture = $"ОС {(Environment.Is64BitOperatingSystem ? "x64" : "x86")}, процесс {(Environment.Is64BitProcess ? "x64" : "x86")}",
+                IsAdministrator = Utils.IsAdministrator(),
+                ClientId = selectedClient?.ClientId ?? lastClient?.ClientId,
+                DeviceId = licenseSnapshot?.DeviceId,
+                LicenseDecision = licenseSnapshot?.Decision.ToString(),
+                LicenseTechnicalCode = licenseSnapshot?.TechnicalCode,
+                LicenseSource = licenseSnapshot?.ManifestSource?.ToString(),
+                LicenseRevision = licenseSnapshot?.Revision,
                 FiscalAddress = ValueOrDash(helpRequest.FiscalAddress),
                 ProblemType = ValueOrDash(helpRequest.ProblemType),
                 Message = ValueOrDash(helpRequest.Message),
-                CreatedAt = DateTimeOffset.Now.ToString("o")
+                CreatedAt = DateTimeOffset.Now.ToString("o"),
+                PointStatus = BuildHelpRequestPointStatus(
+                    pointStatus,
+                    pointStatusCheckedAt,
+                    pointStatusError)
+            };
+        }
+
+        private static HelpRequestPointStatus BuildHelpRequestPointStatus(
+            PointStatusResult result,
+            DateTimeOffset checkedAt,
+            string error)
+        {
+            return new HelpRequestPointStatus
+            {
+                CheckedAt = checkedAt.ToString("o"),
+                Error = error,
+                Lm = BuildHelpRequestNodeStatus(result?.Lm),
+                Controller = BuildHelpRequestNodeStatus(result?.Controller),
+                Esm = BuildHelpRequestNodeStatus(result?.Esm),
+                Kkt = BuildHelpRequestNodeStatus(result?.Kkt),
+                Cloud = BuildHelpRequestNodeStatus(result?.Cloud),
+                RuDesktop = BuildHelpRequestNodeStatus(result?.RuDesktop)
+            };
+        }
+
+        private static HelpRequestNodeStatus BuildHelpRequestNodeStatus(NodeStatus status)
+        {
+            if (status == null)
+                return null;
+
+            return new HelpRequestNodeStatus
+            {
+                Level = status.Level.ToString(),
+                ShortText = status.ShortText,
+                StatusText = status.StatusText,
+                Details = status.Details,
+                Services = status.Services
+                    .Select(service => new HelpRequestServiceStatus
+                    {
+                        Name = service.ServiceName,
+                        State = service.State
+                    })
+                    .ToArray()
             };
         }
 

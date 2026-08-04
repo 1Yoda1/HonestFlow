@@ -228,6 +228,7 @@ namespace HonestFlow.Application.Licensing
                 ManifestSource = source,
                 RemoteStatus = remoteStatus,
                 CacheStatus = cacheStatus,
+                Revision = manifest?.Revision,
                 Decision = decision.Decision,
                 TechnicalCode = decision.TechnicalCode,
                 Message = decision.Message,

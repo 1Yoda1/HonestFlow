@@ -86,9 +86,21 @@ namespace HonestFlow.Application.RemoteAccess
                 $"WindowsUser: {ValueOrDash(request.WindowsUser)}" + Environment.NewLine +
                 $"RuDesktopId: {ValueOrDash(request.RuDesktopId)}" + Environment.NewLine +
                 $"HonestFlowVersion: {ValueOrDash(request.HonestFlowVersion)}" + Environment.NewLine +
+                $"OS: {ValueOrDash(request.OsVersion)}" + Environment.NewLine +
+                $"Architecture: {ValueOrDash(request.Architecture)}" + Environment.NewLine +
+                $"Administrator: {request.IsAdministrator}" + Environment.NewLine +
+                $"ClientId: {ValueOrDash(request.ClientId)}" + Environment.NewLine +
+                $"DeviceId: {ValueOrDash(request.DeviceId)}" + Environment.NewLine +
+                $"License: {ValueOrDash(request.LicenseDecision)}" + Environment.NewLine +
+                $"LicenseTechnicalCode: {ValueOrDash(request.LicenseTechnicalCode)}" + Environment.NewLine +
+                $"LicenseSource: {ValueOrDash(request.LicenseSource)}" + Environment.NewLine +
+                $"LicenseRevision: {request.LicenseRevision?.ToString() ?? "-"}" + Environment.NewLine +
                 $"FiscalAddress: {ValueOrDash(request.FiscalAddress)}" + Environment.NewLine +
                 $"ProblemType: {ValueOrDash(request.ProblemType)}" + Environment.NewLine +
                 $"CreatedAt: {ValueOrDash(request.CreatedAt)}" + Environment.NewLine +
+                Environment.NewLine +
+                "PointStatus:" + Environment.NewLine +
+                FormatPointStatus(request.PointStatus) + Environment.NewLine +
                 Environment.NewLine +
                 "Message:" + Environment.NewLine +
                 ValueOrDash(request.Message) + Environment.NewLine +
@@ -96,6 +108,42 @@ namespace HonestFlow.Application.RemoteAccess
                 "```json" + Environment.NewLine +
                 json + Environment.NewLine +
                 "```";
+        }
+
+        private static string FormatPointStatus(HelpRequestPointStatus status)
+        {
+            if (status == null)
+                return "-";
+
+            var result = new StringBuilder();
+            result.AppendLine($"CheckedAt: {ValueOrDash(status.CheckedAt)}");
+            if (!string.IsNullOrWhiteSpace(status.Error))
+                result.AppendLine($"Error: {status.Error}");
+
+            AppendNode(result, "LM", status.Lm);
+            AppendNode(result, "Controller", status.Controller);
+            AppendNode(result, "ESM", status.Esm);
+            AppendNode(result, "KKT", status.Kkt);
+            AppendNode(result, "Cloud", status.Cloud);
+            AppendNode(result, "RuDesktop", status.RuDesktop);
+            return result.ToString().TrimEnd();
+        }
+
+        private static void AppendNode(StringBuilder result, string name, HelpRequestNodeStatus node)
+        {
+            if (node == null)
+            {
+                result.AppendLine($"{name}: -");
+                return;
+            }
+
+            result.AppendLine($"{name}: [{ValueOrDash(node.Level)}] {ValueOrDash(node.ShortText)}");
+            if (!string.IsNullOrWhiteSpace(node.StatusText))
+                result.AppendLine($"  Status: {node.StatusText}");
+            if (!string.IsNullOrWhiteSpace(node.Details))
+                result.AppendLine($"  Details: {node.Details.Replace(Environment.NewLine, " | ")}");
+            foreach (HelpRequestServiceStatus service in node.Services ?? Array.Empty<HelpRequestServiceStatus>())
+                result.AppendLine($"  Service {ValueOrDash(service.Name)}: {ValueOrDash(service.State)}");
         }
 
         private static string SubjectPart(string value)
@@ -119,9 +167,46 @@ namespace HonestFlow.Application.RemoteAccess
         public string WindowsUser { get; set; }
         public string RuDesktopId { get; set; }
         public string HonestFlowVersion { get; set; }
+        public string OsVersion { get; set; }
+        public string Architecture { get; set; }
+        public bool IsAdministrator { get; set; }
+        public string ClientId { get; set; }
+        public string DeviceId { get; set; }
+        public string LicenseDecision { get; set; }
+        public string LicenseTechnicalCode { get; set; }
+        public string LicenseSource { get; set; }
+        public long? LicenseRevision { get; set; }
         public string FiscalAddress { get; set; }
         public string ProblemType { get; set; }
         public string Message { get; set; }
         public string CreatedAt { get; set; }
+        public HelpRequestPointStatus PointStatus { get; set; }
+    }
+
+    public sealed class HelpRequestPointStatus
+    {
+        public string CheckedAt { get; set; }
+        public string Error { get; set; }
+        public HelpRequestNodeStatus Lm { get; set; }
+        public HelpRequestNodeStatus Controller { get; set; }
+        public HelpRequestNodeStatus Esm { get; set; }
+        public HelpRequestNodeStatus Kkt { get; set; }
+        public HelpRequestNodeStatus Cloud { get; set; }
+        public HelpRequestNodeStatus RuDesktop { get; set; }
+    }
+
+    public sealed class HelpRequestNodeStatus
+    {
+        public string Level { get; set; }
+        public string ShortText { get; set; }
+        public string StatusText { get; set; }
+        public string Details { get; set; }
+        public HelpRequestServiceStatus[] Services { get; set; } = Array.Empty<HelpRequestServiceStatus>();
+    }
+
+    public sealed class HelpRequestServiceStatus
+    {
+        public string Name { get; set; }
+        public string State { get; set; }
     }
 }
