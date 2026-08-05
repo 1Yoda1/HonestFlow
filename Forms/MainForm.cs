@@ -17,6 +17,7 @@ using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Application.Ui;
 using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Infrastructure.Api;
+using HonestFlow.Infrastructure.Composition;
 using HonestFlow.Models.Licensing;
 using System;
 using System.Collections.Generic;
@@ -47,13 +48,12 @@ namespace HonestFlow
         private readonly LicensedLmInitializationService _lmInitializationService;
         private readonly RuDesktopService _ruDesktopService;
         private readonly IRuDesktopInstaller _ruDesktopInstaller;
-        private readonly HelpRequestEmailSender _helpRequestEmailSender;
         private readonly HelpRequestDeliveryService _helpRequestDeliveryService;
-        private readonly HelpRequestDataBuilder _helpRequestDataBuilder = new();
+        private readonly HelpRequestDataBuilder _helpRequestDataBuilder;
         private readonly AppRatingEmailSender _appRatingEmailSender;
         private readonly WindowsServiceControlService _serviceControlService;
         private readonly ComponentVersionStatusService _componentVersionStatusService;
-        private readonly PointStatusReportBuilder _pointStatusReportBuilder = new();
+        private readonly PointStatusReportBuilder _pointStatusReportBuilder;
         private readonly ExternalApplicationLauncher _externalApplicationLauncher;
         private readonly WindowIconService _windowIconService;
         private readonly IUserDialogService _dialogService;
@@ -69,7 +69,6 @@ namespace HonestFlow
         private readonly ILicenseOperationGuard _licenseOperationGuard;
         private readonly ToolTip _licenseToolTip = new();
         private readonly System.Windows.Forms.Timer _notificationTimer = new();
-        private readonly DeviceRegistrationRequestService _deviceRegistrationRequestService = new();
         private readonly DeviceRegistrationCoordinator _deviceRegistrationCoordinator;
         private readonly IPointAddressService _pointAddressService;
         private readonly IPData _startupAuthorizedClient;
@@ -101,34 +100,37 @@ namespace HonestFlow
 
             //this.UpdateStyles();
 
-            _logService = new LogService();
-            _progressService = new ProgressService(progressBar, lblStatus);
-            _dialogService = new WinFormsDialogService(this);
-            _ruDesktopService = new RuDesktopService(_logService);
-            _ruDesktopInstaller = new RuDesktopInstaller(_logService);
-            _diagnosticArchiveService = new DiagnosticArchiveService(_logService);
-            _diagnosticsEmailSender = new DiagnosticsEmailSender(_logService, _ruDesktopService);
-            _helpRequestEmailSender = new HelpRequestEmailSender(_logService);
-            _helpRequestDeliveryService = new HelpRequestDeliveryService(
-                _helpRequestEmailSender,
-                new UnlicensedHelpRequestStore());
-            _appRatingEmailSender = new AppRatingEmailSender(_logService);
-            _pointAddressService = new PointAddressService(_logService);
-            _externalApplicationLauncher = new ExternalApplicationLauncher();
-            _windowIconService = new WindowIconService(_logService);
-            _deviceRegistrationCoordinator = new DeviceRegistrationCoordinator(
-                _deviceRegistrationRequestService,
-                new SmtpDeviceRegistrationRequestSender(),
-                new DpapiDeviceRegistrationDeliveryStateStore());
-            _licenseSnapshotStore = LicenseObservationSnapshotStore.Instance;
-            LicenseEnforcementMode licenseMode = LicenseRuntimeConfiguration.FromEnvironment().EnforcementMode;
-            _licenseAccessPolicy = new LicenseAccessPolicy(
-                licenseMode,
-                _licenseSnapshotStore,
+            MainFormDependencies dependencies = MainFormCompositionRoot.Create(
+                this,
+                progressBar,
+                lblStatus,
+                startup,
                 () => _selectedIP?.ClientId);
-            _licenseOperationGuard = new LicenseOperationGuard(_licenseAccessPolicy);
-            _serviceControlService = new WindowsServiceControlService(_licenseOperationGuard);
-            _componentVersionStatusService = new ComponentVersionStatusService(_logService);
+            startup = dependencies.Startup;
+            _logService = dependencies.LogService;
+            _progressService = dependencies.ProgressService;
+            _dialogService = dependencies.DialogService;
+            _ruDesktopService = dependencies.RuDesktopService;
+            _ruDesktopInstaller = dependencies.RuDesktopInstaller;
+            _diagnosticArchiveService = dependencies.DiagnosticArchiveService;
+            _diagnosticsEmailSender = dependencies.DiagnosticsEmailSender;
+            _helpRequestDeliveryService = dependencies.HelpRequestDeliveryService;
+            _helpRequestDataBuilder = dependencies.HelpRequestDataBuilder;
+            _appRatingEmailSender = dependencies.AppRatingEmailSender;
+            _pointAddressService = dependencies.PointAddressService;
+            _externalApplicationLauncher = dependencies.ExternalApplicationLauncher;
+            _windowIconService = dependencies.WindowIconService;
+            _deviceRegistrationCoordinator = dependencies.DeviceRegistrationCoordinator;
+            _licenseSnapshotStore = dependencies.LicenseSnapshotStore;
+            _licenseAccessPolicy = dependencies.LicenseAccessPolicy;
+            _licenseOperationGuard = dependencies.LicenseOperationGuard;
+            _serviceControlService = dependencies.ServiceControlService;
+            _componentVersionStatusService = dependencies.ComponentVersionStatusService;
+            _pointStatusReportBuilder = dependencies.PointStatusReportBuilder;
+            _installationService = dependencies.InstallationService;
+            _lmDatabaseRestoreService = dependencies.LmDatabaseRestoreService;
+            _lmInitializationService = dependencies.LmInitializationService;
+            _pointStatusService = dependencies.PointStatusService;
             _licenseSnapshotStore.SnapshotChanged += LicenseSnapshotChanged;
             _notificationTimer.Tick += (_, _) => ClearTransientNotification();
             FormClosed += (_, _) =>
@@ -138,28 +140,12 @@ namespace HonestFlow
                 _licenseSnapshotStore.SnapshotChanged -= LicenseSnapshotChanged;
             };
 
-            startup ??= new ApplicationStartupService(_logService, _progressService, _dialogService).Start();
             _useRemoteConfigMode = startup.UseRemoteConfigMode;
             _remoteIps = startup.Ips ?? startup.RemoteIps;
             _remoteVersions = startup.RemoteVersions;
             _authService = startup.AuthService;
             _startupAuthorizedClient = startup.AuthorizedClient;
             _startupAuthenticationHandled = startup.SellerAuthenticationHandled;
-            _installationService = new InstallationService(
-                _logService,
-                _progressService,
-                _dialogService,
-                _licenseOperationGuard,
-                _useRemoteConfigMode);
-            _lmDatabaseRestoreService = new LmDatabaseRestoreService(
-                _logService,
-                _progressService,
-                _dialogService,
-                _licenseOperationGuard,
-                _useRemoteConfigMode);
-            _lmInitializationService = new LicensedLmInitializationService(_licenseOperationGuard);
-            _pointStatusService = new PointStatusService(_useRemoteConfigMode, _remoteIps?.Count ?? 0, _remoteIps, _ruDesktopService);
-
             InitializeUiState();
             WireUiEvents();
             ApplyLicenseAccessToUi();
