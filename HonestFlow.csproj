@@ -39,6 +39,7 @@
 	<ItemGroup>
 	  <Compile Remove="HonestFlow.Tests\**\*.cs" />
 	  <Compile Remove="HonestFlow.LicenseSigning\**\*.cs" />
+	  <Compile Remove="HonestFlow.WpfPrototype\**\*.cs" />
 	  <Compile Remove="obj\**\*.cs" />
 	  <Compile Remove=".codex-bin\**\*.cs" />
 	</ItemGroup>

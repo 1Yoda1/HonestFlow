@@ -1,0 +1,312 @@
+<Window x:Class="HonestFlow.WpfPrototype.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HonestFlow"
+        Width="1536" Height="960"
+        MinWidth="1180" MinHeight="760"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        Background="#F7F8FB"
+        FontFamily="Segoe UI"
+        Foreground="#111827">
+  <Window.Resources>
+    <SolidColorBrush x:Key="Blue" Color="#0967D9"/>
+    <SolidColorBrush x:Key="DarkBlue" Color="#102342"/>
+    <SolidColorBrush x:Key="Muted" Color="#667085"/>
+    <SolidColorBrush x:Key="Line" Color="#E4E8F0"/>
+    <SolidColorBrush x:Key="Green" Color="#0E9F6E"/>
+    <SolidColorBrush x:Key="Red" Color="#D91532"/>
+
+    <Style x:Key="TopButton" TargetType="Button">
+      <Setter Property="Width" Value="48"/>
+      <Setter Property="Height" Value="48"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FontSize" Value="18"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#EDF1F7"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="NavButton" TargetType="Button">
+      <Setter Property="Height" Value="62"/>
+      <Setter Property="Margin" Value="12,4"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Padding" Value="24,0"/>
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="Foreground" Value="#18243B"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="NavBorder" CornerRadius="10" Background="{TemplateBinding Background}">
+              <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="NavBorder" Property="Background" Value="#F1F5FB"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="OutlineButton" TargetType="Button">
+      <Setter Property="Height" Value="48"/>
+      <Setter Property="Padding" Value="18,0"/>
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="BorderBrush" Value="#D8DEE9"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border CornerRadius="9" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource OutlineButton}">
+      <Setter Property="Background" Value="#0868D9"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderBrush" Value="#0868D9"/>
+    </Style>
+
+    <Style x:Key="CardBorder" TargetType="Border">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="13"/>
+    </Style>
+
+    <Style x:Key="NodeTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="18"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+  </Window.Resources>
+
+  <Border BorderBrush="#E6E9EF" BorderThickness="1" Background="#F7F8FB">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="64"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+
+      <Grid Grid.Row="0" Background="White" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="25,0,0,0">
+          <Grid Width="38" Height="38">
+            <Polygon Fill="#1467C9" Points="19,0 36,10 36,28 19,38 2,28 2,10"/>
+            <TextBlock Text="HF" Foreground="White" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Grid>
+          <TextBlock Text="HonestFlow" FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,0,0,0"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <Button Style="{StaticResource TopButton}" Content="−" Click="Minimize_Click"/>
+          <Button Style="{StaticResource TopButton}" Content="□" Click="Maximize_Click"/>
+          <Button Style="{StaticResource TopButton}" Content="×" FontSize="24" Click="Close_Click"/>
+        </StackPanel>
+      </Grid>
+
+      <Grid Grid.Row="1">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="278"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="White" BorderBrush="#E7EAF0" BorderThickness="0,1,1,0" CornerRadius="0,16,0,0">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Margin="0,22,0,0">
+              <Button Style="{StaticResource NavButton}" Background="#EDF4FD" Foreground="#075CB8" FontWeight="SemiBold">
+                <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE80F;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Главная" VerticalAlignment="Center"/></StackPanel>
+              </Button>
+              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Диагностика" VerticalAlignment="Center"/></StackPanel></Button>
+              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE90F;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Обслуживание" VerticalAlignment="Center"/></StackPanel></Button>
+              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Установки" VerticalAlignment="Center"/></StackPanel></Button>
+              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xEA37;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Журнал" VerticalAlignment="Center"/></StackPanel></Button>
+              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Подключение" VerticalAlignment="Center"/></StackPanel></Button>
+              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Настройки" VerticalAlignment="Center"/></StackPanel></Button>
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Margin="24,0,24,26">
+              <Button Style="{StaticResource OutlineButton}" Foreground="#C8213A" BorderBrush="#E8AEB8" Margin="0,0,0,34">
+                <StackPanel Orientation="Horizontal"><TextBlock Text="♡" FontSize="26" Margin="0,-3,10,0"/><TextBlock Text="Оценить HonestFlow" VerticalAlignment="Center"/></StackPanel>
+              </Button>
+              <TextBlock Text="HonestFlow v2.0.1" Foreground="#697386" FontSize="14" Margin="2,0,0,8"/>
+              <TextBlock Text="© 2026 HF Team" Foreground="#697386" FontSize="14" Margin="2,0,0,0"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="16,0,20,18">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="106"/>
+            <RowDefinition Height="14"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="14"/>
+            <RowDefinition Height="72"/>
+          </Grid.RowDefinitions>
+
+          <Border Grid.Row="0" Style="{StaticResource CardBorder}" Padding="24,0">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="300"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="ИП Кураев" FontSize="21" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+                  <TextBlock Text="Точка продаж №219174069" FontSize="15" Foreground="{StaticResource Muted}"/>
+                  <TextBlock Text="▣" FontSize="18" Foreground="#526078" Margin="12,-3,0,0"/>
+                </StackPanel>
+              </StackPanel>
+              <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="Последняя проверка" FontSize="15"/>
+                <TextBlock Text="18 мая 2026, 18:42" Foreground="{StaticResource Muted}" FontSize="15" Margin="0,9,0,0"/>
+              </StackPanel>
+              <Border Grid.Column="2" Background="#FFF5F6" CornerRadius="10" Margin="18,14,0,14" Padding="20,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="⚠" Foreground="{StaticResource Red}" FontSize="40" Margin="0,-3,16,0"/>
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Требуется внимание" Foreground="#B8182D" FontSize="16" FontWeight="SemiBold"/>
+                    <TextBlock Text="Найдено 2 проблемы" Foreground="#C31D33" FontSize="15" Margin="0,8,0,0"/>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </Border>
+
+          <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="20,16,20,16">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="48"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="138"/>
+              </Grid.RowDefinitions>
+              <Grid Grid.Row="0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
+                  <TextBlock Text="Схема кассового узла" FontSize="19" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  <Border Width="22" Height="22" BorderBrush="#68748A" BorderThickness="1.5" CornerRadius="11" Margin="14,1,0,0">
+                    <TextBlock Text="i" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#536078"/>
+                  </Border>
+                </StackPanel>
+                <Button Style="{StaticResource OutlineButton}" HorizontalAlignment="Right" VerticalAlignment="Top">
+                  <StackPanel Orientation="Horizontal"><TextBlock Text="↻" FontSize="28" Margin="0,-5,10,0"/><TextBlock Text="Проверить снова" VerticalAlignment="Center"/></StackPanel>
+                </Button>
+              </Grid>
+
+              <Viewbox Grid.Row="1" Stretch="Uniform" Margin="0,0,0,4">
+                <Canvas Width="1120" Height="430">
+                  <Line X1="560" Y1="95" X2="560" Y2="148" Stroke="#1666B5" StrokeThickness="3" StrokeDashArray="7,6"/>
+                  <Line X1="290" Y1="220" X2="394" Y2="220" Stroke="#7C3FA0" StrokeThickness="3" StrokeDashArray="7,6"/>
+                  <Line X1="690" Y1="220" X2="820" Y2="220" Stroke="#DB8A00" StrokeThickness="3" StrokeDashArray="7,6"/>
+                  <Line X1="560" Y1="292" X2="560" Y2="330" Stroke="#1666B5" StrokeThickness="3" StrokeDashArray="7,6"/>
+                  <Line X1="690" Y1="365" X2="852" Y2="365" Stroke="#D51A35" StrokeThickness="3" StrokeDashArray="7,6"/>
+
+                  <Border Canvas.Left="445" Canvas.Top="5" Width="230" Height="92" CornerRadius="10" Background="#FAFCFF" BorderBrush="#1264B5" BorderThickness="1.2">
+                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE753;" FontFamily="Segoe MDL2 Assets" Foreground="#0864BE" FontSize="48" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ГИС МТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Доступно" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                    </Grid>
+                  </Border>
+
+                  <Border Canvas.Left="30" Canvas.Top="160" Width="260" Height="120" CornerRadius="10" Background="#FFFBFF" BorderBrush="#7A3B99" BorderThickness="1.2">
+                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="#7C3EA1" FontSize="48" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Товароучётная&#x0a;система (ТУС)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Подключено" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                    </Grid>
+                  </Border>
+
+                  <Border Canvas.Left="394" Canvas.Top="160" Width="296" Height="120" CornerRadius="10" Background="#F8FFFB" BorderBrush="#178756" BorderThickness="1.2">
+                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="#118451" FontSize="50" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ТС ПИоТ (ЕСМ)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                    </Grid>
+                  </Border>
+
+                  <Border Canvas.Left="820" Canvas.Top="160" Width="240" Height="120" CornerRadius="10" Background="#FFFCF7" BorderBrush="#DA8900" BorderThickness="1.2">
+                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE749;" FontFamily="Segoe MDL2 Assets" Foreground="#D98600" FontSize="48" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ККТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                    </Grid>
+                  </Border>
+
+                  <Border Canvas.Left="445" Canvas.Top="315" Width="290" Height="110" CornerRadius="10" Background="#FAFCFF" BorderBrush="#1264B5" BorderThickness="1.2">
+                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="85"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#1264B5" FontSize="48" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Контроллер&#x0a;(локальный)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,7,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                    </Grid>
+                  </Border>
+
+                  <Border Canvas.Left="852" Canvas.Top="315" Width="250" Height="110" CornerRadius="10" Background="#FFF9FA" BorderBrush="#D31A35" BorderThickness="1.2">
+                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#D31A35" FontSize="48" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ЛМ ЧЗ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Red}"/><TextBlock Text="Нет связи" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                    </Grid>
+                  </Border>
+                </Canvas>
+              </Viewbox>
+
+              <Border Grid.Row="2" Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="18,0">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
+                  <Grid Width="70" Height="70" VerticalAlignment="Center"><Ellipse Fill="#FFF0F2"/><TextBlock Text="⚠" Foreground="{StaticResource Red}" FontSize="43" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="14,0,10,0">
+                    <TextBlock Text="Обнаружено 2 проблемы" FontSize="18" FontWeight="SemiBold"/>
+                    <TextBlock Text="•" Foreground="{StaticResource Red}" FontSize="20" Margin="0,7,0,0"><Run Text=" Связь с ЛМ ЧЗ отсутствует" Foreground="#182033" FontSize="14"/></TextBlock>
+                    <TextBlock Text="•" Foreground="{StaticResource Red}" FontSize="20" Margin="0,-4,0,0"><Run Text=" ГИС МТ отвечает медленно (время отклика: 6.2 сек)" Foreground="#182033" FontSize="14"/></TextBlock>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                    <Button Style="{StaticResource PrimaryButton}" Content="✧  Исправить автоматически" Margin="0,0,0,9"/>
+                    <Button Style="{StaticResource OutlineButton}" Content="Исправить вручную      ⌄"/>
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </Grid>
+          </Border>
+
+          <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="20,0">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/><ColumnDefinition Width="280"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions>
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="&#xE753;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Green}" FontSize="24"/><TextBlock Text="Облако: доступно" Margin="11,4,0,0" FontSize="14"/></StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Green}" FontSize="23"/><TextBlock Text="RuDesktop: подключен" Margin="11,3,0,0" FontSize="14"/><TextBlock Text="ID: 219174069" Margin="30,3,0,0" Foreground="{StaticResource Muted}" FontSize="14"/></StackPanel>
+              <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"><Border Width="21" Height="21" BorderBrush="#1264B5" BorderThickness="1.5" CornerRadius="11"><TextBlock Text="i" Foreground="#1264B5" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="Версия программы:  2.0.1" Margin="11,1,0,0" FontSize="14"/></StackPanel>
+              <Button Grid.Column="3" Style="{StaticResource OutlineButton}" Foreground="#0757A5" Content="☵  Запросить помощь" Height="44"/>
+            </Grid>
+          </Border>
+        </Grid>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>
