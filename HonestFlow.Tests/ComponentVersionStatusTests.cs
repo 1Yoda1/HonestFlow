@@ -1,5 +1,6 @@
 using HonestFlow.Application.Installation;
 using HonestFlow.Application.Lm;
+using HonestFlow.Models;
 using Xunit;
 
 namespace HonestFlow.Tests
@@ -37,6 +38,80 @@ namespace HonestFlow.Tests
         public void LmDisplayName_RecognizesSupportedUninstallNames(string displayName, bool expected)
         {
             Assert.Equal(expected, LmValidationService.IsLmUninstallDisplayName(displayName));
+        }
+
+        [Fact]
+        public void StatusService_UsesClientVersionsAndClassifiesAllComponents()
+        {
+            var checker = new StubVersionCheckService
+            {
+                AtolVersion = "10.10.8.24 (64-bit)",
+                EsmVersion = "1.6.3.2",
+                ControllerVersion = "1.6.3.1",
+                AtolNeedsUpdate = false,
+                EsmNeedsUpdate = false,
+                ControllerNeedsUpdate = true
+            };
+            var service = new ComponentVersionStatusService(checker, () => "1.0.5");
+            var client = new IPData
+            {
+                Versions = new VersionsData
+                {
+                    LmModule = "1.0.5",
+                    AtolDriver = "10.10.8.24",
+                    ESM = "1.6.3.2",
+                    Controller = "1.6.3.2"
+                }
+            };
+
+            ComponentVersionStatus[] result = service.GetStatuses(client, new VersionsData());
+
+            Assert.Collection(
+                result,
+                status => Assert.Equal(ComponentVersionState.Current, status.State),
+                status => Assert.Equal(ComponentVersionState.Current, status.State),
+                status => Assert.Equal(ComponentVersionState.Current, status.State),
+                status => Assert.Equal(ComponentVersionState.UpdateRequired, status.State));
+        }
+
+        [Fact]
+        public void StatusService_FallsBackToConfiguredVersions()
+        {
+            var checker = new StubVersionCheckService
+            {
+                AtolVersion = "10.10.8.24 (64-bit)",
+                EsmVersion = "1.6.3.2",
+                ControllerVersion = "1.6.3.2"
+            };
+            var service = new ComponentVersionStatusService(checker, () => "1.0.5");
+            var configured = new VersionsData
+            {
+                LmModule = "1.0.5",
+                AtolDriver = "10.10.8.24",
+                ESM = "1.6.3.2",
+                Controller = "1.6.3.2"
+            };
+
+            ComponentVersionStatus[] result = service.GetStatuses(new IPData(), configured);
+
+            Assert.All(result, status => Assert.Equal(ComponentVersionState.Current, status.State));
+        }
+
+        private sealed class StubVersionCheckService : IVersionCheckService
+        {
+            public string AtolVersion { get; init; }
+            public string EsmVersion { get; init; }
+            public string ControllerVersion { get; init; }
+            public bool AtolNeedsUpdate { get; init; }
+            public bool EsmNeedsUpdate { get; init; }
+            public bool ControllerNeedsUpdate { get; init; }
+
+            public bool NeedAtolInstall(IPData selectedIP, string expectedVersion) => AtolNeedsUpdate;
+            public bool NeedEsmInstall(string expectedVersion) => EsmNeedsUpdate;
+            public bool NeedControllerInstall(string expectedVersion) => ControllerNeedsUpdate;
+            public string GetAtolDriverInfo() => AtolVersion;
+            public string GetEsmVersion() => EsmVersion;
+            public string GetControllerVersion() => ControllerVersion;
         }
     }
 }

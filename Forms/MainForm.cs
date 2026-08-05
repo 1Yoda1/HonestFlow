@@ -24,7 +24,6 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -50,8 +49,11 @@ namespace HonestFlow
         private readonly IRuDesktopInstaller _ruDesktopInstaller;
         private readonly HelpRequestEmailSender _helpRequestEmailSender;
         private readonly HelpRequestDeliveryService _helpRequestDeliveryService;
+        private readonly HelpRequestDataBuilder _helpRequestDataBuilder = new();
         private readonly AppRatingEmailSender _appRatingEmailSender;
         private readonly WindowsServiceControlService _serviceControlService;
+        private readonly ComponentVersionStatusService _componentVersionStatusService;
+        private readonly PointStatusReportBuilder _pointStatusReportBuilder = new();
         private readonly ExternalApplicationLauncher _externalApplicationLauncher;
         private readonly WindowIconService _windowIconService;
         private readonly IUserDialogService _dialogService;
@@ -126,6 +128,7 @@ namespace HonestFlow
                 () => _selectedIP?.ClientId);
             _licenseOperationGuard = new LicenseOperationGuard(_licenseAccessPolicy);
             _serviceControlService = new WindowsServiceControlService(_licenseOperationGuard);
+            _componentVersionStatusService = new ComponentVersionStatusService(_logService);
             _licenseSnapshotStore.SnapshotChanged += LicenseSnapshotChanged;
             _notificationTimer.Tick += (_, _) => ClearTransientNotification();
             FormClosed += (_, _) =>
@@ -1437,7 +1440,7 @@ namespace HonestFlow
             btnCheckWithoutPassword.Enabled = false;
             SetNodeChecking(canViewAndRepair);
             Task<ComponentVersionStatus[]> versionStatusTask = canViewAndRepair
-                ? Task.Run(BuildComponentVersionStatuses)
+                ? Task.Run(() => _componentVersionStatusService.GetStatuses(_selectedIP, _remoteVersions))
                 : Task.FromResult(Array.Empty<ComponentVersionStatus>());
             lblStatus.Text = "Проверка служб и связи...";
             lblHeaderStatus.Text = "● Проверка";
@@ -1473,7 +1476,7 @@ namespace HonestFlow
                 }
                 ApplyNodeStatus(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, result.Cloud, "Облако");
                 ApplyRuDesktopStatus(result.RuDesktop);
-                _diagnosticArchiveService.SetPointStatusReport(BuildPointStatusDebugReport(result));
+                _diagnosticArchiveService.SetPointStatusReport(_pointStatusReportBuilder.Build(result));
                 btnPointStatusDetails.Enabled = canViewAndRepair;
 
                 NodeStatus[] visibleStatuses = canViewAndRepair
@@ -1883,7 +1886,7 @@ namespace HonestFlow
                 return;
 
             LogOperatorAction("открыт общий отладочный снимок состояния точки");
-            string report = BuildPointStatusDebugReport(_lastPointStatusResult);
+            string report = _pointStatusReportBuilder.Build(_lastPointStatusResult);
 
             using var dialog = new Form
             {
@@ -1959,55 +1962,6 @@ namespace HonestFlow
             dialog.ShowDialog(this);
         }
 
-        private static string BuildPointStatusDebugReport(PointStatusResult result)
-        {
-            var report = new StringBuilder();
-            report.AppendLine("ОТЛАДОЧНЫЙ СНИМОК СОСТОЯНИЯ ТОЧКИ");
-            report.AppendLine($"Сформирован: {DateTime.Now:dd.MM.yyyy HH:mm:ss}");
-            report.AppendLine("Чувствительные идентификаторы ККТ и токены намеренно не выводятся.");
-
-            AppendNodeDebug(report, "ЛМ ЧЗ", result.Lm);
-            AppendNodeDebug(report, "Контроллер", result.Controller);
-            AppendNodeDebug(report, "ЕСМ", result.Esm);
-            AppendNodeDebug(report, "ККТ", result.Kkt);
-            AppendNodeDebug(report, "Облако", result.Cloud);
-            AppendNodeDebug(report, "RuDesktop", result.RuDesktop);
-            return report.ToString();
-        }
-
-        private static void AppendNodeDebug(StringBuilder report, string name, NodeStatus status)
-        {
-            report.AppendLine();
-            report.AppendLine(new string('=', 72));
-            report.AppendLine(name);
-            report.AppendLine(new string('-', 72));
-            if (status == null)
-            {
-                report.AppendLine("Данные отсутствуют.");
-                return;
-            }
-
-            report.AppendLine($"Уровень: {status.Level}");
-            report.AppendLine($"Короткий статус: {status.ShortText}");
-            report.AppendLine($"Текст в интерфейсе: {ValueOrDash(status.StatusText)}");
-            report.AppendLine($"Доступное действие: {status.ActionText}");
-            report.AppendLine("Службы:");
-            if (status.Services.Count == 0)
-            {
-                report.AppendLine("  — источник не содержит Windows-служб");
-            }
-            else
-            {
-                foreach (ServiceSnapshot service in status.Services)
-                    report.AppendLine($"  — {service.ServiceName}: {service.State}");
-            }
-
-            report.AppendLine("Исходные данные и расчёт:");
-            report.AppendLine(string.IsNullOrWhiteSpace(status.Details)
-                ? "  — подробности отсутствуют"
-                : status.Details);
-        }
-
         private async void BtnRequestHelp_Click(object sender, EventArgs e)
         {
             LogOperatorAction("нажата кнопка запроса помощи");
@@ -2067,15 +2021,20 @@ namespace HonestFlow
                     : null;
 
                 LicenseObservationSnapshot licenseSnapshot = _licenseSnapshotStore.Current;
-                HelpRequestData request = BuildHelpRequestData(
-                    helpRequest,
-                    _selectedIP,
-                    lastClient,
-                    ruDesktopId,
-                    pointStatus,
-                    pointStatusCheckedAt,
-                    pointStatusError,
-                    licenseSnapshot);
+                HelpRequestData request = _helpRequestDataBuilder.Build(new HelpRequestDataContext
+                {
+                    SelectedClient = _selectedIP,
+                    LastClient = lastClient,
+                    RuDesktopId = ruDesktopId,
+                    HonestFlowVersion = System.Windows.Forms.Application.ProductVersion,
+                    FiscalAddress = helpRequest.FiscalAddress,
+                    ProblemType = helpRequest.ProblemType,
+                    Message = helpRequest.Message,
+                    PointStatus = pointStatus,
+                    PointStatusCheckedAt = pointStatusCheckedAt,
+                    PointStatusError = pointStatusError,
+                    LicenseSnapshot = licenseSnapshot
+                });
                 bool hasActiveLicense = licenseSnapshot?.Decision == LicenseDecision.Allowed &&
                     string.Equals(
                         licenseSnapshot.ClientId,
@@ -2208,93 +2167,6 @@ namespace HonestFlow
             return lastKnownId;
         }
 
-        private HelpRequestData BuildHelpRequestData(
-            HelpRequestDialogResult helpRequest,
-            IPData selectedClient,
-            LastAuthorizedClientState lastClient,
-            string ruDesktopId,
-            PointStatusResult pointStatus,
-            DateTimeOffset pointStatusCheckedAt,
-            string pointStatusError,
-            LicenseObservationSnapshot licenseSnapshot)
-        {
-            string clientName = selectedClient?.Name ?? lastClient?.Name;
-            string clientInn = selectedClient?.Inn ?? lastClient?.Inn;
-
-            return new HelpRequestData
-            {
-                RequestId = BuildHelpRequestId(),
-                ClientName = ValueOrDash(clientName),
-                InnMasked = MaskInn(clientInn),
-                MachineName = Environment.MachineName,
-                WindowsUser = Environment.UserName,
-                RuDesktopId = ValueOrDash(ruDesktopId),
-                HonestFlowVersion = System.Windows.Forms.Application.ProductVersion,
-                OsVersion = Environment.OSVersion.ToString(),
-                Architecture = $"ОС {(Environment.Is64BitOperatingSystem ? "x64" : "x86")}, процесс {(Environment.Is64BitProcess ? "x64" : "x86")}",
-                IsAdministrator = Utils.IsAdministrator(),
-                ClientId = selectedClient?.ClientId ?? lastClient?.ClientId,
-                DeviceId = licenseSnapshot?.DeviceId,
-                LicenseDecision = licenseSnapshot?.Decision.ToString(),
-                LicenseTechnicalCode = licenseSnapshot?.TechnicalCode,
-                LicenseSource = licenseSnapshot?.ManifestSource?.ToString(),
-                LicenseRevision = licenseSnapshot?.Revision,
-                FiscalAddress = ValueOrDash(helpRequest.FiscalAddress),
-                ProblemType = ValueOrDash(helpRequest.ProblemType),
-                Message = ValueOrDash(helpRequest.Message),
-                CreatedAt = DateTimeOffset.Now.ToString("o"),
-                PointStatus = BuildHelpRequestPointStatus(
-                    pointStatus,
-                    pointStatusCheckedAt,
-                    pointStatusError)
-            };
-        }
-
-        private ComponentVersionStatus[] BuildComponentVersionStatuses()
-        {
-            VersionsData configured = _remoteVersions ?? ConfigManager.LoadVersions();
-            VersionsData clientVersions = _selectedIP?.Versions;
-            var expected = new VersionsData
-            {
-                LmModule = FirstConfigured(clientVersions?.LmModule, configured?.LmModule),
-                AtolDriver = FirstConfigured(clientVersions?.AtolDriver, configured?.AtolDriver),
-                ESM = FirstConfigured(clientVersions?.ESM, configured?.ESM),
-                Controller = FirstConfigured(clientVersions?.Controller, configured?.Controller)
-            };
-
-            var checker = new VersionCheckService(_logService);
-            string lmVersion = new LmValidationService(_logService).GetInstalledPhysicalVersion();
-            string atolVersion = checker.GetAtolDriverInfo();
-            string esmVersion = checker.GetEsmVersion();
-            string controllerVersion = checker.GetControllerVersion();
-
-            return new[]
-            {
-                ComponentVersionStatus.Create(
-                    "ЛМ ЧЗ",
-                    lmVersion,
-                    expected.LmModule,
-                    CompareVersion(lmVersion, expected.LmModule)),
-                ComponentVersionStatus.Create(
-                    "Драйвер ККТ",
-                    atolVersion,
-                    expected.AtolDriver,
-                    HasExpected(expected.AtolDriver)
-                        ? checker.NeedAtolInstall(_selectedIP, expected.AtolDriver)
-                        : null),
-                ComponentVersionStatus.Create(
-                    "ЕСМ",
-                    esmVersion,
-                    expected.ESM,
-                    HasExpected(expected.ESM) ? checker.NeedEsmInstall(expected.ESM) : null),
-                ComponentVersionStatus.Create(
-                    "Контроллер",
-                    controllerVersion,
-                    expected.Controller,
-                    HasExpected(expected.Controller) ? checker.NeedControllerInstall(expected.Controller) : null)
-            };
-        }
-
         private void ApplyVersionMarkers(ComponentVersionStatus[] statuses)
         {
             Label[] labels = { lblLmNode, lblKktNode, lblEsmNode, lblControllerNode };
@@ -2317,62 +2189,6 @@ namespace HonestFlow
             string installed = status.InstalledVersion ?? "не установлен";
             string expected = status.ExpectedVersion ?? "не загружена";
             return $"Установленная версия: {installed}\nТребуемая версия: {expected}\n{status.StateText}";
-        }
-
-        private static string FirstConfigured(string clientValue, string defaultValue) =>
-            !string.IsNullOrWhiteSpace(clientValue) ? clientValue.Trim() : defaultValue?.Trim();
-
-        private static bool HasExpected(string version) => !string.IsNullOrWhiteSpace(version);
-
-        private static bool? CompareVersion(string installed, string expected)
-        {
-            if (!HasExpected(expected))
-                return null;
-            return !string.Equals(installed?.Trim(), expected.Trim(), StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static HelpRequestPointStatus BuildHelpRequestPointStatus(
-            PointStatusResult result,
-            DateTimeOffset checkedAt,
-            string error)
-        {
-            return new HelpRequestPointStatus
-            {
-                CheckedAt = checkedAt.ToString("o"),
-                Error = error,
-                Lm = BuildHelpRequestNodeStatus(result?.Lm),
-                Controller = BuildHelpRequestNodeStatus(result?.Controller),
-                Esm = BuildHelpRequestNodeStatus(result?.Esm),
-                Kkt = BuildHelpRequestNodeStatus(result?.Kkt),
-                Cloud = BuildHelpRequestNodeStatus(result?.Cloud),
-                RuDesktop = BuildHelpRequestNodeStatus(result?.RuDesktop)
-            };
-        }
-
-        private static HelpRequestNodeStatus BuildHelpRequestNodeStatus(NodeStatus status)
-        {
-            if (status == null)
-                return null;
-
-            return new HelpRequestNodeStatus
-            {
-                Level = status.Level.ToString(),
-                ShortText = status.ShortText,
-                StatusText = status.StatusText,
-                Details = status.Details,
-                Services = status.Services
-                    .Select(service => new HelpRequestServiceStatus
-                    {
-                        Name = service.ServiceName,
-                        State = service.State
-                    })
-                    .ToArray()
-            };
-        }
-
-        private static string BuildHelpRequestId()
-        {
-            return $"{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}".Substring(0, 20).ToUpperInvariant();
         }
 
         private HelpRequestDialogResult ShowHelpRequestDialog()
@@ -2599,27 +2415,6 @@ namespace HonestFlow
                 pointAddress,
                 PointAddressSource.Manual);
             return pointAddress;
-        }
-
-        private static string MaskInn(string inn)
-        {
-            if (string.IsNullOrWhiteSpace(inn))
-                return "-";
-
-            inn = inn.Trim();
-            if (inn.Length <= 4)
-                return new string('*', inn.Length);
-
-            int left = Math.Min(2, inn.Length);
-            int right = Math.Min(2, inn.Length - left);
-            return inn.Substring(0, left) +
-                   new string('*', Math.Max(0, inn.Length - left - right)) +
-                   inn.Substring(inn.Length - right);
-        }
-
-        private static string ValueOrDash(string value)
-        {
-            return string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
         }
 
         private sealed class HelpRequestDialogResult
