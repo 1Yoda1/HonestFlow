@@ -1,6 +1,5 @@
 using HonestFlow.Application.Bootstrap;
 using HonestFlow.Infrastructure;
-using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Models;
 using HonestFlow.Application.Auth;
@@ -15,12 +14,10 @@ using HonestFlow.Application.PointStatus;
 using HonestFlow.Application.PointIdentity;
 using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Application.Ui;
-using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Infrastructure.Api;
 using HonestFlow.Infrastructure.Composition;
 using HonestFlow.Models.Licensing;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -34,30 +31,21 @@ namespace HonestFlow
     public partial class MainForm : Form, IUserNotificationSink
     {
         private readonly ILogService _logService;
-        private readonly IProgressService _progressService;
-        private IAuthService _authService;
-        private IInstallationService _installationService;
+        private readonly SellerAuthenticationWorkflow _sellerAuthenticationWorkflow;
         private readonly ComponentInstallationWorkflow _componentInstallationWorkflow;
-        private bool _useRemoteConfigMode = false;
-        private List<IPData> _remoteIps;
+        private readonly MaintenanceWorkflow _maintenanceWorkflow;
         private VersionsData _remoteVersions;
         private IPData _selectedIP;
 
-        private readonly DiagnosticArchiveService _diagnosticArchiveService;
-        private readonly DiagnosticsEmailSender _diagnosticsEmailSender;
-        private readonly LmDatabaseRestoreService _lmDatabaseRestoreService;
-        private readonly LicensedLmInitializationService _lmInitializationService;
-        private readonly RuDesktopService _ruDesktopService;
-        private readonly IRuDesktopInstaller _ruDesktopInstaller;
-        private readonly HelpRequestDeliveryService _helpRequestDeliveryService;
-        private readonly HelpRequestDataBuilder _helpRequestDataBuilder;
+        private readonly DiagnosticWorkflowService _diagnosticWorkflowService;
+        private readonly RuDesktopWorkflow _ruDesktopWorkflow;
+        private readonly HelpRequestWorkflow _helpRequestWorkflow;
         private readonly AppRatingEmailSender _appRatingEmailSender;
-        private readonly WindowsServiceControlService _serviceControlService;
+        private readonly PointRepairWorkflow _pointRepairWorkflow;
         private readonly PointStatusReportBuilder _pointStatusReportBuilder;
         private readonly ExternalApplicationLauncher _externalApplicationLauncher;
         private readonly WindowIconService _windowIconService;
-        private readonly IUserDialogService _dialogService;
-        private IPointStatusService _pointStatusService;
+        private readonly MainFormDialogService _mainFormDialogs;
         private readonly PointStatusRefreshService _pointStatusRefreshService;
         private PointStatusResult _lastPointStatusResult;
         private bool _statusRefreshRunning;
@@ -67,17 +55,15 @@ namespace HonestFlow
         private LicenseObservationSnapshot _lastPresentedLicenseSnapshot;
         private readonly ILicenseObservationSnapshotStore _licenseSnapshotStore;
         private readonly ILicenseAccessPolicy _licenseAccessPolicy;
-        private readonly ILicenseOperationGuard _licenseOperationGuard;
+        private readonly LicensePresentationService _licensePresentationService;
+        private readonly LicenseRefreshWorkflow _licenseRefreshWorkflow;
         private readonly ToolTip _licenseToolTip = new();
         private readonly System.Windows.Forms.Timer _notificationTimer = new();
-        private readonly DeviceRegistrationCoordinator _deviceRegistrationCoordinator;
-        private readonly IPointAddressService _pointAddressService;
+        private readonly DeviceRegistrationWorkflow _deviceRegistrationWorkflow;
         private readonly IPData _startupAuthorizedClient;
         private readonly bool _startupAuthenticationHandled;
         private readonly CancellationTokenSource _lifetimeCancellation = new();
         private CancellationTokenSource _installationCancellation;
-        private readonly HashSet<string> _registrationPromptsShown =
-            new(StringComparer.Ordinal);
 
         private static readonly Color StatusGreen = Color.FromArgb(34, 197, 94);
         private static readonly Color StatusYellow = Color.FromArgb(251, 191, 36);
@@ -109,29 +95,23 @@ namespace HonestFlow
                 () => _selectedIP?.ClientId);
             startup = dependencies.Startup;
             _logService = dependencies.LogService;
-            _progressService = dependencies.ProgressService;
-            _dialogService = dependencies.DialogService;
-            _ruDesktopService = dependencies.RuDesktopService;
-            _ruDesktopInstaller = dependencies.RuDesktopInstaller;
-            _diagnosticArchiveService = dependencies.DiagnosticArchiveService;
-            _diagnosticsEmailSender = dependencies.DiagnosticsEmailSender;
-            _helpRequestDeliveryService = dependencies.HelpRequestDeliveryService;
-            _helpRequestDataBuilder = dependencies.HelpRequestDataBuilder;
+            _mainFormDialogs = dependencies.MainFormDialogService;
+            _ruDesktopWorkflow = dependencies.RuDesktopWorkflow;
+            _diagnosticWorkflowService = dependencies.DiagnosticWorkflowService;
+            _helpRequestWorkflow = dependencies.HelpRequestWorkflow;
             _appRatingEmailSender = dependencies.AppRatingEmailSender;
-            _pointAddressService = dependencies.PointAddressService;
             _externalApplicationLauncher = dependencies.ExternalApplicationLauncher;
             _windowIconService = dependencies.WindowIconService;
-            _deviceRegistrationCoordinator = dependencies.DeviceRegistrationCoordinator;
+            _deviceRegistrationWorkflow = dependencies.DeviceRegistrationWorkflow;
             _licenseSnapshotStore = dependencies.LicenseSnapshotStore;
             _licenseAccessPolicy = dependencies.LicenseAccessPolicy;
-            _licenseOperationGuard = dependencies.LicenseOperationGuard;
-            _serviceControlService = dependencies.ServiceControlService;
+            _licensePresentationService = dependencies.LicensePresentationService;
+            _licenseRefreshWorkflow = dependencies.LicenseRefreshWorkflow;
+            _sellerAuthenticationWorkflow = dependencies.SellerAuthenticationWorkflow;
+            _pointRepairWorkflow = dependencies.PointRepairWorkflow;
             _pointStatusReportBuilder = dependencies.PointStatusReportBuilder;
-            _installationService = dependencies.InstallationService;
             _componentInstallationWorkflow = dependencies.ComponentInstallationWorkflow;
-            _lmDatabaseRestoreService = dependencies.LmDatabaseRestoreService;
-            _lmInitializationService = dependencies.LmInitializationService;
-            _pointStatusService = dependencies.PointStatusService;
+            _maintenanceWorkflow = dependencies.MaintenanceWorkflow;
             _pointStatusRefreshService = dependencies.PointStatusRefreshService;
             _licenseSnapshotStore.SnapshotChanged += LicenseSnapshotChanged;
             _notificationTimer.Tick += (_, _) => ClearTransientNotification();
@@ -142,10 +122,7 @@ namespace HonestFlow
                 _licenseSnapshotStore.SnapshotChanged -= LicenseSnapshotChanged;
             };
 
-            _useRemoteConfigMode = startup.UseRemoteConfigMode;
-            _remoteIps = startup.Ips ?? startup.RemoteIps;
             _remoteVersions = startup.RemoteVersions;
-            _authService = startup.AuthService;
             _startupAuthorizedClient = startup.AuthorizedClient;
             _startupAuthenticationHandled = startup.SellerAuthenticationHandled;
             InitializeUiState();
@@ -352,40 +329,7 @@ namespace HonestFlow
 
         private async Task RunPeriodicLicenseRefreshAsync(CancellationToken cancellationToken)
         {
-            if (_authService is not ILicenseObservationRefresher refresher)
-                return;
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    TimeSpan delay = TimeSpan.FromMinutes(60 + Random.Shared.NextDouble() * 15);
-                    await Task.Delay(delay, cancellationToken);
-
-                    IPData client = _selectedIP;
-                    if (client == null)
-                        continue;
-
-                    LicenseObservationSnapshot snapshot = await refresher.RefreshLicenseAsync(
-                        client,
-                        null,
-                        cancellationToken);
-                    Logger.Info(
-                        $"Event=PeriodicLicenseRefresh Decision={snapshot?.Decision} " +
-                        $"TechnicalCode={snapshot?.TechnicalCode}",
-                        nameof(MainForm));
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning(
-                        $"Event=PeriodicLicenseRefresh Status=Failed ErrorType={ex.GetType().Name}",
-                        nameof(MainForm));
-                }
-            }
+            await _licenseRefreshWorkflow.RunPeriodicAsync(() => _selectedIP, cancellationToken);
         }
 
         private async void BtnRefreshLicense_Click(object sender, EventArgs e)
@@ -396,7 +340,7 @@ namespace HonestFlow
                 return;
             }
 
-            if (_authService is not ILicenseObservationRefresher refresher)
+            if (!_licenseRefreshWorkflow.IsAvailable)
             {
                 ShowInlineWarning("Повторная проверка лицензии недоступна в текущем режиме.", "Обновление лицензии");
                 return;
@@ -424,7 +368,7 @@ namespace HonestFlow
                     };
                 });
 
-                LicenseObservationSnapshot snapshot = await refresher.RefreshLicenseAsync(
+                LicenseObservationSnapshot snapshot = await _licenseRefreshWorkflow.RefreshAsync(
                     _selectedIP,
                     progress,
                     CancellationToken.None);
@@ -476,7 +420,7 @@ namespace HonestFlow
                 btnRateApplication.Enabled = false;
                 lblStatus.Text = "Отправка оценки HonestFlow...";
 
-                string pointAddress = ResolveCurrentPointAddress().Address;
+                string pointAddress = _mainFormDialogs.ResolveCurrentPointAddress().Address;
                 await _appRatingEmailSender.Send(_selectedIP.Name, pointAddress);
 
                 btnRateApplication.Visible = false;
@@ -591,10 +535,12 @@ namespace HonestFlow
 
         private async Task<LicenseAuthenticationResult> AuthenticateWithLicenseAsync(string password)
         {
-            if (_authService is not ILicenseAuthenticatingAuthService licenseAuth)
+            if (!_sellerAuthenticationWorkflow.ReportsLicenseProgress)
             {
-                IPData client = _authService.Authenticate(password);
-                return new LicenseAuthenticationResult(client, _licenseSnapshotStore.Current);
+                return await _sellerAuthenticationWorkflow.AuthenticateAsync(
+                    password,
+                    null,
+                    CancellationToken.None);
             }
 
             using var progressForm = new LicenseCheckProgressForm();
@@ -604,7 +550,7 @@ namespace HonestFlow
 
             try
             {
-                LicenseAuthenticationResult result = await licenseAuth.AuthenticateAsync(
+                LicenseAuthenticationResult result = await _sellerAuthenticationWorkflow.AuthenticateAsync(
                     password,
                     progress,
                     CancellationToken.None);
@@ -725,25 +671,27 @@ namespace HonestFlow
 
             try
             {
-                DiagnosticLogSelection selection = ShowDiagnosticLogSelectionDialog();
+                DiagnosticLogSelection selection = _mainFormDialogs.ShowDiagnosticLogSelection();
                 if (selection == null)
                 {
                     LogOperatorAction("сбор диагностики отменен на выборе логов");
                     return;
                 }
 
-                LogOperatorAction($"запущен сбор диагностики: {DescribeDiagnosticSelection(selection)}");
+                LogOperatorAction($"запущен сбор диагностики: {DiagnosticWorkflowService.DescribeSelection(selection)}");
                 btnDiagnostics.Enabled = false;
                 progressBar.Visible = true;
                 progressBar.Value = 0;
                 lblStatus.Text = "Сборка архива диагностики...";
 
-                string pointAddress = ResolvePointAddressForOnlineAction(
+                string pointAddress = _mainFormDialogs.ResolvePointAddressForOnlineAction(
                     "Сбор диагностики",
                     "Для диагностического архива укажите адрес торговой точки.");
 
-                archiveInfo = await Task.Run(() =>
-                    _diagnosticArchiveService.CreateArchiveInfo(selection, pointAddress));
+                archiveInfo = await _diagnosticWorkflowService.CreateArchiveAsync(
+                    selection,
+                    pointAddress,
+                    _lifetimeCancellation.Token);
                 string archivePath = archiveInfo.ArchivePath;
                 progressBar.Value = 35;
                 lblStatus.Text = $"Архив собран: {Path.GetFileName(archivePath)}";
@@ -773,7 +721,7 @@ namespace HonestFlow
                 }
 
                 LogOperatorAction("оператор подтвердил отправку диагностики на почту");
-                await _diagnosticsEmailSender.SendWithRetries(archivePath, SetDiagnosticsProgress, archiveInfo.FiscalAddress);
+                await _diagnosticWorkflowService.SendArchiveAsync(archiveInfo, SetDiagnosticsProgress);
 
                 MessageBox.Show(
                     $"Диагностический архив создан и отправлен:\n{archivePath}",
@@ -835,7 +783,9 @@ namespace HonestFlow
                 return;
             }
 
-            var action = ShowMaintenanceActionDialog();
+            Infrastructure.Dialogs.MaintenanceAction? action = _mainFormDialogs.ShowMaintenanceAction(
+                _licenseAccessPolicy.Check(LicenseOperation.ReinstallComponents).IsAllowed,
+                _licenseAccessPolicy.Check(LicenseOperation.RestoreLmDatabase).IsAllowed);
             if (action == null)
             {
                 LogOperatorAction("меню обслуживания точки закрыто без выбора");
@@ -844,12 +794,12 @@ namespace HonestFlow
 
             switch (action.Value)
             {
-                case MaintenanceAction.ReinstallComponents:
+                case Infrastructure.Dialogs.MaintenanceAction.ReinstallComponents:
                     LogOperatorAction("выбрано обслуживание: переустановить компоненты");
                     BtnReinstallComponents_Click(sender, e);
                     break;
 
-                case MaintenanceAction.RestoreLmDatabase:
+                case Infrastructure.Dialogs.MaintenanceAction.RestoreLmDatabase:
                     LogOperatorAction("выбрано обслуживание: восстановить базу ЛМ ЧЗ");
                     BtnRestoreLmDatabase_Click(sender, e);
                     break;
@@ -863,7 +813,7 @@ namespace HonestFlow
             if (!EnsureNoLongOperation("ручная переустановка компонентов"))
                 return;
 
-            if (!Utils.IsAdministrator())
+            if (!_maintenanceWorkflow.CanModifySystem())
             {
                 LogOperatorAction("ручная переустановка отменена: нет прав администратора", isError: true);
                 MessageBox.Show(
@@ -881,14 +831,14 @@ namespace HonestFlow
                 return;
             }
 
-            var components = ShowComponentSelectionDialog();
+            var components = _mainFormDialogs.ShowComponentSelection();
             if (components == null || components.Count == 0)
             {
                 LogOperatorAction("ручная переустановка отменена: компоненты не выбраны");
                 return;
             }
 
-            string componentNames = string.Join(", ", components.Select(GetComponentDisplayName));
+            string componentNames = string.Join(", ", components.Select(MainFormDialogService.GetComponentDisplayName));
             LogOperatorAction($"для ручной переустановки выбраны компоненты: {componentNames}");
 
             var confirm = MessageBox.Show(
@@ -919,7 +869,7 @@ namespace HonestFlow
                 lblStatus.Visible = true;
                 lblStatus.Text = "Ручная переустановка компонентов...";
 
-                bool success = await _installationService.ReinstallSelectedComponents(selectedIP, components);
+                bool success = await _maintenanceWorkflow.ReinstallAsync(selectedIP, components);
                 if (!success)
                 {
                     LogOperatorAction("ручная переустановка завершена с ошибками", isError: true);
@@ -949,7 +899,7 @@ namespace HonestFlow
             if (!EnsureNoLongOperation("восстановление базы ЛМ ЧЗ"))
                 return;
 
-            if (!Utils.IsAdministrator())
+            if (!_maintenanceWorkflow.CanModifySystem())
             {
                 LogOperatorAction("восстановление базы ЛМ ЧЗ отменено: нет прав администратора", isError: true);
                 MessageBox.Show(
@@ -984,7 +934,7 @@ namespace HonestFlow
                 lblStatus.Visible = true;
                 lblStatus.Text = "Восстановление базы ЛМ ЧЗ...";
 
-                bool success = await _lmDatabaseRestoreService.Restore(selectedIP);
+                bool success = await _maintenanceWorkflow.RestoreLmDatabaseAsync(selectedIP);
                 if (success)
                 {
                     LogOperatorAction("восстановление базы ЛМ ЧЗ завершено успешно");
@@ -1039,259 +989,6 @@ namespace HonestFlow
             return selectedIP;
         }
 
-        private DiagnosticLogSelection ShowDiagnosticLogSelectionDialog()
-        {
-            var items = new[]
-            {
-                new SelectionItem<string>("system", "Сведения о системе и статусы служб"),
-                new SelectionItem<string>("hf", "Логи HonestFlow"),
-                new SelectionItem<string>("lm", "Логи ЛМ ЧЗ"),
-                new SelectionItem<string>("esm", "Логи ЕСМ"),
-                new SelectionItem<string>("kkt", "Лог ККТ / АТОЛ")
-            };
-
-            var selected = ShowCheckedSelectionDialog(
-                "Сбор диагностики",
-                "Выберите, какие логи включить:",
-                items,
-                checkAll: true);
-
-            if (selected == null)
-                return null;
-
-            var keys = selected.Select(x => x.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var selection = new DiagnosticLogSelection
-            {
-                IncludeSystemInfo = keys.Contains("system"),
-                IncludeHonestFlow = keys.Contains("hf"),
-                IncludeLm = keys.Contains("lm"),
-                IncludeEsm = keys.Contains("esm"),
-                IncludeKkt = keys.Contains("kkt")
-            };
-
-            if (!selection.HasAnySelection)
-            {
-                LogOperatorAction("сбор диагностики: оператор не выбрал ни одной группы логов");
-                ShowInlineWarning("Выберите хотя бы одну группу логов.", "Диагностика");
-                return null;
-            }
-
-            return selection;
-        }
-
-        private IReadOnlyCollection<InstallationComponent> ShowComponentSelectionDialog()
-        {
-            var items = new[]
-            {
-                new SelectionItem<InstallationComponent>(InstallationComponent.LmModule, "ЛМ ЧЗ"),
-                new SelectionItem<InstallationComponent>(InstallationComponent.AtolDriver, "Драйвер АТОЛ"),
-                new SelectionItem<InstallationComponent>(InstallationComponent.Esm, "ЕСМ"),
-                new SelectionItem<InstallationComponent>(InstallationComponent.Controller, "Контроллер ЛМ")
-            };
-
-            var selected = ShowCheckedSelectionDialog(
-                "Ручная переустановка",
-                "Выберите компоненты для переустановки:",
-                items,
-                checkAll: false);
-
-            if (selected == null)
-                return null;
-
-            if (selected.Count == 0)
-            {
-                LogOperatorAction("ручная переустановка: оператор не выбрал ни одного компонента");
-                ShowInlineWarning("Выберите хотя бы один компонент.", "Ручная переустановка");
-                return null;
-            }
-
-            return selected.Select(x => x.Value).ToArray();
-        }
-
-        private MaintenanceAction? ShowMaintenanceActionDialog()
-        {
-            using var form = new Form
-            {
-                Text = "Обслуживание точки",
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                ClientSize = new Size(420, 190)
-            };
-
-            var layout = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 1,
-                RowCount = 4,
-                Padding = new Padding(12)
-            };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-
-            var label = new Label
-            {
-                Text = "Выберите действие обслуживания:",
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-
-            var reinstallButton = new Button
-            {
-                Text = "Переустановить компоненты",
-                Dock = DockStyle.Fill,
-                Margin = new Padding(0, 4, 0, 4)
-            };
-
-            var restoreButton = new Button
-            {
-                Text = "Восстановить базу ЛМ ЧЗ",
-                Dock = DockStyle.Fill,
-                Margin = new Padding(0, 4, 0, 4)
-            };
-
-            SetFeatureAvailability(reinstallButton, LicenseOperation.ReinstallComponents);
-            SetFeatureAvailability(restoreButton, LicenseOperation.RestoreLmDatabase);
-
-            MaintenanceAction? selected = null;
-
-            reinstallButton.Click += (s, e) =>
-            {
-                selected = MaintenanceAction.ReinstallComponents;
-                form.DialogResult = DialogResult.OK;
-                form.Close();
-            };
-
-            restoreButton.Click += (s, e) =>
-            {
-                selected = MaintenanceAction.RestoreLmDatabase;
-                form.DialogResult = DialogResult.OK;
-                form.Close();
-            };
-
-            layout.Controls.Add(label, 0, 0);
-            layout.Controls.Add(reinstallButton, 0, 1);
-            layout.Controls.Add(restoreButton, 0, 2);
-            form.Controls.Add(layout);
-
-            return form.ShowDialog(this) == DialogResult.OK ? selected : null;
-        }
-
-        private static List<SelectionItem<T>> ShowCheckedSelectionDialog<T>(
-            string title,
-            string caption,
-            SelectionItem<T>[] items,
-            bool checkAll)
-        {
-            using var form = new Form
-            {
-                Text = title,
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                ClientSize = new Size(420, 300)
-            };
-
-            var layout = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 1,
-                RowCount = 3,
-                Padding = new Padding(12)
-            };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
-
-            var label = new Label
-            {
-                Text = caption,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-
-            var checkedList = new CheckedListBox
-            {
-                Dock = DockStyle.Fill,
-                CheckOnClick = true
-            };
-
-            foreach (var item in items)
-                checkedList.Items.Add(item, checkAll);
-
-            var buttons = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.RightToLeft
-            };
-
-            var okButton = new Button
-            {
-                Text = "OK",
-                DialogResult = DialogResult.OK,
-                Width = 90
-            };
-
-            var cancelButton = new Button
-            {
-                Text = "Отмена",
-                DialogResult = DialogResult.Cancel,
-                Width = 90
-            };
-
-            buttons.Controls.Add(okButton);
-            buttons.Controls.Add(cancelButton);
-            layout.Controls.Add(label, 0, 0);
-            layout.Controls.Add(checkedList, 0, 1);
-            layout.Controls.Add(buttons, 0, 2);
-            form.Controls.Add(layout);
-            form.AcceptButton = okButton;
-            form.CancelButton = cancelButton;
-
-            if (form.ShowDialog() != DialogResult.OK)
-                return null;
-
-            return checkedList.CheckedItems
-                .Cast<SelectionItem<T>>()
-                .ToList();
-        }
-
-        private static string GetComponentDisplayName(InstallationComponent component)
-        {
-            return component switch
-            {
-                InstallationComponent.LmModule => "ЛМ ЧЗ",
-                InstallationComponent.AtolDriver => "Драйвер АТОЛ",
-                InstallationComponent.Esm => "ЕСМ",
-                InstallationComponent.Controller => "Контроллер ЛМ",
-                _ => component.ToString()
-            };
-        }
-
-        private sealed class SelectionItem<T>
-        {
-            public SelectionItem(T value, string text)
-            {
-                Value = value;
-                Text = text;
-            }
-
-            public T Value { get; }
-            private string Text { get; }
-
-            public override string ToString() => Text;
-        }
-
-        private enum MaintenanceAction
-        {
-            ReinstallComponents,
-            RestoreLmDatabase
-        }
-
         private async void BtnRefreshStatus_Click(object sender, EventArgs e)
         {
             LogOperatorAction("запрошено ручное обновление статусов точки");
@@ -1319,11 +1016,12 @@ namespace HonestFlow
             if (!status.CanManageServices)
             {
                 LogOperatorAction($"открыты детали состояния: {status.ShortText}");
-                ShowNodeDetails(status);
+                _mainFormDialogs.ShowNodeDetails(status);
                 return;
             }
 
-            if (!Utils.IsAdministrator())
+            ServiceActionPlan plan = _pointRepairWorkflow.CreateServiceActionPlan(status);
+            if (!plan.HasAdministratorAccess)
             {
                 LogOperatorAction("управление службами отменено: нет прав администратора", isError: true);
                 MessageBox.Show(
@@ -1334,9 +1032,9 @@ namespace HonestFlow
                 return;
             }
 
-            bool shouldStart = status.Services.Any(x => !x.IsRunning);
-            string actionName = shouldStart ? "запустить" : "перезапустить";
-            string serviceList = string.Join(", ", status.Services.Select(x => x.ServiceName));
+            bool shouldStart = plan.ShouldStart;
+            string actionName = plan.ActionName;
+            string serviceList = plan.ServiceList;
             LogOperatorAction($"запрошено действие со службами: {actionName} ({serviceList})");
 
             if (!shouldStart)
@@ -1369,14 +1067,7 @@ namespace HonestFlow
                 btnCheckWithoutPassword.Enabled = false;
                 lblStatus.Text = $"Пытаюсь {actionName} службы: {serviceList}";
 
-                if (shouldStart)
-                    await _serviceControlService.StartStoppedServicesAsync(
-                        status.Services,
-                        LicenseOperation.ManageServices);
-                else
-                    await _serviceControlService.RestartServicesAsync(
-                        status.Services,
-                        LicenseOperation.ManageServices);
+                await _pointRepairWorkflow.ExecuteServiceActionAsync(plan, serviceFeature);
 
                 lblStatus.Text = "Операция со службами завершена";
                 LogOperatorAction($"операция со службами завершена: {actionName} ({serviceList})");
@@ -1468,7 +1159,7 @@ namespace HonestFlow
                 }
                 ApplyNodeStatus(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, result.Cloud, "Облако");
                 ApplyRuDesktopStatus(result.RuDesktop);
-                _diagnosticArchiveService.SetPointStatusReport(refresh.DiagnosticReport);
+                _diagnosticWorkflowService.SetPointStatusReport(refresh.DiagnosticReport);
                 btnPointStatusDetails.Enabled = canViewAndRepair;
 
                 lblHeaderStatus.Text = refresh.OverallLevel == NodeLevel.Error
@@ -1605,24 +1296,9 @@ namespace HonestFlow
             try
             {
                 LogOperatorAction("восстановление служб ЛМ ЧЗ начато");
-                lblStatus.Text = "Запускаем службу Regime...";
-                await _serviceControlService.StartServiceAsync(
-                    "regime",
-                    LicenseOperation.RecoverLmServices);
-
-                lblStatus.Text = "Ожидаем запуск Yenisei через Regime...";
-                await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
-
-                if (!_serviceControlService.IsServiceRunning("yenisei"))
-                {
-                    lblStatus.Text = "Yenisei не запустилась автоматически. Запускаем...";
-                    await _serviceControlService.StartServiceAsync(
-                        "yenisei",
-                        LicenseOperation.RecoverLmServices);
-                }
-
-                lblStatus.Text = "Ожидаем готовность API ЛМ ЧЗ...";
-                await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
+                await _pointRepairWorkflow.RecoverLmServicesAsync(
+                    message => lblStatus.Text = message,
+                    _lifetimeCancellation.Token);
                 await RefreshPointStatusAsync(allowDuringLongOperation: true);
                 LogOperatorAction("восстановление служб ЛМ ЧЗ завершено");
             }
@@ -1673,8 +1349,10 @@ namespace HonestFlow
             try
             {
                 LogOperatorAction("ручная инициализация ЛМ ЧЗ начата");
-                lblStatus.Text = "Инициализируем ЛМ ЧЗ...";
-                ApiSimpleResponse result = await _lmInitializationService.InitializeAsync(_selectedIP.Token);
+                ApiSimpleResponse result = await _pointRepairWorkflow.InitializeLmAsync(
+                    _selectedIP.Token,
+                    message => lblStatus.Text = message,
+                    _lifetimeCancellation.Token);
                 if (!result.IsSuccess)
                 {
                     LogOperatorAction(
@@ -1688,8 +1366,6 @@ namespace HonestFlow
                     return;
                 }
 
-                lblStatus.Text = "Инициализация отправлена. Ожидаем изменение статуса...";
-                await Task.Delay(TimeSpan.FromSeconds(15), _lifetimeCancellation.Token);
                 await RefreshPointStatusAsync(allowDuringLongOperation: true);
                 LogOperatorAction("ручная инициализация ЛМ ЧЗ завершена");
                 MessageBox.Show(
@@ -1761,7 +1437,7 @@ namespace HonestFlow
                     ? "Переустановка"
                     : "Установка";
 
-            RuDesktopPackage package = RuDesktopInstaller.GetPackageForCurrentOperatingSystem();
+            RuDesktopPackage package = _ruDesktopWorkflow.GetInstallationPackage();
             DialogResult confirmation = MessageBox.Show(
                 $"{action} RuDesktop {package.Version}?\n\n" +
                 $"Пакет: {package.FileName}\n" +
@@ -1794,7 +1470,10 @@ namespace HonestFlow
                     lblStatus.Text = value.Message;
                 });
 
-                RuDesktopInstallResult result = await _ruDesktopInstaller.InstallAsync(progress);
+                RuDesktopWorkflowInstallResult workflowResult = await _ruDesktopWorkflow.InstallAsync(
+                    progress,
+                    _lifetimeCancellation.Token);
+                RuDesktopInstallResult result = workflowResult.InstallResult;
                 if (!result.IsSuccess)
                 {
                     MessageBoxIcon icon = result.Status == RuDesktopInstallStatus.UserCancelled
@@ -1805,10 +1484,7 @@ namespace HonestFlow
                     return;
                 }
 
-                _ruDesktopService.ResetLocalConfigurationAfterInstallation();
-                RuDesktopStatus updatedStatus = await _ruDesktopService.WaitForReady(
-                    timeout: TimeSpan.FromSeconds(15),
-                    pollInterval: TimeSpan.FromSeconds(1));
+                RuDesktopStatus updatedStatus = workflowResult.Status;
                 await RefreshPointStatusAsync(allowDuringLongOperation: true);
 
                 string idText = string.IsNullOrWhiteSpace(updatedStatus.Id)
@@ -1859,7 +1535,7 @@ namespace HonestFlow
             if (sender is Button button && button.Tag is NodeStatus status)
             {
                 LogOperatorAction($"открыты детали состояния: {status.ShortText}");
-                ShowNodeDetails(status);
+                _mainFormDialogs.ShowNodeDetails(status);
             }
         }
 
@@ -1873,79 +1549,7 @@ namespace HonestFlow
 
             LogOperatorAction("открыт общий отладочный снимок состояния точки");
             string report = _pointStatusReportBuilder.Build(_lastPointStatusResult);
-
-            using var dialog = new Form
-            {
-                Text = "Подробнее — состояние точки",
-                StartPosition = FormStartPosition.CenterParent,
-                Size = new Size(820, 650),
-                MinimumSize = new Size(680, 480),
-                ShowIcon = false,
-                ShowInTaskbar = false,
-                MaximizeBox = true,
-                MinimizeBox = false
-            };
-            var textBox = new TextBox
-            {
-                Dock = DockStyle.Fill,
-                Multiline = true,
-                ReadOnly = true,
-                ScrollBars = ScrollBars.Both,
-                WordWrap = false,
-                BackColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle,
-                Font = new Font("Consolas", 10F),
-                Text = report
-            };
-            var titleLabel = new Label
-            {
-                AutoSize = true,
-                Font = new Font("Segoe UI Semibold", 14F),
-                ForeColor = Color.FromArgb(30, 41, 59),
-                Location = new Point(18, 12),
-                Text = "Состояние всех узлов"
-            };
-            var subtitleLabel = new Label
-            {
-                AutoSize = true,
-                Font = new Font("Segoe UI", 9F),
-                ForeColor = Color.FromArgb(100, 116, 139),
-                Location = new Point(20, 42),
-                Text = "Исходные статусы, принятые решения и доступные действия"
-            };
-            var header = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 72,
-                BackColor = Color.FromArgb(248, 250, 252)
-            };
-            header.Controls.Add(titleLabel);
-            header.Controls.Add(subtitleLabel);
-            var closeButton = new Button
-            {
-                Text = "Закрыть",
-                DialogResult = DialogResult.OK,
-                Dock = DockStyle.Right,
-                Width = 120,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(37, 99, 235),
-                ForeColor = Color.White
-            };
-            closeButton.FlatAppearance.BorderSize = 0;
-            var footer = new Panel
-            {
-                Dock = DockStyle.Bottom,
-                Height = 54,
-                Padding = new Padding(0, 8, 0, 4),
-                BackColor = Color.FromArgb(248, 250, 252)
-            };
-            footer.Controls.Add(closeButton);
-            dialog.Controls.Add(textBox);
-            dialog.Controls.Add(header);
-            dialog.Controls.Add(footer);
-            dialog.AcceptButton = closeButton;
-            dialog.CancelButton = closeButton;
-            dialog.ShowDialog(this);
+            _mainFormDialogs.ShowPointStatusReport(report);
         }
 
         private async void BtnRequestHelp_Click(object sender, EventArgs e)
@@ -1973,7 +1577,7 @@ namespace HonestFlow
                 return;
             }
 
-            HelpRequestDialogResult helpRequest = ShowHelpRequestDialog();
+            Infrastructure.Dialogs.HelpRequestDialogResult helpRequest = _mainFormDialogs.ShowHelpRequest();
             if (helpRequest == null)
             {
                 LogOperatorAction("запрос помощи отменен оператором");
@@ -1985,29 +1589,11 @@ namespace HonestFlow
                 btnRuDesktopAction.Enabled = false;
                 lblStatus.Visible = true;
                 lblStatus.Text = "Проверка состояния точки для заявки...";
-
-                PointStatusResult pointStatus = null;
-                string pointStatusError = null;
-                DateTimeOffset pointStatusCheckedAt = DateTimeOffset.Now;
-                try
-                {
-                    pointStatus = await _pointStatusService.CheckAsync(_lifetimeCancellation.Token);
-                    pointStatusCheckedAt = DateTimeOffset.Now;
-                }
-                catch (Exception statusException)
-                {
-                    pointStatusError = statusException.Message;
-                    _logService.LogDebug($"Не удалось собрать статусы для заявки помощи: {statusException.Message}");
-                }
-
-                lblStatus.Text = "Отправка запроса помощи...";
-
                 LastAuthorizedClientState lastClient = _selectedIP == null
-                    ? _ruDesktopService.GetLastAuthorizedClient()
+                    ? _ruDesktopWorkflow.GetLastAuthorizedClient()
                     : null;
-
                 LicenseObservationSnapshot licenseSnapshot = _licenseSnapshotStore.Current;
-                HelpRequestData request = _helpRequestDataBuilder.Build(new HelpRequestDataContext
+                await _helpRequestWorkflow.SendAsync(new HelpRequestWorkflowInput
                 {
                     SelectedClient = _selectedIP,
                     LastClient = lastClient,
@@ -2016,21 +1602,8 @@ namespace HonestFlow
                     FiscalAddress = helpRequest.FiscalAddress,
                     ProblemType = helpRequest.ProblemType,
                     Message = helpRequest.Message,
-                    PointStatus = pointStatus,
-                    PointStatusCheckedAt = pointStatusCheckedAt,
-                    PointStatusError = pointStatusError,
                     LicenseSnapshot = licenseSnapshot
-                });
-                bool hasActiveLicense = licenseSnapshot?.Decision == LicenseDecision.Allowed &&
-                    string.Equals(
-                        licenseSnapshot.ClientId,
-                        _selectedIP?.ClientId ?? lastClient?.ClientId,
-                        StringComparison.Ordinal);
-                await _helpRequestDeliveryService.SendAsync(
-                    request,
-                    hasActiveLicense,
-                    _selectedIP?.ClientId ?? lastClient?.ClientId,
-                    licenseSnapshot?.DeviceId,
+                },
                     _lifetimeCancellation.Token);
 
                 ShowNotification("Заявка помощи отправлена.", "Запрос помощи", UserNotificationSeverity.Success);
@@ -2055,11 +1628,11 @@ namespace HonestFlow
         {
             try
             {
-                RuDesktopStatus status = await _ruDesktopService.GetStatus();
-                if (status.IsInstalled && status.PasswordConfiguredByHonestFlow)
+                RuDesktopHelpReadiness readiness = await _ruDesktopWorkflow.GetHelpReadinessAsync();
+                if (readiness.IsReady)
                     return true;
 
-                if (!status.IsInstalled)
+                if (!readiness.IsInstalled)
                 {
                     LogOperatorAction("запрос помощи заблокирован: RuDesktop не найден на этом компьютере", isError: true);
                     MessageBox.Show(
@@ -2077,8 +1650,8 @@ namespace HonestFlow
                     return false;
 
                 await ConfigureRuDesktopPasswordFromClient(selectedClient);
-                status = await _ruDesktopService.GetStatus();
-                return status.IsInstalled && status.PasswordConfiguredByHonestFlow;
+                readiness = await _ruDesktopWorkflow.GetHelpReadinessAsync();
+                return readiness.IsReady;
             }
             catch (Exception ex)
             {
@@ -2098,7 +1671,7 @@ namespace HonestFlow
             if (_selectedIP != null)
                 return _selectedIP;
 
-            string enteredPassword = ShowStartupRuDesktopPasswordDialog();
+            string enteredPassword = _mainFormDialogs.ShowStartupRuDesktopPassword();
             if (string.IsNullOrWhiteSpace(enteredPassword))
             {
                 LogOperatorAction("запрос помощи: настройка RuDesktop отменена, пароль точки не введен");
@@ -2132,18 +1705,7 @@ namespace HonestFlow
 
         private async Task<string> TryGetRuDesktopIdForHelpRequest()
         {
-            try
-            {
-                string ruDesktopId = await _ruDesktopService.GetId();
-                if (!string.IsNullOrWhiteSpace(ruDesktopId))
-                    return ruDesktopId;
-            }
-            catch (Exception ex)
-            {
-                _logService.LogDebug($"RuDesktop ID для заявки помощи не получен: {ex.Message}");
-            }
-
-            string lastKnownId = _ruDesktopService.GetLastKnownId();
+            string lastKnownId = await _ruDesktopWorkflow.ResolveHelpIdAsync();
             LogOperatorAction(
                 string.IsNullOrWhiteSpace(lastKnownId)
                     ? "RuDesktop ID для заявки помощи не получен, заявка будет отправлена без ID"
@@ -2175,256 +1737,6 @@ namespace HonestFlow
             string installed = status.InstalledVersion ?? "не установлен";
             string expected = status.ExpectedVersion ?? "не загружена";
             return $"Установленная версия: {installed}\nТребуемая версия: {expected}\n{status.StateText}";
-        }
-
-        private HelpRequestDialogResult ShowHelpRequestDialog()
-        {
-            PointAddressResult pointAddress = ResolveCurrentPointAddress();
-            string fiscalAddress = pointAddress.Address;
-            bool addressFound = !string.IsNullOrWhiteSpace(fiscalAddress);
-
-            using var form = new Form
-            {
-                Text = "Запросить помощь",
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                ShowInTaskbar = false,
-                ClientSize = new Size(460, 390)
-            };
-
-            var typeLabel = new Label
-            {
-                Text = "Тип проблемы:",
-                Location = new Point(16, 18),
-                AutoSize = true
-            };
-
-            var problemTypeBox = new ComboBox
-            {
-                Location = new Point(16, 42),
-                Width = 428,
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
-            problemTypeBox.Items.AddRange(new object[]
-            {
-                "Ошибка проверки кода маркировки",
-                "Ошибка ККТ",
-                "Ошибка Кассового ПО",
-                "Другое"
-            });
-            problemTypeBox.SelectedIndex = 0;
-
-            var addressLabel = new Label
-            {
-                Text = "Адрес точки:",
-                Location = new Point(16, 82),
-                AutoSize = true
-            };
-
-            var addressBox = new TextBox
-            {
-                Location = new Point(16, 106),
-                Width = 428,
-                MaxLength = PointAddressService.MaximumAddressLength,
-                Text = addressFound ? fiscalAddress : string.Empty
-            };
-
-            var addressHintLabel = new Label
-            {
-                Text = addressFound
-                    ? "Адрес точки найден автоматически, проверьте его перед отправкой."
-                    : "Адрес точки не указан. Введите его вручную, пожалуйста.",
-                Location = new Point(16, 132),
-                Size = new Size(428, 34),
-                ForeColor = addressFound ? Color.FromArgb(71, 85, 105) : Color.FromArgb(180, 83, 9)
-            };
-
-            var messageLabel = new Label
-            {
-                Text = "Сообщение:",
-                Location = new Point(16, 174),
-                AutoSize = true
-            };
-
-            var messageBox = new TextBox
-            {
-                Location = new Point(16, 198),
-                Width = 428,
-                Height = 140,
-                Multiline = true,
-                ScrollBars = ScrollBars.Vertical
-            };
-
-            var okButton = new Button
-            {
-                Text = "Отправить",
-                Location = new Point(254, 344),
-                Width = 90
-            };
-
-            var cancelButton = new Button
-            {
-                Text = "Отмена",
-                DialogResult = DialogResult.Cancel,
-                Location = new Point(354, 344),
-                Width = 90
-            };
-
-            form.Controls.Add(typeLabel);
-            form.Controls.Add(problemTypeBox);
-            form.Controls.Add(addressLabel);
-            form.Controls.Add(addressBox);
-            form.Controls.Add(addressHintLabel);
-            form.Controls.Add(messageLabel);
-            form.Controls.Add(messageBox);
-            form.Controls.Add(okButton);
-            form.Controls.Add(cancelButton);
-            form.AcceptButton = okButton;
-            form.CancelButton = cancelButton;
-
-            okButton.Click += (_, _) =>
-            {
-                string normalizedAddress = PointAddressService.NormalizeAddress(addressBox.Text);
-                if (normalizedAddress == null)
-                {
-                    MessageBox.Show(
-                        $"Введите адрес торговой точки длиной не более {PointAddressService.MaximumAddressLength} символов.",
-                        "Запросить помощь",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-                    addressBox.Focus();
-                    return;
-                }
-
-                addressBox.Text = normalizedAddress;
-                form.DialogResult = DialogResult.OK;
-            };
-
-            if (form.ShowDialog() != DialogResult.OK)
-                return null;
-
-            _pointAddressService.Save(
-                _licenseSnapshotStore.Current?.DeviceId,
-                addressBox.Text,
-                PointAddressSource.Manual);
-
-            return new HelpRequestDialogResult
-            {
-                ProblemType = problemTypeBox.Text,
-                FiscalAddress = addressBox.Text,
-                Message = messageBox.Text
-            };
-        }
-
-        private PointAddressResult ResolveCurrentPointAddress()
-        {
-            return _pointAddressService.Resolve(_licenseSnapshotStore.Current);
-        }
-
-        private string ResolvePointAddressForOnlineAction(
-            string title,
-            string prompt)
-        {
-            PointAddressResult resolved = ResolveCurrentPointAddress();
-            if (resolved.IsAvailable)
-                return resolved.Address;
-
-            using var form = new Form
-            {
-                Text = title,
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                ControlBox = false,
-                ShowInTaskbar = false,
-                ClientSize = new Size(460, 160)
-            };
-
-            var promptLabel = new Label
-            {
-                Text = prompt,
-                Location = new Point(16, 16),
-                Size = new Size(428, 36)
-            };
-            var addressBox = new TextBox
-            {
-                Location = new Point(16, 58),
-                Width = 428,
-                MaxLength = PointAddressService.MaximumAddressLength
-            };
-            var okButton = new Button
-            {
-                Text = "Продолжить",
-                Location = new Point(244, 112),
-                Width = 100
-            };
-
-            okButton.Click += (_, _) =>
-            {
-                string normalizedAddress = PointAddressService.NormalizeAddress(addressBox.Text);
-                if (normalizedAddress == null)
-                {
-                    MessageBox.Show(
-                        "Введите адрес торговой точки.",
-                        title,
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-                    addressBox.Focus();
-                    return;
-                }
-
-                addressBox.Text = normalizedAddress;
-                form.DialogResult = DialogResult.OK;
-            };
-
-            form.Controls.Add(promptLabel);
-            form.Controls.Add(addressBox);
-            form.Controls.Add(okButton);
-            form.AcceptButton = okButton;
-            form.FormClosing += (_, args) =>
-            {
-                if (args.CloseReason == CloseReason.UserClosing &&
-                    form.DialogResult != DialogResult.OK)
-                {
-                    args.Cancel = true;
-                }
-            };
-
-            form.ShowDialog(this);
-
-            string pointAddress = addressBox.Text;
-            _pointAddressService.Save(
-                _licenseSnapshotStore.Current?.DeviceId,
-                pointAddress,
-                PointAddressSource.Manual);
-            return pointAddress;
-        }
-
-        private sealed class HelpRequestDialogResult
-        {
-            public string ProblemType { get; set; }
-            public string FiscalAddress { get; set; }
-            public string Message { get; set; }
-        }
-
-        private static void ShowNodeDetails(NodeStatus status)
-        {
-            if (!string.IsNullOrWhiteSpace(status?.Details))
-            {
-                MessageBoxIcon icon = status.Level switch
-                {
-                    NodeLevel.Error => MessageBoxIcon.Warning,
-                    NodeLevel.Warning => MessageBoxIcon.Information,
-                    _ => MessageBoxIcon.Information
-                };
-                string title = status.Level == NodeLevel.Error
-                    ? "Требуется внимание"
-                    : "Подробности проверки";
-                MessageBox.Show(status.Details, title, MessageBoxButtons.OK, icon);
-            }
         }
 
         private void BtnDetails_Click(object sender, EventArgs e)
@@ -2504,7 +1816,7 @@ namespace HonestFlow
 
             _logService.LogUser($"Пользователь: {selectedIP.Name}");
             _logService.LogDebug($"Авторизован: {selectedIP.Name}, ИНН: {selectedIP.Inn}, Разрядность: {selectedIP.Architecture}");
-            _ruDesktopService.SaveLastAuthorizedClient(selectedIP);
+            _ruDesktopWorkflow.SaveLastAuthorizedClient(selectedIP);
             ApplyAuthorizedUiMode();
             ApplyLicenseAccessToUi();
             HandleLicenseSnapshot(_licenseSnapshotStore.Current);
@@ -2515,13 +1827,13 @@ namespace HonestFlow
             if (_selectedIP != null || IsLongOperationRunning)
                 return;
 
-            bool needsSetup = await _ruDesktopService.NeedsInitialPasswordSetup();
+            bool needsSetup = await _ruDesktopWorkflow.NeedsInitialPasswordSetupAsync();
             if (!needsSetup)
                 return;
 
             LogOperatorAction("RuDesktop: требуется первичная настройка постоянного пароля");
 
-            string enteredPassword = ShowStartupRuDesktopPasswordDialog();
+            string enteredPassword = _mainFormDialogs.ShowStartupRuDesktopPassword();
             if (string.IsNullOrWhiteSpace(enteredPassword))
             {
                 LogOperatorAction("RuDesktop: первичная настройка пропущена, пароль точки не введен");
@@ -2553,83 +1865,6 @@ namespace HonestFlow
             await ConfigureRuDesktopPasswordFromClient(selectedIP);
         }
 
-        private string ShowStartupRuDesktopPasswordDialog()
-        {
-            using var form = new Form
-            {
-                Text = "Настройка RuDesktop",
-                StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MinimizeBox = false,
-                MaximizeBox = false,
-                ClientSize = new Size(430, 180)
-            };
-
-            var layout = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 1,
-                RowCount = 4,
-                Padding = new Padding(14)
-            };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-
-            var label = new Label
-            {
-                Text = "RuDesktop установлен, но постоянный пароль ещё не настроен.\nВведите пароль точки, чтобы настроить доступ.",
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-
-            var passwordLabel = new Label
-            {
-                Text = "Пароль точки",
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.BottomLeft
-            };
-
-            var passwordBox = new TextBox
-            {
-                Dock = DockStyle.Fill,
-                UseSystemPasswordChar = true
-            };
-
-            var buttons = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.RightToLeft
-            };
-
-            var okButton = new Button
-            {
-                Text = "Настроить",
-                DialogResult = DialogResult.OK,
-                Width = 100
-            };
-
-            var cancelButton = new Button
-            {
-                Text = "Позже",
-                DialogResult = DialogResult.Cancel,
-                Width = 90
-            };
-
-            buttons.Controls.Add(okButton);
-            buttons.Controls.Add(cancelButton);
-            layout.Controls.Add(label, 0, 0);
-            layout.Controls.Add(passwordLabel, 0, 1);
-            layout.Controls.Add(passwordBox, 0, 2);
-            layout.Controls.Add(buttons, 0, 3);
-            form.Controls.Add(layout);
-            form.AcceptButton = okButton;
-            form.CancelButton = cancelButton;
-
-            return form.ShowDialog(this) == DialogResult.OK ? passwordBox.Text : null;
-        }
-
         private async Task ConfigureRuDesktopPasswordFromClient(IPData selectedIP)
         {
             if (!TryBeginLongOperation("настройка RuDesktop", LicenseOperation.ConfigureRuDesktop))
@@ -2641,7 +1876,7 @@ namespace HonestFlow
                 lblStatus.Visible = true;
                 lblStatus.Text = "Настройка RuDesktop...";
 
-                RuDesktopSetupResult result = await _ruDesktopService.ConfigurePermanentPassword(selectedIP.RuDesktop.Password);
+                RuDesktopSetupResult result = await _ruDesktopWorkflow.ConfigurePasswordAsync(selectedIP);
                 if (!result.Success)
                 {
                     LogOperatorAction($"RuDesktop: не удалось создать постоянный пароль: {result.ErrorMessage}", isError: true);
@@ -2672,10 +1907,10 @@ namespace HonestFlow
 
         private async Task OfferRuDesktopPasswordSetupIfNeeded(IPData selectedIP)
         {
-            if (!_ruDesktopService.ShouldOfferPasswordSetup(selectedIP))
+            if (!_ruDesktopWorkflow.ShouldOfferPasswordSetup(selectedIP))
                 return;
 
-            string ruDesktopId = await _ruDesktopService.GetId();
+            string ruDesktopId = await _ruDesktopWorkflow.GetIdAsync();
             if (string.IsNullOrWhiteSpace(ruDesktopId))
             {
                 _logService.LogDebug("RuDesktop: предложение настройки пропущено, ID не получен");
@@ -2953,7 +2188,7 @@ namespace HonestFlow
                 ApplyLicenseAccessToUi();
                 HandleLicenseSnapshot(snapshot);
 
-                if (!IsLicenseSnapshotForSelectedClient(_selectedIP, snapshot))
+                if (!_licensePresentationService.IsForClient(_selectedIP, snapshot))
                     return;
 
                 if (_statusRefreshRunning || IsLongOperationRunning)
@@ -2970,63 +2205,40 @@ namespace HonestFlow
             }
         }
 
-        private static bool IsLicenseSnapshotForSelectedClient(
-            IPData selectedClient,
-            LicenseObservationSnapshot snapshot)
-        {
-            return selectedClient != null &&
-                   snapshot != null &&
-                   !string.IsNullOrWhiteSpace(selectedClient.ClientId) &&
-                   string.Equals(
-                       selectedClient.ClientId,
-                       snapshot.ClientId,
-                       StringComparison.Ordinal);
-        }
-
         private async void HandleLicenseSnapshot(LicenseObservationSnapshot snapshot)
         {
-            PointAddressResult resolvedAddress = _pointAddressService.Resolve(snapshot);
-
-            bool needsRegistration = snapshot?.Decision == LicenseDecision.DeviceNotRegistered;
-            bool needsAddressSync = snapshot?.Decision == LicenseDecision.Allowed &&
-                                    string.IsNullOrWhiteSpace(snapshot.PointAddress);
-
-            if ((needsRegistration || needsAddressSync) && _selectedIP != null)
+            PointAddressResult resolvedAddress = _mainFormDialogs.ResolvePointAddress(snapshot);
+            DeviceRegistrationAction registrationAction = await _deviceRegistrationWorkflow.EvaluateAsync(
+                snapshot,
+                _selectedIP,
+                CancellationToken.None);
+            if (registrationAction == DeviceRegistrationAction.AlreadySent)
             {
-                if (needsRegistration)
+                lblStatus.Text = "Заявка на регистрацию этого компьютера уже отправлена.";
+                PresentLicenseDecision(snapshot);
+                return;
+            }
+
+            if (registrationAction == DeviceRegistrationAction.RequestRegistration)
+            {
+                DialogResult confirmation = MessageBox.Show(
+                    this,
+                    $"Компьютер не зарегистрирован для точки «{_selectedIP.Name}».\n\n" +
+                    "Отправить заявку на регистрацию?",
+                    "Регистрация устройства",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                if (confirmation != DialogResult.Yes)
                 {
-                    bool alreadySent = await _deviceRegistrationCoordinator.WasSentAsync(
-                        snapshot,
-                        CancellationToken.None);
-                    if (alreadySent)
-                    {
-                        lblStatus.Text = "Заявка на регистрацию этого компьютера уже отправлена.";
-                        PresentLicenseDecision(snapshot);
-                        return;
-                    }
-
-                    string promptKey = snapshot.ClientId + "/" + snapshot.DeviceId;
-                    if (!_registrationPromptsShown.Add(promptKey))
-                    {
-                        PresentLicenseDecision(snapshot);
-                        return;
-                    }
-
-                    DialogResult confirmation = MessageBox.Show(
-                        this,
-                        $"Компьютер не зарегистрирован для точки «{_selectedIP.Name}».\n\n" +
-                        "Отправить заявку на регистрацию?",
-                        "Регистрация устройства",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Question);
-                    if (confirmation != DialogResult.Yes)
-                    {
-                        PresentLicenseDecision(snapshot);
-                        return;
-                    }
+                    PresentLicenseDecision(snapshot);
+                    return;
                 }
+            }
 
-                string pointAddress = resolvedAddress.Address ?? ResolvePointAddressForOnlineAction(
+            if (registrationAction is DeviceRegistrationAction.RequestRegistration or DeviceRegistrationAction.SynchronizeAddress)
+            {
+                bool needsRegistration = registrationAction == DeviceRegistrationAction.RequestRegistration;
+                string pointAddress = resolvedAddress.Address ?? _mainFormDialogs.ResolvePointAddressForOnlineAction(
                     needsRegistration ? "Заявка на лицензию" : "Адрес торговой точки",
                     needsRegistration
                         ? "Для отправки заявки укажите адрес торговой точки."
@@ -3048,54 +2260,11 @@ namespace HonestFlow
             }
 
             _lastPresentedLicenseSnapshot = snapshot;
-            switch (snapshot.Decision)
-            {
-                case LicenseDecision.Allowed:
-                    lblStatus.Text = "Лицензия проверена. Доступные функции применены.";
-                    return;
-
-                case LicenseDecision.DeviceNotRegistered:
-                    lblStatus.Text = "Устройство не зарегистрировано. Заявка на регистрацию отправляется автоматически.";
-                    return;
-
-                case LicenseDecision.ClientDisabled:
-                    ShowLicenseWarning("Клиент отключён", "Лицензия клиента отключена. Доступны диагностика и отправка логов.");
-                    return;
-
-                case LicenseDecision.DeviceDisabled:
-                    ShowLicenseWarning("Устройство отключено", "Это устройство отключено в лицензии. Доступны диагностика и отправка логов.");
-                    return;
-
-                case LicenseDecision.VersionTooOld:
-                    string minimumVersion = snapshot.MinimumRequiredVersion?.ToString() ?? "указанной в лицензии";
-                    ShowLicenseWarning(
-                        "Требуется обязательное обновление",
-                        $"Текущая версия HonestFlow устарела. Обновите программу до версии {minimumVersion} или новее. До обновления доступны только диагностические функции.");
-                    return;
-
-                case LicenseDecision.OfflineGraceExpired:
-                    string lastCheck = snapshot.LastSuccessfulOnlineCheckUtc.HasValue
-                        ? snapshot.LastSuccessfulOnlineCheckUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")
-                        : "неизвестно";
-                    ShowLicenseWarning(
-                        "Истёк автономный период",
-                        $"Offline grace period истёк. Последняя успешная онлайн-проверка: {lastCheck}. Доступны диагностика и отправка логов.");
-                    return;
-
-                case LicenseDecision.InvalidLicenseState:
-                    ShowLicenseWarning(
-                        "Диагностический режим",
-                        "Состояние лицензии не удалось надёжно определить. HonestFlow продолжит работу в безопасном диагностическом режиме.");
-                    return;
-
-                default:
-                    ShowLicenseWarning(
-                        "Ограниченный режим",
-                        string.IsNullOrWhiteSpace(snapshot.Message)
-                            ? "Лицензия не разрешает изменяющие систему операции. Доступны диагностические функции."
-                            : snapshot.Message);
-                    return;
-            }
+            LicenseDecisionPresentation presentation = _licensePresentationService.Create(snapshot);
+            if (presentation.IsWarning)
+                ShowLicenseWarning(presentation.Title, presentation.Message);
+            else
+                lblStatus.Text = presentation.Message;
         }
 
 
@@ -3103,9 +2272,8 @@ namespace HonestFlow
             LicenseObservationSnapshot snapshot,
             string pointAddress)
         {
-            DeviceRegistrationDeliveryStatus status = await _deviceRegistrationCoordinator.TrySendAsync(
+            DeviceRegistrationDeliveryStatus status = await _deviceRegistrationWorkflow.SendAsync(
                 snapshot,
-                Environment.MachineName,
                 pointAddress,
                 GetHonestFlowVersion(),
                 CancellationToken.None);
@@ -3145,22 +2313,5 @@ namespace HonestFlow
             _logService.LogUser($"Оператор: {action}", isError);
         }
 
-        private static string DescribeDiagnosticSelection(DiagnosticLogSelection selection)
-        {
-            var groups = new List<string>();
-
-            if (selection.IncludeSystemInfo)
-                groups.Add("система");
-            if (selection.IncludeHonestFlow)
-                groups.Add("HonestFlow");
-            if (selection.IncludeLm)
-                groups.Add("ЛМ ЧЗ");
-            if (selection.IncludeEsm)
-                groups.Add("ЕСМ");
-            if (selection.IncludeKkt)
-                groups.Add("ККТ/АТОЛ");
-
-            return groups.Count == 0 ? "ничего не выбрано" : string.Join(", ", groups);
-        }
     }
 }

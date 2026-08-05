@@ -23,30 +23,23 @@ namespace HonestFlow.Infrastructure.Composition
     {
         public StartupResult Startup { get; init; }
         public ILogService LogService { get; init; }
-        public IProgressService ProgressService { get; init; }
-        public IUserDialogService DialogService { get; init; }
-        public DiagnosticArchiveService DiagnosticArchiveService { get; init; }
-        public DiagnosticsEmailSender DiagnosticsEmailSender { get; init; }
-        public LmDatabaseRestoreService LmDatabaseRestoreService { get; init; }
-        public LicensedLmInitializationService LmInitializationService { get; init; }
-        public RuDesktopService RuDesktopService { get; init; }
-        public IRuDesktopInstaller RuDesktopInstaller { get; init; }
-        public HelpRequestDeliveryService HelpRequestDeliveryService { get; init; }
-        public HelpRequestDataBuilder HelpRequestDataBuilder { get; init; }
+        public MainFormDialogService MainFormDialogService { get; init; }
+        public DiagnosticWorkflowService DiagnosticWorkflowService { get; init; }
+        public RuDesktopWorkflow RuDesktopWorkflow { get; init; }
+        public HelpRequestWorkflow HelpRequestWorkflow { get; init; }
         public AppRatingEmailSender AppRatingEmailSender { get; init; }
-        public WindowsServiceControlService ServiceControlService { get; init; }
-        public ComponentVersionStatusService ComponentVersionStatusService { get; init; }
+        public PointRepairWorkflow PointRepairWorkflow { get; init; }
         public PointStatusReportBuilder PointStatusReportBuilder { get; init; }
         public ExternalApplicationLauncher ExternalApplicationLauncher { get; init; }
         public WindowIconService WindowIconService { get; init; }
         public ILicenseObservationSnapshotStore LicenseSnapshotStore { get; init; }
         public ILicenseAccessPolicy LicenseAccessPolicy { get; init; }
-        public ILicenseOperationGuard LicenseOperationGuard { get; init; }
-        public DeviceRegistrationCoordinator DeviceRegistrationCoordinator { get; init; }
-        public IPointAddressService PointAddressService { get; init; }
-        public IInstallationService InstallationService { get; init; }
+        public LicensePresentationService LicensePresentationService { get; init; }
+        public LicenseRefreshWorkflow LicenseRefreshWorkflow { get; init; }
+        public SellerAuthenticationWorkflow SellerAuthenticationWorkflow { get; init; }
+        public DeviceRegistrationWorkflow DeviceRegistrationWorkflow { get; init; }
         public ComponentInstallationWorkflow ComponentInstallationWorkflow { get; init; }
-        public IPointStatusService PointStatusService { get; init; }
+        public MaintenanceWorkflow MaintenanceWorkflow { get; init; }
         public PointStatusRefreshService PointStatusRefreshService { get; init; }
     }
 
@@ -90,44 +83,72 @@ namespace HonestFlow.Infrastructure.Composition
                 licenseOperationGuard,
                 useRemoteConfigMode);
 
+            var pointAddressService = new PointAddressService(logService);
+
+            var diagnosticArchiveService = new DiagnosticArchiveService(logService);
+            var diagnosticsEmailSender = new DiagnosticsEmailSender(logService, ruDesktopService);
+
+            var componentInstallationWorkflow = new ComponentInstallationWorkflow(installationService);
+            var lmDatabaseRestoreService = new LmDatabaseRestoreService(
+                logService,
+                progressService,
+                dialogService,
+                licenseOperationGuard,
+                useRemoteConfigMode);
+
+            var lmInitializationService = new LicensedLmInitializationService(licenseOperationGuard);
+            var serviceControlService = new WindowsServiceControlService(licenseOperationGuard);
+
+            var ruDesktopInstaller = new RuDesktopInstaller(logService);
+
+            var helpRequestDataBuilder = new HelpRequestDataBuilder();
+            var helpRequestDeliveryService = new HelpRequestDeliveryService(
+                helpRequestEmailSender,
+                new UnlicensedHelpRequestStore());
+
+            var deviceRegistrationCoordinator = new DeviceRegistrationCoordinator(
+                new DeviceRegistrationRequestService(),
+                new SmtpDeviceRegistrationRequestSender(),
+                new DpapiDeviceRegistrationDeliveryStateStore());
+
             return new MainFormDependencies
             {
                 Startup = startup,
                 LogService = logService,
-                ProgressService = progressService,
-                DialogService = dialogService,
-                DiagnosticArchiveService = new DiagnosticArchiveService(logService),
-                DiagnosticsEmailSender = new DiagnosticsEmailSender(logService, ruDesktopService),
-                LmDatabaseRestoreService = new LmDatabaseRestoreService(
-                    logService,
-                    progressService,
-                    dialogService,
-                    licenseOperationGuard,
-                    useRemoteConfigMode),
-                LmInitializationService = new LicensedLmInitializationService(licenseOperationGuard),
-                RuDesktopService = ruDesktopService,
-                RuDesktopInstaller = new RuDesktopInstaller(logService),
-                HelpRequestDeliveryService = new HelpRequestDeliveryService(
-                    helpRequestEmailSender,
-                    new UnlicensedHelpRequestStore()),
-                HelpRequestDataBuilder = new HelpRequestDataBuilder(),
+                MainFormDialogService = new MainFormDialogService(
+                    owner,
+                    pointAddressService,
+                    licenseSnapshotStore),
+                DiagnosticWorkflowService = new DiagnosticWorkflowService(
+                    diagnosticArchiveService,
+                    diagnosticsEmailSender),
+                RuDesktopWorkflow = new RuDesktopWorkflow(
+                    ruDesktopService,
+                    ruDesktopInstaller,
+                    logService),
+                HelpRequestWorkflow = new HelpRequestWorkflow(
+                    pointStatusService,
+                    helpRequestDataBuilder,
+                    helpRequestDeliveryService),
                 AppRatingEmailSender = new AppRatingEmailSender(logService),
-                ServiceControlService = new WindowsServiceControlService(licenseOperationGuard),
-                ComponentVersionStatusService = componentVersionStatusService,
+                PointRepairWorkflow = new PointRepairWorkflow(
+                    serviceControlService,
+                    lmInitializationService),
                 PointStatusReportBuilder = pointStatusReportBuilder,
                 ExternalApplicationLauncher = new ExternalApplicationLauncher(),
                 WindowIconService = new WindowIconService(logService),
                 LicenseSnapshotStore = licenseSnapshotStore,
                 LicenseAccessPolicy = licenseAccessPolicy,
-                LicenseOperationGuard = licenseOperationGuard,
-                DeviceRegistrationCoordinator = new DeviceRegistrationCoordinator(
-                    new DeviceRegistrationRequestService(),
-                    new SmtpDeviceRegistrationRequestSender(),
-                    new DpapiDeviceRegistrationDeliveryStateStore()),
-                PointAddressService = new PointAddressService(logService),
-                InstallationService = installationService,
-                ComponentInstallationWorkflow = new ComponentInstallationWorkflow(installationService),
-                PointStatusService = pointStatusService,
+                LicensePresentationService = new LicensePresentationService(),
+                LicenseRefreshWorkflow = new LicenseRefreshWorkflow(startup.AuthService, logService),
+                SellerAuthenticationWorkflow = new SellerAuthenticationWorkflow(
+                    startup.AuthService,
+                    licenseSnapshotStore),
+                DeviceRegistrationWorkflow = new DeviceRegistrationWorkflow(deviceRegistrationCoordinator),
+                ComponentInstallationWorkflow = componentInstallationWorkflow,
+                MaintenanceWorkflow = new MaintenanceWorkflow(
+                    componentInstallationWorkflow,
+                    lmDatabaseRestoreService),
                 PointStatusRefreshService = new PointStatusRefreshService(
                     pointStatusService,
                     componentVersionStatusService,
