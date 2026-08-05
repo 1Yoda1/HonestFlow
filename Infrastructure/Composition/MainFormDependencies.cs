@@ -45,7 +45,9 @@ namespace HonestFlow.Infrastructure.Composition
         public DeviceRegistrationCoordinator DeviceRegistrationCoordinator { get; init; }
         public IPointAddressService PointAddressService { get; init; }
         public IInstallationService InstallationService { get; init; }
-        public PointStatusService PointStatusService { get; init; }
+        public ComponentInstallationWorkflow ComponentInstallationWorkflow { get; init; }
+        public IPointStatusService PointStatusService { get; init; }
+        public PointStatusRefreshService PointStatusRefreshService { get; init; }
     }
 
     internal static class MainFormCompositionRoot
@@ -73,6 +75,21 @@ namespace HonestFlow.Infrastructure.Composition
             var licenseOperationGuard = new LicenseOperationGuard(licenseAccessPolicy);
             var helpRequestEmailSender = new HelpRequestEmailSender(logService);
 
+            var componentVersionStatusService = new ComponentVersionStatusService(logService);
+            var pointStatusReportBuilder = new PointStatusReportBuilder();
+            var pointStatusService = new PointStatusService(
+                useRemoteConfigMode,
+                remoteIps?.Count ?? 0,
+                remoteIps,
+                ruDesktopService);
+
+            var installationService = new InstallationService(
+                logService,
+                progressService,
+                dialogService,
+                licenseOperationGuard,
+                useRemoteConfigMode);
+
             return new MainFormDependencies
             {
                 Startup = startup,
@@ -96,8 +113,8 @@ namespace HonestFlow.Infrastructure.Composition
                 HelpRequestDataBuilder = new HelpRequestDataBuilder(),
                 AppRatingEmailSender = new AppRatingEmailSender(logService),
                 ServiceControlService = new WindowsServiceControlService(licenseOperationGuard),
-                ComponentVersionStatusService = new ComponentVersionStatusService(logService),
-                PointStatusReportBuilder = new PointStatusReportBuilder(),
+                ComponentVersionStatusService = componentVersionStatusService,
+                PointStatusReportBuilder = pointStatusReportBuilder,
                 ExternalApplicationLauncher = new ExternalApplicationLauncher(),
                 WindowIconService = new WindowIconService(logService),
                 LicenseSnapshotStore = licenseSnapshotStore,
@@ -108,17 +125,13 @@ namespace HonestFlow.Infrastructure.Composition
                     new SmtpDeviceRegistrationRequestSender(),
                     new DpapiDeviceRegistrationDeliveryStateStore()),
                 PointAddressService = new PointAddressService(logService),
-                InstallationService = new InstallationService(
-                    logService,
-                    progressService,
-                    dialogService,
-                    licenseOperationGuard,
-                    useRemoteConfigMode),
-                PointStatusService = new PointStatusService(
-                    useRemoteConfigMode,
-                    remoteIps?.Count ?? 0,
-                    remoteIps,
-                    ruDesktopService)
+                InstallationService = installationService,
+                ComponentInstallationWorkflow = new ComponentInstallationWorkflow(installationService),
+                PointStatusService = pointStatusService,
+                PointStatusRefreshService = new PointStatusRefreshService(
+                    pointStatusService,
+                    componentVersionStatusService,
+                    pointStatusReportBuilder)
             };
         }
     }

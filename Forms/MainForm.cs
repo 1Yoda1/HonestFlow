@@ -37,6 +37,7 @@ namespace HonestFlow
         private readonly IProgressService _progressService;
         private IAuthService _authService;
         private IInstallationService _installationService;
+        private readonly ComponentInstallationWorkflow _componentInstallationWorkflow;
         private bool _useRemoteConfigMode = false;
         private List<IPData> _remoteIps;
         private VersionsData _remoteVersions;
@@ -52,12 +53,12 @@ namespace HonestFlow
         private readonly HelpRequestDataBuilder _helpRequestDataBuilder;
         private readonly AppRatingEmailSender _appRatingEmailSender;
         private readonly WindowsServiceControlService _serviceControlService;
-        private readonly ComponentVersionStatusService _componentVersionStatusService;
         private readonly PointStatusReportBuilder _pointStatusReportBuilder;
         private readonly ExternalApplicationLauncher _externalApplicationLauncher;
         private readonly WindowIconService _windowIconService;
         private readonly IUserDialogService _dialogService;
-        private PointStatusService _pointStatusService;
+        private IPointStatusService _pointStatusService;
+        private readonly PointStatusRefreshService _pointStatusRefreshService;
         private PointStatusResult _lastPointStatusResult;
         private bool _statusRefreshRunning;
         private bool _statusRefreshAfterLicenseChangePending;
@@ -125,12 +126,13 @@ namespace HonestFlow
             _licenseAccessPolicy = dependencies.LicenseAccessPolicy;
             _licenseOperationGuard = dependencies.LicenseOperationGuard;
             _serviceControlService = dependencies.ServiceControlService;
-            _componentVersionStatusService = dependencies.ComponentVersionStatusService;
             _pointStatusReportBuilder = dependencies.PointStatusReportBuilder;
             _installationService = dependencies.InstallationService;
+            _componentInstallationWorkflow = dependencies.ComponentInstallationWorkflow;
             _lmDatabaseRestoreService = dependencies.LmDatabaseRestoreService;
             _lmInitializationService = dependencies.LmInitializationService;
             _pointStatusService = dependencies.PointStatusService;
+            _pointStatusRefreshService = dependencies.PointStatusRefreshService;
             _licenseSnapshotStore.SnapshotChanged += LicenseSnapshotChanged;
             _notificationTimer.Tick += (_, _) => ClearTransientNotification();
             FormClosed += (_, _) =>
@@ -625,14 +627,17 @@ namespace HonestFlow
             LogOperatorAction("нажата кнопка запуска проверки");
 
             IPData selectedIP = _selectedIP;
-            if (selectedIP == null)
+            ComponentOperationReadiness readiness = _componentInstallationWorkflow.CheckReadiness(
+                selectedIP,
+                checkLmRequirements: true);
+            if (readiness.Status == ComponentOperationReadinessStatus.ClientRequired)
             {
                 LogOperatorAction("запуск проверки отменен: пользователь не авторизован", isError: true);
                 ShowInlineWarning("Сначала выполните вход.", "Авторизация");
                 return;
             }
 
-            if (!Utils.IsAdministrator())
+            if (readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired)
             {
                 LogOperatorAction("запуск проверки отменен: нет прав администратора", isError: true);
                 MessageBox.Show(
@@ -645,7 +650,7 @@ namespace HonestFlow
                 return;
             }
 
-            LmSystemRequirementsResult requirements = LmSystemRequirements.Check();
+            LmSystemRequirementsResult requirements = readiness.SystemRequirements;
             if (!requirements.MeetsMinimum)
             {
                 ShowNotification(
@@ -669,7 +674,7 @@ namespace HonestFlow
 
             try
             {
-                bool success = await _installationService.CheckLmAndInstall(
+                bool success = await _componentInstallationWorkflow.InstallAsync(
                     selectedIP,
                     _installationCancellation.Token);
                 if (!success)
@@ -1425,17 +1430,18 @@ namespace HonestFlow
             _statusRefreshRunning = true;
             btnCheckWithoutPassword.Enabled = false;
             SetNodeChecking(canViewAndRepair);
-            Task<ComponentVersionStatus[]> versionStatusTask = canViewAndRepair
-                ? Task.Run(() => _componentVersionStatusService.GetStatuses(_selectedIP, _remoteVersions))
-                : Task.FromResult(Array.Empty<ComponentVersionStatus>());
             lblStatus.Text = "Проверка служб и связи...";
             lblHeaderStatus.Text = "● Проверка";
             lblHeaderStatus.ForeColor = StatusYellow;
 
             try
             {
-                var result = await _pointStatusService.CheckAsync(_lifetimeCancellation.Token);
-                ComponentVersionStatus[] versionStatuses = await versionStatusTask;
+                PointStatusRefreshResult refresh = await _pointStatusRefreshService.RefreshAsync(
+                    _selectedIP,
+                    _remoteVersions,
+                    canViewAndRepair,
+                    _lifetimeCancellation.Token);
+                PointStatusResult result = refresh.PointStatus;
 
                 if (!allowDuringLongOperation && IsLongOperationRunning)
                 {
@@ -1449,7 +1455,7 @@ namespace HonestFlow
                     ApplyNodeStatus(lblControllerNode, lblControllerStatusText, lblControllerCircle, btnControllerAction, result.Controller, "Контроллер");
                     ApplyNodeStatus(lblEsmNode, lblEsmStatusText, lblEsmCircle, btnEsmAction, result.Esm, "ЕСМ");
                     ApplyNodeStatus(lblKktNode, lblKktStatusText, lblKktCircle, btnKktAction, result.Kkt, "ККТ");
-                    ApplyVersionMarkers(versionStatuses);
+                    ApplyVersionMarkers(refresh.VersionStatuses);
                     _lastPointStatusResult = result;
                 }
                 else
@@ -1462,21 +1468,15 @@ namespace HonestFlow
                 }
                 ApplyNodeStatus(lblCloudNode, lblCloudStatusText, lblCloudCircle, btnCloudAction, result.Cloud, "Облако");
                 ApplyRuDesktopStatus(result.RuDesktop);
-                _diagnosticArchiveService.SetPointStatusReport(_pointStatusReportBuilder.Build(result));
+                _diagnosticArchiveService.SetPointStatusReport(refresh.DiagnosticReport);
                 btnPointStatusDetails.Enabled = canViewAndRepair;
 
-                NodeStatus[] visibleStatuses = canViewAndRepair
-                    ? new[] { result.Lm, result.Controller, result.Esm, result.Kkt, result.Cloud, result.RuDesktop }
-                    : new[] { result.Cloud, result.RuDesktop };
-                bool hasRed = visibleStatuses
-                    .Any(x => x.Level == NodeLevel.Error);
-                bool hasYellow = visibleStatuses
-                    .Any(x => x.Level == NodeLevel.Warning);
-
-                lblHeaderStatus.Text = hasRed
+                lblHeaderStatus.Text = refresh.OverallLevel == NodeLevel.Error
                     ? "● Есть проблемы"
-                    : hasYellow ? "● Требует внимания" : "● Всё работает";
-                lblHeaderStatus.ForeColor = hasRed ? StatusRed : hasYellow ? StatusYellow : StatusGreen;
+                    : refresh.OverallLevel == NodeLevel.Warning ? "● Требует внимания" : "● Всё работает";
+                lblHeaderStatus.ForeColor = refresh.OverallLevel == NodeLevel.Error
+                    ? StatusRed
+                    : refresh.OverallLevel == NodeLevel.Warning ? StatusYellow : StatusGreen;
                 lblStatus.Text = "Проверка завершена";
                 _logService.LogDebug(
                     $"Проверка состояния точки завершена: LM={result.Lm.ShortText}, Controller={result.Controller.ShortText}, ESM={result.Esm.ShortText}, KKT={result.Kkt.ShortText}, Cloud={result.Cloud.ShortText}, RuDesktop={result.RuDesktop.ShortText}");

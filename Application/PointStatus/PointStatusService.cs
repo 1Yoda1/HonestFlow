@@ -12,7 +12,7 @@ using HonestFlow.Models;
 
 namespace HonestFlow.Application.PointStatus
 {
-    public sealed class PointStatusService
+    public sealed class PointStatusService : IPointStatusService
     {
         private readonly bool _remoteConfigLoaded;
         private readonly int _ipCount;
