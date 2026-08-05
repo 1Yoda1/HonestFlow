@@ -227,52 +227,52 @@
               </Grid>
 
               <Viewbox Grid.Row="1" Stretch="Uniform" Margin="0,0,0,4">
-                <Canvas Width="1120" Height="430">
-                  <Line X1="560" Y1="95" X2="560" Y2="148" Stroke="#1666B5" StrokeThickness="3" StrokeDashArray="7,6"/>
-                  <Line X1="290" Y1="220" X2="394" Y2="220" Stroke="#7C3FA0" StrokeThickness="3" StrokeDashArray="7,6"/>
-                  <Line X1="690" Y1="220" X2="820" Y2="220" Stroke="#DB8A00" StrokeThickness="3" StrokeDashArray="7,6"/>
-                  <Line X1="560" Y1="292" X2="560" Y2="330" Stroke="#1666B5" StrokeThickness="3" StrokeDashArray="7,6"/>
-                  <Line X1="690" Y1="365" X2="852" Y2="365" Stroke="#D51A35" StrokeThickness="3" StrokeDashArray="7,6"/>
+                <Canvas Width="1280" Height="500">
+                  <Line X1="260" Y1="250" X2="330" Y2="250" Stroke="#16875A" StrokeThickness="3" StrokeDashArray="8,7"/>
+                  <Line X1="650" Y1="250" X2="720" Y2="250" Stroke="#16875A" StrokeThickness="3" StrokeDashArray="8,7"/>
+                  <Line X1="980" Y1="250" X2="1040" Y2="250" Stroke="#D31A35" StrokeThickness="3" StrokeDashArray="8,7"/>
+                  <Line X1="490" Y1="116" X2="490" Y2="180" Stroke="#7C3FA0" StrokeThickness="3" StrokeDashArray="8,7"/>
+                  <Line X1="490" Y1="320" X2="490" Y2="384" Stroke="#D98A00" StrokeThickness="3" StrokeDashArray="8,7"/>
 
-                  <Border Canvas.Left="445" Canvas.Top="5" Width="230" Height="92" CornerRadius="10" Background="#FAFCFF" BorderBrush="#1264B5" BorderThickness="1.2">
-                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE753;" FontFamily="Segoe MDL2 Assets" Foreground="#0864BE" FontSize="48" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ГИС МТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Доступно" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                  <Border Canvas.Left="20" Canvas.Top="198" Width="240" Height="104" CornerRadius="12" Background="White" BorderBrush="#16875A" BorderThickness="1.6">
+                    <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="66"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE753;" FontFamily="Segoe MDL2 Assets" Foreground="#1267BA" FontSize="44" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ГИС МТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Доступно" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="30" Canvas.Top="160" Width="260" Height="120" CornerRadius="10" Background="#FFFBFF" BorderBrush="#7A3B99" BorderThickness="1.2">
-                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="#7C3EA1" FontSize="48" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Товароучётная&#x0a;система (ТУС)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Подключено" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                  <Border Canvas.Left="330" Canvas.Top="180" Width="320" Height="140" CornerRadius="15" Background="White" BorderBrush="#16875A" BorderThickness="2.4">
+                    <Grid Margin="24,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <Border Width="64" Height="64" CornerRadius="32" Background="#EDF9F3" VerticalAlignment="Center"><TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="#118451" FontSize="45" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ТС ПИоТ (ЕСМ)" FontSize="21" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" Margin="0,10,0,0"><Ellipse Width="11" Height="11" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="9,-4,0,0" FontSize="15"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="394" Canvas.Top="160" Width="296" Height="120" CornerRadius="10" Background="#F8FFFB" BorderBrush="#178756" BorderThickness="1.2">
-                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="#118451" FontSize="50" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ТС ПИоТ (ЕСМ)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                  <Border Canvas.Left="720" Canvas.Top="195" Width="260" Height="110" CornerRadius="12" Background="White" BorderBrush="#16875A" BorderThickness="1.6">
+                    <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#1267BA" FontSize="45" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Контроллер&#x0a;(локальный)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,6,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="820" Canvas.Top="160" Width="240" Height="120" CornerRadius="10" Background="#FFFCF7" BorderBrush="#DA8900" BorderThickness="1.2">
-                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE749;" FontFamily="Segoe MDL2 Assets" Foreground="#D98600" FontSize="48" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ККТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                  <Border Canvas.Left="1040" Canvas.Top="198" Width="220" Height="104" CornerRadius="12" Background="White" BorderBrush="#D31A35" BorderThickness="1.8">
+                    <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="66"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#D31A35" FontSize="44" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ЛМ ЧЗ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Red}"/><TextBlock Text="Нет связи" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="445" Canvas.Top="315" Width="290" Height="110" CornerRadius="10" Background="#FAFCFF" BorderBrush="#1264B5" BorderThickness="1.2">
-                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="85"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#1264B5" FontSize="48" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Контроллер&#x0a;(локальный)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,7,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                  <Border Canvas.Left="360" Canvas.Top="8" Width="260" Height="108" CornerRadius="12" Background="White" BorderBrush="#7C3FA0" BorderThickness="1.6">
+                    <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="#7C3FA0" FontSize="45" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Товароучётная&#x0a;система (ТУС)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,6,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Подключено" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="852" Canvas.Top="315" Width="250" Height="110" CornerRadius="10" Background="#FFF9FA" BorderBrush="#D31A35" BorderThickness="1.2">
-                    <Grid Margin="22,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#D31A35" FontSize="48" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ЛМ ЧЗ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,9,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Red}"/><TextBlock Text="Нет связи" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                  <Border Canvas.Left="360" Canvas.Top="384" Width="260" Height="108" CornerRadius="12" Background="White" BorderBrush="#D98A00" BorderThickness="1.6">
+                    <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBlock Text="&#xE749;" FontFamily="Segoe MDL2 Assets" Foreground="#D98A00" FontSize="45" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ККТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
                 </Canvas>
