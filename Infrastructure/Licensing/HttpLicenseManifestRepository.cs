@@ -30,8 +30,12 @@ namespace HonestFlow.Infrastructure.Licensing
             _options.Validate();
         }
 
-        public async Task<LicenseManifestReadResult> ReadAsync(CancellationToken cancellationToken)
+        public async Task<LicenseManifestReadResult> ReadAsync(
+            LicenseGrantRequest grantRequest,
+            CancellationToken cancellationToken)
         {
+            if (grantRequest == null)
+                throw new ArgumentNullException(nameof(grantRequest));
             var stopwatch = Stopwatch.StartNew();
             Logger.Info(
                 $"Event=LicenseManifestReadStarted Host={_options.ManifestUrl.Host} " +
@@ -121,11 +125,11 @@ namespace HonestFlow.Infrastructure.Licensing
                     return LicenseManifestReadResult.Failure(readStatus, signatureResult.ErrorCode);
                 }
 
-                LicenseManifest manifest;
+                LicenseGrant grant;
                 try
                 {
                     string json = new UTF8Encoding(false, true).GetString(bytes);
-                    manifest = JsonConvert.DeserializeObject<LicenseManifest>(json);
+                    grant = JsonConvert.DeserializeObject<LicenseGrant>(json);
                 }
                 catch (JsonException)
                 {
@@ -136,14 +140,14 @@ namespace HonestFlow.Infrastructure.Licensing
                     return LogFailure(LicenseManifestReadStatus.InvalidJson, "InvalidUtf8", response, stopwatch);
                 }
 
-                if (manifest == null)
+                if (grant == null)
                     return LogFailure(LicenseManifestReadStatus.InvalidJson, "NullManifest", response, stopwatch);
 
-                if (manifest.SchemaVersion != _options.SupportedSchemaVersion)
+                if (grant.SchemaVersion != _options.SupportedSchemaVersion)
                 {
                     Logger.Warning(
                         $"Event=LicenseManifestReadFinished Status=UnsupportedSchema " +
-                        $"SchemaVersion={manifest.SchemaVersion} SupportedSchemaVersion={_options.SupportedSchemaVersion} " +
+                        $"SchemaVersion={grant.SchemaVersion} SupportedSchemaVersion={_options.SupportedSchemaVersion} " +
                         $"Bytes={bytes.Length} ElapsedMs={stopwatch.ElapsedMilliseconds}",
                         ModuleName);
                     return LicenseManifestReadResult.Failure(
@@ -151,7 +155,7 @@ namespace HonestFlow.Infrastructure.Licensing
                         "UnsupportedSchemaVersion");
                 }
 
-                var validationErrors = LicenseManifestValidator.Validate(manifest);
+                var validationErrors = LicenseGrantValidator.Validate(grant);
                 if (validationErrors.Count > 0)
                 {
                     Logger.Warning(
@@ -160,16 +164,24 @@ namespace HonestFlow.Infrastructure.Licensing
                         ModuleName);
                     return LicenseManifestReadResult.Failure(
                         LicenseManifestReadStatus.InvalidManifest,
-                        "ManifestValidationFailed");
+                        "GrantValidationFailed");
+                }
+
+                if (!string.Equals(grant.ClientId, grantRequest.ClientId, StringComparison.Ordinal) ||
+                    !string.Equals(grant.DeviceId, grantRequest.DeviceId, StringComparison.Ordinal))
+                {
+                    return LicenseManifestReadResult.Failure(
+                        LicenseManifestReadStatus.InvalidManifest,
+                        "GrantSubjectMismatch");
                 }
 
                 Logger.Info(
-                    $"Event=LicenseManifestReadFinished Status=Success SchemaVersion={manifest.SchemaVersion} " +
-                    $"Revision={manifest.Revision} Bytes={bytes.Length} ElapsedMs={stopwatch.ElapsedMilliseconds}",
+                    $"Event=LicenseGrantReadFinished Status=Success SchemaVersion={grant.SchemaVersion} " +
+                    $"Revision={grant.Revision} Bytes={bytes.Length} ElapsedMs={stopwatch.ElapsedMilliseconds}",
                     ModuleName);
                 DateTimeOffset? serverDateUtc = signatureResponse.Headers.Date ?? response.Headers.Date;
                 return LicenseManifestReadResult.Success(
-                    manifest,
+                    grant,
                     bytes,
                     signatureFileBytes,
                     serverDateUtc);

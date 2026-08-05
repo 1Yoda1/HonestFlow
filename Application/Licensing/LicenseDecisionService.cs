@@ -7,19 +7,16 @@ namespace HonestFlow.Application.Licensing
 {
     public sealed class LicenseDecisionService : ILicenseDecisionService
     {
-        private readonly LicenseDecisionPolicy _policy;
         private readonly Func<DateTimeOffset> _utcNowProvider;
 
         public LicenseDecisionService(LicenseDecisionPolicy policy = null)
-            : this(policy, () => DateTimeOffset.UtcNow)
-        {
-        }
+            : this(policy, () => DateTimeOffset.UtcNow) { }
 
         public LicenseDecisionService(
             LicenseDecisionPolicy policy,
             Func<DateTimeOffset> utcNowProvider)
         {
-            _policy = policy ?? new LicenseDecisionPolicy();
+            _ = policy ?? new LicenseDecisionPolicy();
             _utcNowProvider = utcNowProvider ?? throw new ArgumentNullException(nameof(utcNowProvider));
         }
 
@@ -27,164 +24,55 @@ namespace HonestFlow.Application.Licensing
         {
             DateTimeOffset nowUtc = _utcNowProvider().ToUniversalTime();
             if (!TryValidateContext(context, nowUtc, out string invalidStateCode))
-            {
-                return Denied(
-                    LicenseDecision.InvalidLicenseState,
-                    "Состояние лицензии некорректно.",
-                    invalidStateCode,
-                    null,
-                    null,
-                    null);
-            }
+                return Denied(LicenseDecision.InvalidLicenseState, "Состояние лицензии некорректно.", invalidStateCode);
 
-            LicenseManifest manifest = context.Manifest;
-            OperatorDevice operatorDevice = (manifest.OperatorDevices ?? new List<OperatorDevice>())
-                .FirstOrDefault(candidate =>
-                    candidate != null &&
-                    candidate.Enabled &&
-                    string.Equals(candidate.DeviceId, context.DeviceId, StringComparison.OrdinalIgnoreCase));
+            LicenseGrant grant = context.Grant;
+            if (!string.Equals(grant.ClientId, context.ClientId, StringComparison.Ordinal))
+                return Denied(LicenseDecision.ClientNotFound, "Лицензия выдана другому клиенту.", "LICENSE_GRANT_CLIENT_MISMATCH");
 
-            if (operatorDevice != null)
-            {
-                if (nowUtc > manifest.ValidUntilUtc)
-                {
-                    return Denied(
-                        LicenseDecision.ManifestExpired,
-                        "Срок действия лицензионного manifest истёк.",
-                        "LICENSE_MANIFEST_EXPIRED",
-                        null,
-                        null,
-                        null);
-                }
+            if (!string.Equals(grant.DeviceId, context.DeviceId, StringComparison.Ordinal))
+                return Denied(LicenseDecision.DeviceNotRegistered, "Лицензия выдана другому устройству.", "LICENSE_GRANT_DEVICE_MISMATCH");
 
-                return new LicenseDecisionResult(
-                    LicenseDecision.Allowed,
-                    AllFeatures(),
-                    "Операторское устройство имеет полный доступ.",
-                    "LICENSE_OPERATOR_DEVICE_ALLOWED",
-                    null,
-                    null);
-            }
+            if (!grant.ClientEnabled)
+                return Denied(LicenseDecision.ClientDisabled, "Лицензия клиента отключена.", "LICENSE_CLIENT_DISABLED");
 
-            ClientLicense client = manifest.Clients.FirstOrDefault(candidate =>
-                candidate != null &&
-                string.Equals(candidate.ClientId, context.ClientId, StringComparison.Ordinal));
+            if (!grant.DeviceEnabled)
+                return Denied(LicenseDecision.DeviceDisabled, "Устройство отключено в лицензии.", "LICENSE_DEVICE_DISABLED");
 
-            if (client == null)
-            {
-                return Denied(
-                    LicenseDecision.ClientNotFound,
-                    "Лицензия для указанного клиента не найдена.",
-                    "LICENSE_CLIENT_NOT_FOUND",
-                    null,
-                    null,
-                    null);
-            }
-
-            Version minimumVersion = ParseVersion(client.MinHonestFlowVersion);
+            Version minimumVersion = ParseVersion(grant.MinHonestFlowVersion);
             if (minimumVersion == null)
-            {
-                return Denied(
-                    LicenseDecision.InvalidLicenseState,
-                    "В лицензии указана некорректная минимальная версия HonestFlow.",
-                    "LICENSE_MIN_VERSION_INVALID",
-                    client,
-                    null,
-                    null);
-            }
-
-            if (!client.Enabled)
-            {
-                return Denied(
-                    LicenseDecision.ClientDisabled,
-                    "Лицензия клиента отключена.",
-                    "LICENSE_CLIENT_DISABLED",
-                    client,
-                    null,
-                    minimumVersion);
-            }
-
-            LicensedDevice device = (client.Devices ?? new List<LicensedDevice>()).FirstOrDefault(candidate =>
-                candidate != null &&
-                string.Equals(candidate.DeviceId, context.DeviceId, StringComparison.Ordinal));
-
-            if (device == null)
-            {
-                return Denied(
-                    LicenseDecision.DeviceNotRegistered,
-                    "Устройство не зарегистрировано в лицензии клиента.",
-                    "LICENSE_DEVICE_NOT_REGISTERED",
-                    client,
-                    null,
-                    minimumVersion);
-            }
-
-            if (!device.Enabled)
-            {
-                return Denied(
-                    LicenseDecision.DeviceDisabled,
-                    "Устройство отключено в лицензии клиента.",
-                    "LICENSE_DEVICE_DISABLED",
-                    client,
-                    null,
-                    minimumVersion,
-                    device.Address);
-            }
+                return Denied(LicenseDecision.InvalidLicenseState, "В лицензии указана некорректная минимальная версия HonestFlow.", "LICENSE_MIN_VERSION_INVALID");
 
             if (context.CurrentHonestFlowVersion < minimumVersion)
-            {
-                return Denied(
-                    LicenseDecision.VersionTooOld,
-                    $"Требуется HonestFlow версии {minimumVersion} или новее.",
-                    "LICENSE_VERSION_TOO_OLD",
-                    client,
-                    null,
-                    minimumVersion,
-                    device.Address);
-            }
+                return Denied(LicenseDecision.VersionTooOld, $"Требуется HonestFlow версии {minimumVersion} или новее.", "LICENSE_VERSION_TOO_OLD", null, minimumVersion, grant.PointAddress);
 
-            if (nowUtc > manifest.ValidUntilUtc)
-            {
-                return Denied(
-                    LicenseDecision.ManifestExpired,
-                    "Срок действия лицензионного manifest истёк.",
-                    "LICENSE_MANIFEST_EXPIRED",
-                    client,
-                    GetOfflineGraceEnd(context, client),
-                    minimumVersion,
-                    device.Address);
-            }
+            if (nowUtc > grant.ValidUntilUtc)
+                return Denied(LicenseDecision.ManifestExpired, "Срок действия подписанной лицензии истёк.", "LICENSE_GRANT_EXPIRED", GetOfflineGraceEnd(context, grant), minimumVersion, grant.PointAddress);
 
             DateTimeOffset? graceEndUtc = null;
             if (context.ManifestSource == LicenseManifestSource.Cache)
             {
                 graceEndUtc = context.LastSuccessfulOnlineCheckUtc.Value
                     .ToUniversalTime()
-                    .AddHours(client.OfflineGraceHours);
+                    .AddHours(grant.OfflineGraceHours);
                 if (nowUtc > graceEndUtc.Value)
-                {
-                    return Denied(
-                        LicenseDecision.OfflineGraceExpired,
-                        "Истёк допустимый срок автономной работы лицензии.",
-                        "LICENSE_OFFLINE_GRACE_EXPIRED",
-                        client,
-                        graceEndUtc,
-                        minimumVersion,
-                        device.Address);
-                }
+                    return Denied(LicenseDecision.OfflineGraceExpired, "Истёк допустимый срок автономной работы лицензии.", "LICENSE_OFFLINE_GRACE_EXPIRED", graceEndUtc, minimumVersion, grant.PointAddress);
             }
 
+            IReadOnlyCollection<LicenseFeature> features = grant.OperatorDevice
+                ? AllFeatures()
+                : DistinctFeatures(grant.Features);
             return new LicenseDecisionResult(
                 LicenseDecision.Allowed,
-                DistinctFeatures(client.Features),
-                "Лицензия действительна.",
-                "LICENSE_ALLOWED",
+                features,
+                grant.OperatorDevice ? "Операторское устройство имеет полный доступ." : "Лицензия действительна.",
+                grant.OperatorDevice ? "LICENSE_OPERATOR_DEVICE_ALLOWED" : "LICENSE_ALLOWED",
                 graceEndUtc,
                 minimumVersion,
-                device.Address);
+                grant.PointAddress);
         }
 
-        private bool TryValidateContext(
+        private static bool TryValidateContext(
             LicenseDecisionContext context,
             DateTimeOffset nowUtc,
             out string technicalCode)
@@ -194,16 +82,13 @@ namespace HonestFlow.Application.Licensing
                 string.IsNullOrEmpty(context.ClientId) ||
                 string.IsNullOrEmpty(context.DeviceId) ||
                 context.CurrentHonestFlowVersion == null ||
-                context.Manifest == null ||
+                context.Grant == null ||
                 !Enum.IsDefined(typeof(LicenseManifestSource), context.ManifestSource))
-            {
                 return false;
-            }
 
-            if (context.Manifest.SchemaVersion <= 0 ||
-                LicenseManifestValidator.Validate(context.Manifest).Count > 0)
+            if (LicenseGrantValidator.Validate(context.Grant).Count > 0)
             {
-                technicalCode = "LICENSE_MANIFEST_INVALID";
+                technicalCode = "LICENSE_GRANT_INVALID";
                 return false;
             }
 
@@ -225,59 +110,29 @@ namespace HonestFlow.Application.Licensing
             return true;
         }
 
-        private LicenseDecisionResult Denied(
+        private static LicenseDecisionResult Denied(
             LicenseDecision decision,
             string message,
             string technicalCode,
-            ClientLicense client,
-            DateTimeOffset? graceEndUtc,
-            Version minimumVersion,
-            string pointAddress = null)
-        {
-            return new LicenseDecisionResult(
-                decision,
-                GetDeniedFeatures(client),
-                message,
-                technicalCode,
-                graceEndUtc,
-                minimumVersion,
-                pointAddress);
-        }
+            DateTimeOffset? graceEndUtc = null,
+            Version minimumVersion = null,
+            string pointAddress = null) =>
+            new(decision, Array.Empty<LicenseFeature>(), message, technicalCode, graceEndUtc, minimumVersion, pointAddress);
 
-        private IReadOnlyCollection<LicenseFeature> GetDeniedFeatures(ClientLicense client)
-        {
-            return Array.Empty<LicenseFeature>();
-        }
-
-        private static IReadOnlyCollection<LicenseFeature> DistinctFeatures(
-            List<LicenseFeature> features)
-        {
-            return features == null
-                ? Array.Empty<LicenseFeature>()
-                : features.Distinct().ToArray();
-        }
+        private static IReadOnlyCollection<LicenseFeature> DistinctFeatures(List<LicenseFeature> features) =>
+            features == null ? Array.Empty<LicenseFeature>() : features.Distinct().ToArray();
 
         private static IReadOnlyCollection<LicenseFeature> AllFeatures() =>
             ((LicenseFeature[])Enum.GetValues(typeof(LicenseFeature))).ToArray();
 
-        private static Version ParseVersion(string value)
-        {
-            return Version.TryParse(value, out Version version) ? version : null;
-        }
+        private static Version ParseVersion(string value) =>
+            Version.TryParse(value, out Version version) ? version : null;
 
         private static DateTimeOffset? GetOfflineGraceEnd(
             LicenseDecisionContext context,
-            ClientLicense client)
-        {
-            if (context.ManifestSource != LicenseManifestSource.Cache ||
-                !context.LastSuccessfulOnlineCheckUtc.HasValue)
-            {
-                return null;
-            }
-
-            return context.LastSuccessfulOnlineCheckUtc.Value
-                .ToUniversalTime()
-                .AddHours(client.OfflineGraceHours);
-        }
+            LicenseGrant grant) =>
+            context.ManifestSource == LicenseManifestSource.Cache && context.LastSuccessfulOnlineCheckUtc.HasValue
+                ? context.LastSuccessfulOnlineCheckUtc.Value.ToUniversalTime().AddHours(grant.OfflineGraceHours)
+                : null;
     }
 }

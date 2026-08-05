@@ -22,10 +22,12 @@ namespace HonestFlow.Tests
         {
             using Fixture fixture = Fixture.Create();
 
-            LicenseManifestReadResult result = await fixture.Repository.ReadAsync(CancellationToken.None);
+            LicenseManifestReadResult result = await fixture.Repository.ReadAsync(
+                new LicenseGrantRequest("client-1", "device-1"),
+                CancellationToken.None);
 
             Assert.True(result.IsSuccess);
-            Assert.Equal(7, result.Manifest.Revision);
+            Assert.Equal(7, result.Grant.Revision);
             Assert.Equal(6, fixture.Handler.RequestCount);
         }
 
@@ -34,7 +36,9 @@ namespace HonestFlow.Tests
         {
             using Fixture fixture = Fixture.Create(invalidManifestHash: true);
 
-            LicenseManifestReadResult result = await fixture.Repository.ReadAsync(CancellationToken.None);
+            LicenseManifestReadResult result = await fixture.Repository.ReadAsync(
+                new LicenseGrantRequest("client-1", "device-1"),
+                CancellationToken.None);
 
             Assert.Equal(LicenseManifestReadStatus.InvalidJson, result.Status);
             Assert.Equal("PointerHashMismatch", result.ErrorCode);
@@ -58,15 +62,20 @@ namespace HonestFlow.Tests
             {
                 ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
                 const string keyId = "test-key";
-                var manifest = new LicenseManifest
+                var grant = new LicenseGrant
                 {
                     SchemaVersion = 1,
                     Revision = 7,
                     IssuedAtUtc = DateTimeOffset.UtcNow.AddDays(-1),
                     ValidUntilUtc = DateTimeOffset.UtcNow.AddDays(10),
-                    Clients = new List<ClientLicense>()
+                    ClientId = "client-1",
+                    DeviceId = "device-1",
+                    ClientEnabled = true,
+                    DeviceEnabled = true,
+                    MinHonestFlowVersion = "3.0.0",
+                    OfflineGraceHours = 24
                 };
-                byte[] manifestBytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(manifest));
+                byte[] manifestBytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(grant));
                 string privatePem = "-----BEGIN PRIVATE KEY-----\n" +
                     Convert.ToBase64String(
                         key.ExportPkcs8PrivateKey(),
@@ -82,8 +91,10 @@ namespace HonestFlow.Tests
                 var pointer = new YandexLicensePublicationPointer
                 {
                     Revision = 7,
-                    VersionPath = "/licenses/versions/revision-00000000000000000007",
-                    ManifestSha256 = manifestHash,
+                    VersionPath = "/licenses/grants/" +
+                        new LicenseGrantRequest("client-1", "device-1").GetOpaquePathId() +
+                        "/versions/revision-00000000000000000007",
+                    GrantSha256 = manifestHash,
                     SignatureSha256 = Hash(signatureBytes),
                     PublishedAtUtc = DateTimeOffset.UtcNow
                 };

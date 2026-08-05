@@ -23,8 +23,9 @@ The following files are production-sensitive and must not be published in GitHub
 - `support_mail_encrypted.json`
 - `yandex_public_key.txt`
 - `yandex_public_url.txt`
-- `licenses.json`
-- `licenses.json.sig`
+- private source license directory
+- `grant.json`
+- `grant.json.sig`
 - files under `%ProgramData%\HonestFlow`
 - diagnostic archives and application logs
 

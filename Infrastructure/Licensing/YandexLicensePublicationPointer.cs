@@ -6,7 +6,7 @@ namespace HonestFlow.Infrastructure.Licensing
     {
         public long Revision { get; set; }
         public string VersionPath { get; set; }
-        public string ManifestSha256 { get; set; }
+        public string GrantSha256 { get; set; }
         public string SignatureSha256 { get; set; }
         public DateTimeOffset PublishedAtUtc { get; set; }
     }

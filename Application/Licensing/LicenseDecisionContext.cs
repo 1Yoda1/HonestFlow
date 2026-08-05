@@ -8,7 +8,7 @@ namespace HonestFlow.Application.Licensing
         public string ClientId { get; set; }
         public string DeviceId { get; set; }
         public Version CurrentHonestFlowVersion { get; set; }
-        public LicenseManifest Manifest { get; set; }
+        public LicenseGrant Grant { get; set; }
         public LicenseManifestSource ManifestSource { get; set; }
         public DateTimeOffset? LastSuccessfulOnlineCheckUtc { get; set; }
     }

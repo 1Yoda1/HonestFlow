@@ -5,6 +5,8 @@ namespace HonestFlow.Application.Licensing
 {
     public interface ILicenseManifestRepository
     {
-        Task<LicenseManifestReadResult> ReadAsync(CancellationToken cancellationToken);
+        Task<LicenseManifestReadResult> ReadAsync(
+            LicenseGrantRequest request,
+            CancellationToken cancellationToken);
     }
 }

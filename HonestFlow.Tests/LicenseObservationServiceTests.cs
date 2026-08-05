@@ -20,7 +20,7 @@ namespace HonestFlow.Tests
         [Fact]
         public async Task Observe_RemoteAvailable_SavesCacheAndUsesRemote()
         {
-            var fixture = CreateFixture(SuccessfulRemote(CreateManifest()));
+            var fixture = CreateFixture(SuccessfulRemote(CreateGrant()));
 
             LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(Client(), CancellationToken.None);
 
@@ -30,11 +30,31 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task Observe_LegacyFallback_AllowsWithoutRewritingSignatureCache()
+        {
+            LicenseGrant grant = CreateGrant();
+            byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(grant));
+            var remote = LicenseManifestReadResult.Success(
+                grant,
+                bytes,
+                new byte[] { 1 },
+                cacheable: false);
+            var fixture = CreateFixture(remote);
+
+            LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(
+                Client(),
+                CancellationToken.None);
+
+            Assert.Equal(LicenseDecision.Allowed, result.Decision);
+            Assert.Equal(0, fixture.Cache.SaveCalls);
+        }
+
+        [Fact]
         public async Task Observe_NetworkUnavailableWithCache_UsesCache()
         {
             var cache = new FakeCache
             {
-                ReadResult = LicenseCacheReadResult.Success(CreateManifest(), NowUtc.AddHours(-1))
+                ReadResult = LicenseCacheReadResult.Success(CreateGrant(), NowUtc.AddHours(-1))
             };
             var fixture = CreateFixture(
                 LicenseManifestReadResult.Failure(
@@ -62,9 +82,24 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task Observe_GrantNotFound_ReturnsDeviceNotRegistered()
+        {
+            var fixture = CreateFixture(LicenseManifestReadResult.Failure(
+                LicenseManifestReadStatus.NotFound,
+                "missing"));
+
+            LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(
+                Client(),
+                CancellationToken.None);
+
+            Assert.Equal(LicenseDecision.DeviceNotRegistered, result.Decision);
+            Assert.Equal("LICENSE_GRANT_NOT_FOUND", result.TechnicalCode);
+        }
+
+        [Fact]
         public async Task Observe_ClientMissing_ReturnsClientNotFound()
         {
-            var fixture = CreateFixture(SuccessfulRemote(CreateManifest()));
+            var fixture = CreateFixture(SuccessfulRemote(CreateGrant()));
             IPData client = Client();
             client.ClientId = "missing-client";
 
@@ -77,7 +112,7 @@ namespace HonestFlow.Tests
         public async Task Observe_DeviceMissing_ReturnsDeviceNotRegistered()
         {
             var fixture = CreateFixture(
-                SuccessfulRemote(CreateManifest()),
+                SuccessfulRemote(CreateGrant()),
                 deviceId: "missing-device");
 
             LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(Client(), CancellationToken.None);
@@ -88,9 +123,9 @@ namespace HonestFlow.Tests
         [Fact]
         public async Task Observe_ClientDisabled_ReturnsClientDisabled()
         {
-            LicenseManifest manifest = CreateManifest();
-            manifest.Clients[0].Enabled = false;
-            var fixture = CreateFixture(SuccessfulRemote(manifest));
+            LicenseGrant grant = CreateGrant();
+            grant.ClientEnabled = false;
+            var fixture = CreateFixture(SuccessfulRemote(grant));
 
             LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(Client(), CancellationToken.None);
 
@@ -101,7 +136,7 @@ namespace HonestFlow.Tests
         public async Task Observe_OldApplicationVersion_ReturnsVersionTooOld()
         {
             var fixture = CreateFixture(
-                SuccessfulRemote(CreateManifest()),
+                SuccessfulRemote(CreateGrant()),
                 version: new Version(2, 4, 1, 0));
 
             LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(Client(), CancellationToken.None);
@@ -114,7 +149,7 @@ namespace HonestFlow.Tests
         {
             var cache = new FakeCache
             {
-                ReadResult = LicenseCacheReadResult.Success(CreateManifest(), NowUtc.AddHours(-1))
+                ReadResult = LicenseCacheReadResult.Success(CreateGrant(), NowUtc.AddHours(-1))
             };
             var fixture = CreateFixture(
                 LicenseManifestReadResult.Failure(
@@ -131,18 +166,18 @@ namespace HonestFlow.Tests
         [Fact]
         public async Task Observe_OlderSignedRemoteRevision_UsesNewerVerifiedCache()
         {
-            LicenseManifest cachedManifest = CreateManifest();
-            cachedManifest.Revision = 8;
+            LicenseGrant cachedGrant = CreateGrant();
+            cachedGrant.Revision = 8;
             var cache = new FakeCache
             {
                 SaveResult = LicenseCacheWriteResult.Failure(
                     LicenseCacheStatus.StaleRevision,
                     "RevisionOlderThanCache"),
-                ReadResult = LicenseCacheReadResult.Success(cachedManifest, NowUtc.AddHours(-1))
+                ReadResult = LicenseCacheReadResult.Success(cachedGrant, NowUtc.AddHours(-1))
             };
-            LicenseManifest remoteManifest = CreateManifest();
-            remoteManifest.Revision = 7;
-            var fixture = CreateFixture(SuccessfulRemote(remoteManifest), cache);
+            LicenseGrant remoteGrant = CreateGrant();
+            remoteGrant.Revision = 7;
+            var fixture = CreateFixture(SuccessfulRemote(remoteGrant), cache);
 
             LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(
                 Client(),
@@ -182,40 +217,32 @@ namespace HonestFlow.Tests
             return new ObservationFixture(observer, cache);
         }
 
-        private static LicenseManifestReadResult SuccessfulRemote(LicenseManifest manifest)
+        private static LicenseManifestReadResult SuccessfulRemote(LicenseGrant grant)
         {
-            byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(manifest));
-            return LicenseManifestReadResult.Success(manifest, bytes, new byte[] { 1 });
+            byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(grant));
+            return LicenseManifestReadResult.Success(grant, bytes, new byte[] { 1 });
         }
 
         private static IPData Client() => new() { ClientId = "client-1", Name = "Client" };
 
-        private static LicenseManifest CreateManifest()
+        private static LicenseGrant CreateGrant()
         {
-            return new LicenseManifest
+            return new LicenseGrant
             {
                 SchemaVersion = 1,
                 Revision = 1,
                 IssuedAtUtc = NowUtc.AddDays(-1),
                 ValidUntilUtc = NowUtc.AddDays(30),
-                Clients = new List<ClientLicense>
+                ClientId = "client-1",
+                DeviceId = "device-1",
+                ClientEnabled = true,
+                DeviceEnabled = true,
+                MinHonestFlowVersion = "2.4.2.0",
+                OfflineGraceHours = 24,
+                Features = new List<LicenseFeature>
                 {
-                    new ClientLicense
-                    {
-                        ClientId = "client-1",
-                        Enabled = true,
-                        MinHonestFlowVersion = "2.4.2.0",
-                        OfflineGraceHours = 24,
-                        Features = new List<LicenseFeature>
-                        {
-                            LicenseFeature.ViewAndRepair,
-                            LicenseFeature.InstallAndMaintenance
-                        },
-                        Devices = new List<LicensedDevice>
-                        {
-                            new LicensedDevice { DeviceId = "device-1", Enabled = true }
-                        }
-                    }
+                    LicenseFeature.ViewAndRepair,
+                    LicenseFeature.InstallAndMaintenance
                 }
             };
         }
@@ -236,7 +263,9 @@ namespace HonestFlow.Tests
         {
             private readonly LicenseManifestReadResult _result;
             public FakeRemoteRepository(LicenseManifestReadResult result) => _result = result;
-            public Task<LicenseManifestReadResult> ReadAsync(CancellationToken cancellationToken) =>
+            public Task<LicenseManifestReadResult> ReadAsync(
+                LicenseGrantRequest request,
+                CancellationToken cancellationToken) =>
                 Task.FromResult(_result);
         }
 
@@ -248,6 +277,7 @@ namespace HonestFlow.Tests
             public int SaveCalls { get; private set; }
 
             public Task<LicenseCacheWriteResult> SaveAsync(
+                LicenseGrantRequest request,
                 LicenseManifestReadResult onlineResult,
                 DateTimeOffset successfulOnlineCheckUtc,
                 CancellationToken cancellationToken)
@@ -256,7 +286,9 @@ namespace HonestFlow.Tests
                 return Task.FromResult(SaveResult);
             }
 
-            public Task<LicenseCacheReadResult> ReadAsync(CancellationToken cancellationToken)
+            public Task<LicenseCacheReadResult> ReadAsync(
+                LicenseGrantRequest request,
+                CancellationToken cancellationToken)
             {
                 ReadCalls++;
                 return Task.FromResult(ReadResult);

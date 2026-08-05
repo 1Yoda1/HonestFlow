@@ -78,19 +78,27 @@ namespace HonestFlow.Application.Licensing
                     return unavailableIdentity;
                 }
 
-                LicenseManifestReadResult remote = await _remoteRepository.ReadAsync(cancellationToken);
+                var grantRequest = new LicenseGrantRequest(client?.ClientId, identity.DeviceId);
+                LicenseManifestReadResult remote = await _remoteRepository.ReadAsync(
+                    grantRequest,
+                    cancellationToken);
                 if (remote.IsSuccess)
                 {
                     _trustedClock?.ObserveTrustedTime(
-                        remote.Manifest.IssuedAtUtc,
-                        remote.Manifest.ValidUntilUtc,
+                        remote.Grant.IssuedAtUtc,
+                        remote.Grant.ValidUntilUtc,
                         remote.ServerDateUtc);
                     observedAtUtc = _utcNowProvider().ToUniversalTime();
 
-                    LicenseCacheWriteResult cacheWrite = await _cache.SaveAsync(
-                        remote,
-                        observedAtUtc,
-                        cancellationToken);
+                    LicenseCacheWriteResult cacheWrite = remote.Cacheable
+                        ? await _cache.SaveAsync(
+                            grantRequest,
+                            remote,
+                            observedAtUtc,
+                            cancellationToken)
+                        : LicenseCacheWriteResult.Failure(
+                            LicenseCacheStatus.WriteFailed,
+                            "LegacyGrantUsesExistingCache");
                     if (!cacheWrite.IsSuccess)
                     {
                         Logger.Warning(
@@ -100,13 +108,15 @@ namespace HonestFlow.Application.Licensing
 
                         if (cacheWrite.Status == LicenseCacheStatus.StaleRevision)
                         {
-                            LicenseCacheReadResult newerCache = await _cache.ReadAsync(cancellationToken);
+                            LicenseCacheReadResult newerCache = await _cache.ReadAsync(
+                                grantRequest,
+                                cancellationToken);
                             if (newerCache.IsSuccess)
                             {
                                 LicenseObservationSnapshot rollbackProtectedSnapshot = Decide(
                                     client,
                                     identity.DeviceId,
-                                    newerCache.Manifest,
+                                    newerCache.Grant,
                                     LicenseManifestSource.Cache,
                                     newerCache.LastSuccessfulOnlineCheckUtc,
                                     remote.Status,
@@ -130,7 +140,7 @@ namespace HonestFlow.Application.Licensing
                     LicenseObservationSnapshot remoteSnapshot = Decide(
                         client,
                         identity.DeviceId,
-                        remote.Manifest,
+                        remote.Grant,
                         LicenseManifestSource.Remote,
                         observedAtUtc,
                         remote.Status,
@@ -140,15 +150,34 @@ namespace HonestFlow.Application.Licensing
                     return remoteSnapshot;
                 }
 
+                if (remote.Status == LicenseManifestReadStatus.NotFound)
+                {
+                    var unregistered = new LicenseObservationSnapshot
+                    {
+                        ObservedAtUtc = observedAtUtc,
+                        ClientId = client?.ClientId,
+                        DeviceId = identity.DeviceId,
+                        EnforcementMode = _mode,
+                        RemoteStatus = remote.Status,
+                        Decision = LicenseDecision.DeviceNotRegistered,
+                        TechnicalCode = "LICENSE_GRANT_NOT_FOUND",
+                        Message = "Для этого устройства ещё не выпущена персональная лицензия."
+                    };
+                    Publish(unregistered);
+                    return unregistered;
+                }
+
                 if (CanUseCache(remote.Status))
                 {
-                    LicenseCacheReadResult cached = await _cache.ReadAsync(cancellationToken);
+                    LicenseCacheReadResult cached = await _cache.ReadAsync(
+                        grantRequest,
+                        cancellationToken);
                     if (cached.IsSuccess)
                     {
                         LicenseObservationSnapshot cacheSnapshot = Decide(
                             client,
                             identity.DeviceId,
-                            cached.Manifest,
+                            cached.Grant,
                             LicenseManifestSource.Cache,
                             cached.LastSuccessfulOnlineCheckUtc,
                             remote.Status,
@@ -200,7 +229,7 @@ namespace HonestFlow.Application.Licensing
         private LicenseObservationSnapshot Decide(
             IPData client,
             string deviceId,
-            Models.Licensing.LicenseManifest manifest,
+            Models.Licensing.LicenseGrant grant,
             LicenseManifestSource source,
             DateTimeOffset? lastOnlineCheckUtc,
             LicenseManifestReadStatus remoteStatus,
@@ -212,7 +241,7 @@ namespace HonestFlow.Application.Licensing
                 ClientId = client?.ClientId,
                 DeviceId = deviceId,
                 CurrentHonestFlowVersion = _versionProvider(),
-                Manifest = manifest,
+                Grant = grant,
                 ManifestSource = source,
                 LastSuccessfulOnlineCheckUtc = lastOnlineCheckUtc
             });
@@ -228,7 +257,7 @@ namespace HonestFlow.Application.Licensing
                 ManifestSource = source,
                 RemoteStatus = remoteStatus,
                 CacheStatus = cacheStatus,
-                Revision = manifest?.Revision,
+                Revision = grant?.Revision,
                 Decision = decision.Decision,
                 TechnicalCode = decision.TechnicalCode,
                 Message = decision.Message,

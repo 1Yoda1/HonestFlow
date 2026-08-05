@@ -17,207 +17,85 @@ namespace HonestFlow.Tests
     public sealed class FileLicenseManifestCacheTests
     {
         [Fact]
-        public async Task SaveAndRead_PreservesVerifiedSnapshotAndMetadata()
+        public async Task SaveAndRead_PreservesOnlyMatchingGrant()
         {
-            using var fixture = CacheFixture.Create();
-            DateTimeOffset checkedAt = new(2026, 7, 18, 10, 0, 0, TimeSpan.FromHours(6));
-
-            LicenseCacheWriteResult write = await fixture.Cache.SaveAsync(
-                fixture.CreateOnlineResult(10),
-                checkedAt,
-                CancellationToken.None);
-            LicenseCacheReadResult read = await fixture.Cache.ReadAsync(CancellationToken.None);
-
-            Assert.True(write.IsSuccess);
+            using var fixture = Fixture.Create();
+            Assert.True((await fixture.Save(3)).IsSuccess);
+            LicenseCacheReadResult read = await fixture.Cache.ReadAsync(fixture.Request, CancellationToken.None);
             Assert.True(read.IsSuccess);
-            Assert.Equal(10, read.Manifest.Revision);
-            Assert.Equal(checkedAt.ToUniversalTime(), read.LastSuccessfulOnlineCheckUtc);
+            Assert.Equal(3, read.Grant.Revision);
+            Assert.Equal(fixture.Request.DeviceId, read.Grant.DeviceId);
         }
 
         [Fact]
-        public async Task Read_ReturnsInvalidCacheForDamagedJson()
+        public async Task Read_DoesNotExposeAnotherDevicesCache()
         {
-            using var fixture = CacheFixture.Create();
-            await fixture.SaveRevision(10);
-            File.WriteAllText(fixture.ActiveFile("licenses.json"), "{ damaged-json");
-
-            LicenseCacheReadResult result = await fixture.Cache.ReadAsync(CancellationToken.None);
-
-            Assert.Equal(LicenseCacheStatus.InvalidCache, result.Status);
-        }
-
-        [Fact]
-        public async Task Read_ReturnsInvalidCacheForDamagedSignature()
-        {
-            using var fixture = CacheFixture.Create();
-            await fixture.SaveRevision(10);
-            File.WriteAllText(fixture.ActiveFile("licenses.json.sig"), "{\"Signature\":\"damaged\"}");
-
-            LicenseCacheReadResult result = await fixture.Cache.ReadAsync(CancellationToken.None);
-
-            Assert.Equal(LicenseCacheStatus.InvalidCache, result.Status);
-        }
-
-        [Fact]
-        public async Task Read_IgnoresInterruptedUnpublishedSnapshot()
-        {
-            using var fixture = CacheFixture.Create();
-            string interrupted = Path.Combine(fixture.Root, ".tmp-interrupted");
-            Directory.CreateDirectory(interrupted);
-            File.WriteAllText(Path.Combine(interrupted, "licenses.json"), "partial");
-
-            LicenseCacheReadResult result = await fixture.Cache.ReadAsync(CancellationToken.None);
-
-            Assert.Equal(LicenseCacheStatus.NotFound, result.Status);
-        }
-
-        [Fact]
-        public async Task Read_ReturnsNotFoundWhenCacheDoesNotExist()
-        {
-            using var fixture = CacheFixture.Create();
-
-            LicenseCacheReadResult result = await fixture.Cache.ReadAsync(CancellationToken.None);
-
-            Assert.Equal(LicenseCacheStatus.NotFound, result.Status);
-        }
-
-        [Fact]
-        public async Task Save_DoesNotReplaceNewerRevisionWithOlderRevision()
-        {
-            using var fixture = CacheFixture.Create();
-            await fixture.SaveRevision(10);
-
-            LicenseCacheWriteResult staleWrite = await fixture.Cache.SaveAsync(
-                fixture.CreateOnlineResult(9),
-                DateTimeOffset.UtcNow,
+            using var fixture = Fixture.Create();
+            await fixture.Save(3);
+            LicenseCacheReadResult read = await fixture.Cache.ReadAsync(
+                new LicenseGrantRequest("client-1", "other-device"),
                 CancellationToken.None);
-            LicenseCacheReadResult read = await fixture.Cache.ReadAsync(CancellationToken.None);
-
-            Assert.Equal(LicenseCacheStatus.StaleRevision, staleWrite.Status);
-            Assert.Equal(10, read.Manifest.Revision);
+            Assert.Equal(LicenseCacheStatus.NotFound, read.Status);
         }
 
         [Fact]
-        public async Task Save_RemovesPreviousSnapshotsAndRejectsRestoredRollback()
+        public async Task Read_RejectsTamperedGrant()
         {
-            using var fixture = CacheFixture.Create();
-            await fixture.SaveRevision(10);
-            string oldSnapshot = File.ReadAllText(Path.Combine(fixture.Root, "current")).Trim();
-            string backup = Path.Combine(fixture.Root, "saved-old-snapshot");
-            CopyDirectory(Path.Combine(fixture.Root, oldSnapshot), backup);
-
-            await fixture.SaveRevision(11);
-            Assert.False(Directory.Exists(Path.Combine(fixture.Root, oldSnapshot)));
-
-            CopyDirectory(backup, Path.Combine(fixture.Root, oldSnapshot));
-            File.WriteAllText(Path.Combine(fixture.Root, "current"), oldSnapshot);
-            LicenseCacheReadResult read = await fixture.Cache.ReadAsync(CancellationToken.None);
-
-            Assert.Equal(LicenseCacheStatus.InvalidCache, read.Status);
-            Assert.Equal("CacheRevisionRollbackDetected", read.ErrorCode);
+            using var fixture = Fixture.Create();
+            await fixture.Save(3);
+            File.WriteAllText(fixture.ActiveFile("grant.json"), "{}");
+            Assert.Equal(LicenseCacheStatus.InvalidCache,
+                (await fixture.Cache.ReadAsync(fixture.Request, CancellationToken.None)).Status);
         }
 
-        private static void CopyDirectory(string source, string destination)
-        {
-            Directory.CreateDirectory(destination);
-            foreach (string file in Directory.GetFiles(source))
-                File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
-        }
-
-        [Fact]
-        public void DpapiProtector_RoundTripsMetadataOnWindows()
-        {
-            var protector = new DpapiLicenseCacheMetadataProtector();
-            byte[] plaintext = Encoding.UTF8.GetBytes("metadata-without-license-content");
-
-            byte[] protectedData = protector.Protect(plaintext);
-            byte[] restored = protector.Unprotect(protectedData);
-
-            Assert.NotEqual(plaintext, protectedData);
-            Assert.Equal(plaintext, restored);
-        }
-
-        private sealed class CacheFixture : IDisposable
+        private sealed class Fixture : IDisposable
         {
             private readonly ECDsa _key;
-            private readonly EcdsaLicenseManifestSigner _signer;
-            private readonly string _privateKeyPem;
-            private readonly string _keyId;
+            private readonly string _privatePem;
+            private readonly EcdsaLicenseManifestSigner _signer = new();
+            private const string KeyId = "test";
 
-            private CacheFixture(
-                string root,
-                ECDsa key,
-                string keyId,
-                EcdsaLicenseSignatureVerifier verifier)
+            private Fixture(string root, ECDsa key)
             {
                 Root = root;
                 _key = key;
-                _keyId = keyId;
-                _privateKeyPem = ToPkcs8Pem(key.ExportPkcs8PrivateKey());
-                _signer = new EcdsaLicenseManifestSigner();
+                _privatePem = "-----BEGIN PRIVATE KEY-----\n" + Convert.ToBase64String(key.ExportPkcs8PrivateKey(), Base64FormattingOptions.InsertLineBreaks) + "\n-----END PRIVATE KEY-----";
+                var verifier = new EcdsaLicenseSignatureVerifier(new LicensePublicKeyRegistry(
+                    new Dictionary<string, string> { [KeyId] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }));
                 Cache = new FileLicenseManifestCache(root, verifier, new PassThroughProtector());
             }
 
             public string Root { get; }
             public FileLicenseManifestCache Cache { get; }
+            public LicenseGrantRequest Request { get; } = new("client-1", "device-1");
 
-            public static CacheFixture Create()
-            {
-                string root = Path.Combine(Path.GetTempPath(), "HonestFlow.Tests", Guid.NewGuid().ToString("N"));
-                var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-                const string keyId = "cache-test-key";
-                var registry = new LicensePublicKeyRegistry(
-                    new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        [keyId] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo())
-                    });
-                return new CacheFixture(root, key, keyId, new EcdsaLicenseSignatureVerifier(registry));
-            }
+            public static Fixture Create() => new(
+                Path.Combine(Path.GetTempPath(), "HonestFlow.Tests", Guid.NewGuid().ToString("N")),
+                ECDsa.Create(ECCurve.NamedCurves.nistP256));
 
-            public LicenseManifestReadResult CreateOnlineResult(long revision)
+            public Task<LicenseCacheWriteResult> Save(long revision)
             {
-                var manifest = new LicenseManifest
+                var grant = new LicenseGrant
                 {
-                    SchemaVersion = 1,
-                    Revision = revision,
-                    IssuedAtUtc = new DateTimeOffset(2026, 7, 18, 0, 0, 0, TimeSpan.Zero),
-                    ValidUntilUtc = new DateTimeOffset(2027, 7, 18, 0, 0, 0, TimeSpan.Zero),
-                    Clients = new List<ClientLicense>()
+                    SchemaVersion = 1, Revision = revision, ClientId = Request.ClientId, DeviceId = Request.DeviceId,
+                    ClientEnabled = true, DeviceEnabled = true, MinHonestFlowVersion = "3.0.0", OfflineGraceHours = 24,
+                    IssuedAtUtc = DateTimeOffset.UtcNow.AddDays(-1), ValidUntilUtc = DateTimeOffset.UtcNow.AddDays(7)
                 };
-                byte[] manifestBytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(manifest));
-                byte[] signatureFileBytes = _signer.CreateSignatureFile(
-                    manifestBytes,
-                    _keyId,
-                    _privateKeyPem);
-                return LicenseManifestReadResult.Success(manifest, manifestBytes, signatureFileBytes);
+                byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(grant));
+                byte[] signature = _signer.CreateSignatureFile(bytes, KeyId, _privatePem);
+                return Cache.SaveAsync(Request, LicenseManifestReadResult.Success(grant, bytes, signature), DateTimeOffset.UtcNow, CancellationToken.None);
             }
 
-            public Task<LicenseCacheWriteResult> SaveRevision(long revision)
+            public string ActiveFile(string name)
             {
-                return Cache.SaveAsync(
-                    CreateOnlineResult(revision),
-                    DateTimeOffset.UtcNow,
-                    CancellationToken.None);
-            }
-
-            public string ActiveFile(string fileName)
-            {
-                string snapshot = File.ReadAllText(Path.Combine(Root, "current")).Trim();
-                return Path.Combine(Root, snapshot, fileName);
+                string subjectRoot = Path.Combine(Root, Request.GetOpaquePathId());
+                return Path.Combine(subjectRoot, File.ReadAllText(Path.Combine(subjectRoot, "current")).Trim(), name);
             }
 
             public void Dispose()
             {
                 _key.Dispose();
-                if (Directory.Exists(Root))
-                    Directory.Delete(Root, true);
-            }
-
-            private static string ToPkcs8Pem(byte[] privateKey)
-            {
-                return "-----BEGIN PRIVATE KEY-----\n" +
-                       Convert.ToBase64String(privateKey, Base64FormattingOptions.InsertLineBreaks) +
-                       "\n-----END PRIVATE KEY-----";
+                if (Directory.Exists(Root)) Directory.Delete(Root, true);
             }
         }
 

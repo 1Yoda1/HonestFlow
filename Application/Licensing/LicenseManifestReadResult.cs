@@ -7,43 +7,48 @@ namespace HonestFlow.Application.Licensing
     {
         private LicenseManifestReadResult(
             LicenseManifestReadStatus status,
-            LicenseManifest manifest,
+            LicenseGrant grant,
             string errorCode,
-            byte[] manifestBytes,
+            byte[] grantBytes,
             byte[] signatureFileBytes,
-            DateTimeOffset? serverDateUtc)
+            DateTimeOffset? serverDateUtc,
+            bool cacheable)
         {
             Status = status;
-            Manifest = manifest;
+            Grant = grant;
             ErrorCode = errorCode;
-            ManifestBytes = manifestBytes;
+            GrantBytes = grantBytes;
             SignatureFileBytes = signatureFileBytes;
             ServerDateUtc = serverDateUtc?.ToUniversalTime();
+            Cacheable = cacheable;
         }
 
         public LicenseManifestReadStatus Status { get; }
-        public LicenseManifest Manifest { get; }
+        public LicenseGrant Grant { get; }
         public string ErrorCode { get; }
-        public ReadOnlyMemory<byte> ManifestBytes { get; }
+        public ReadOnlyMemory<byte> GrantBytes { get; }
         public ReadOnlyMemory<byte> SignatureFileBytes { get; }
         public DateTimeOffset? ServerDateUtc { get; }
+        public bool Cacheable { get; }
         public bool IsSuccess => Status == LicenseManifestReadStatus.Success;
 
         public static LicenseManifestReadResult Success(
-            LicenseManifest manifest,
-            byte[] manifestBytes,
+            LicenseGrant grant,
+            byte[] grantBytes,
             byte[] signatureFileBytes,
-            DateTimeOffset? serverDateUtc = null) =>
+            DateTimeOffset? serverDateUtc = null,
+            bool cacheable = true) =>
             new(
                 LicenseManifestReadStatus.Success,
-                manifest,
+                grant,
                 null,
-                manifestBytes == null ? null : (byte[])manifestBytes.Clone(),
+                grantBytes == null ? null : (byte[])grantBytes.Clone(),
                 signatureFileBytes == null ? null : (byte[])signatureFileBytes.Clone(),
-                serverDateUtc);
+                serverDateUtc,
+                cacheable);
 
         public static LicenseManifestReadResult Failure(
             LicenseManifestReadStatus status,
-            string errorCode) => new(status, null, errorCode, null, null, null);
+            string errorCode) => new(status, null, errorCode, null, null, null, false);
     }
 }

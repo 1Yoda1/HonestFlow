@@ -159,7 +159,19 @@ namespace HonestFlow.Tests
                     ClientId = "client-1",
                     DeviceId = "unregistered-device",
                     CurrentHonestFlowVersion = new Version(2, 4, 2, 0),
-                    Manifest = Manifest(),
+                    Grant = new LicenseGrant
+                    {
+                        SchemaVersion = 1,
+                        Revision = 1,
+                        ClientId = "client-1",
+                        DeviceId = "registered-device",
+                        ClientEnabled = true,
+                        DeviceEnabled = true,
+                        MinHonestFlowVersion = "2.4.2.0",
+                        OfflineGraceHours = 24,
+                        IssuedAtUtc = NowUtc.AddDays(-1),
+                        ValidUntilUtc = NowUtc.AddDays(1)
+                    },
                     ManifestSource = LicenseManifestSource.Remote,
                     LastSuccessfulOnlineCheckUtc = NowUtc
                 });

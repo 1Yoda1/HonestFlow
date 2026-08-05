@@ -7,26 +7,26 @@ namespace HonestFlow.Application.Licensing
     {
         private LicenseCacheReadResult(
             LicenseCacheStatus status,
-            LicenseManifest manifest,
+            LicenseGrant grant,
             DateTimeOffset? lastSuccessfulOnlineCheckUtc,
             string errorCode)
         {
             Status = status;
-            Manifest = manifest;
+            Grant = grant;
             LastSuccessfulOnlineCheckUtc = lastSuccessfulOnlineCheckUtc;
             ErrorCode = errorCode;
         }
 
         public LicenseCacheStatus Status { get; }
-        public LicenseManifest Manifest { get; }
+        public LicenseGrant Grant { get; }
         public DateTimeOffset? LastSuccessfulOnlineCheckUtc { get; }
         public string ErrorCode { get; }
         public bool IsSuccess => Status == LicenseCacheStatus.Success;
 
         public static LicenseCacheReadResult Success(
-            LicenseManifest manifest,
+            LicenseGrant grant,
             DateTimeOffset lastSuccessfulOnlineCheckUtc) =>
-            new(LicenseCacheStatus.Success, manifest, lastSuccessfulOnlineCheckUtc, null);
+            new(LicenseCacheStatus.Success, grant, lastSuccessfulOnlineCheckUtc, null);
 
         public static LicenseCacheReadResult Failure(
             LicenseCacheStatus status,
