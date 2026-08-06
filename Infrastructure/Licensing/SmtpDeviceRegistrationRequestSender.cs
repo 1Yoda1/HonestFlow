@@ -36,7 +36,7 @@ namespace HonestFlow.Infrastructure.Licensing
                 Subject = SubjectMarker,
                 Body = "Автоматическая заявка регистрации устройства HonestFlow находится во вложении."
             };
-            message.To.Add(settings.SenderEmail);
+            message.To.Add(settings.RecipientEmail);
             message.Attachments.Add(attachment);
 
             using var smtp = new SmtpClient(settings.SmtpHost, settings.SmtpPort)
@@ -55,7 +55,8 @@ namespace HonestFlow.Infrastructure.Licensing
                 string.IsNullOrWhiteSpace(settings.SmtpHost) ||
                 settings.SmtpPort <= 0 ||
                 string.IsNullOrWhiteSpace(settings.SenderEmail) ||
-                string.IsNullOrWhiteSpace(settings.SenderPassword))
+                string.IsNullOrWhiteSpace(settings.SenderPassword) ||
+                string.IsNullOrWhiteSpace(settings.RecipientEmail))
             {
                 throw new InvalidOperationException("Настройки почты для регистрации устройств не заполнены.");
             }

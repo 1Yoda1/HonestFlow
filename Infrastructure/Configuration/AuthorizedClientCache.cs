@@ -37,10 +37,7 @@ namespace HonestFlow.Infrastructure.Configuration
             try
             {
                 File.WriteAllBytes(temporary, protectedData);
-                if (File.Exists(_path))
-                    File.Replace(temporary, _path, null, true);
-                else
-                    File.Move(temporary, _path);
+                File.Move(temporary, _path, true);
             }
             finally
             {

@@ -147,23 +147,20 @@
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <StackPanel Margin="0,22,0,0">
-              <Button Style="{StaticResource NavButton}" Background="#EDF4FD" Foreground="#075CB8" FontWeight="SemiBold">
+              <Button x:Name="HomeNavButton" Style="{StaticResource NavButton}" Background="#EDF4FD" Foreground="#075CB8" FontWeight="SemiBold" Click="HomeNav_Click">
                 <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE80F;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Главная" VerticalAlignment="Center"/></StackPanel>
               </Button>
-              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Диагностика" VerticalAlignment="Center"/></StackPanel></Button>
-              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE90F;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Обслуживание" VerticalAlignment="Center"/></StackPanel></Button>
-              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Установки" VerticalAlignment="Center"/></StackPanel></Button>
-              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xEA37;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Журнал" VerticalAlignment="Center"/></StackPanel></Button>
-              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Подключение" VerticalAlignment="Center"/></StackPanel></Button>
-              <Button Style="{StaticResource NavButton}"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Настройки" VerticalAlignment="Center"/></StackPanel></Button>
+              <Button x:Name="DiagnosticsNavButton" Style="{StaticResource NavButton}" Click="DiagnosticsNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Инструменты" VerticalAlignment="Center"/></StackPanel></Button>
+              <Button x:Name="ComponentsNavButton" Style="{StaticResource NavButton}" Click="ComponentsNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE90F;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Компоненты" VerticalAlignment="Center"/></StackPanel></Button>
+              <Button x:Name="LogNavButton" Style="{StaticResource NavButton}" Click="LogNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xEA37;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Журнал" VerticalAlignment="Center"/></StackPanel></Button>
             </StackPanel>
 
             <StackPanel Grid.Row="2" Margin="24,0,24,26">
-              <Button Style="{StaticResource OutlineButton}" Foreground="#C8213A" BorderBrush="#E8AEB8" Margin="0,0,0,34">
+              <Button x:Name="RateButton" Style="{StaticResource OutlineButton}" Foreground="#C8213A" BorderBrush="#E8AEB8" Margin="0,0,0,34" Click="Rate_Click">
                 <StackPanel Orientation="Horizontal"><TextBlock Text="♡" FontSize="26" Margin="0,-3,10,0"/><TextBlock Text="Оценить HonestFlow" VerticalAlignment="Center"/></StackPanel>
               </Button>
-              <TextBlock Text="HonestFlow v2.0.1" Foreground="#697386" FontSize="14" Margin="2,0,0,8"/>
-              <TextBlock Text="© 2026 HF Team" Foreground="#697386" FontSize="14" Margin="2,0,0,0"/>
+              <TextBlock x:Name="ApplicationVersionText" Text="HonestFlow" Foreground="#697386" FontSize="14" Margin="2,0,0,8"/>
+              <TextBlock Text="© 2026 Morkovka" Foreground="#697386" FontSize="14" Margin="2,0,0,0"/>
             </StackPanel>
           </Grid>
         </Border>
@@ -185,15 +182,15 @@
                 <ColumnDefinition Width="300"/>
               </Grid.ColumnDefinitions>
               <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="ИП Кураев" FontSize="21" FontWeight="SemiBold"/>
+                <TextBlock x:Name="ClientNameText" Text="Рабочая точка" FontSize="21" FontWeight="SemiBold"/>
                 <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
-                  <TextBlock Text="Точка продаж №219174069" FontSize="15" Foreground="{StaticResource Muted}"/>
-                  <TextBlock Text="▣" FontSize="18" Foreground="#526078" Margin="12,-3,0,0"/>
+                  <TextBlock x:Name="ClientDetailsText" Text="Device ID: загрузка…" FontSize="15" Foreground="{StaticResource Muted}"/>
+                  <Button x:Name="CopyDeviceIdButton" Content="▣" ToolTip="Копировать Device ID" Background="Transparent" BorderThickness="0" FontSize="18" Foreground="#526078" Margin="8,-5,0,0" Padding="4" Cursor="Hand" Click="CopyDeviceId_Click"/>
                 </StackPanel>
               </StackPanel>
               <StackPanel Grid.Column="1" VerticalAlignment="Center">
                 <TextBlock Text="Последняя проверка" FontSize="15"/>
-                <TextBlock Text="18 мая 2026, 18:42" Foreground="{StaticResource Muted}" FontSize="15" Margin="0,9,0,0"/>
+                <TextBlock x:Name="LastCheckText" Text="Ещё не выполнялась" Foreground="{StaticResource Muted}" FontSize="15" Margin="0,9,0,0"/>
               </StackPanel>
               <Border Grid.Column="2" Background="#FFF5F6" CornerRadius="10" Margin="18,14,0,14" Padding="20,0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -207,7 +204,7 @@
             </Grid>
           </Border>
 
-          <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="20,16,20,16">
+          <Border x:Name="DashboardPanel" Grid.Row="2" Style="{StaticResource CardBorder}" Padding="20,16,20,16">
             <Grid>
               <Grid.RowDefinitions>
                 <RowDefinition Height="48"/>
@@ -216,23 +213,57 @@
               </Grid.RowDefinitions>
               <Grid Grid.Row="0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Top">
-                  <TextBlock Text="Схема кассового узла" FontSize="19" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                  <Border Width="22" Height="22" BorderBrush="#68748A" BorderThickness="1.5" CornerRadius="11" Margin="14,1,0,0">
+                  <TextBlock x:Name="StatusSectionTitle" Text="Состояние рабочего места" FontSize="19" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  <Border x:Name="TopologyInfoIcon" Width="22" Height="22" Background="Transparent" BorderBrush="#68748A" BorderThickness="1.5" CornerRadius="11" Margin="14,1,0,0" Visibility="Collapsed" ToolTipService.ShowDuration="30000">
+                    <Border.ToolTip>
+                      <ToolTip Placement="Bottom" HorizontalOffset="8">
+                        <Border Background="White" BorderBrush="#DDE3EC" BorderThickness="1" CornerRadius="10" Padding="16" MaxWidth="440">
+                          <StackPanel>
+                            <TextBlock Text="Как читать схему" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,9"/>
+                            <TextBlock Text="На схеме показано, как связаны программы кассового узла. Цвет рамки показывает состояние программы, а цвет линии — работает ли связь между соседними элементами. Наведите курсор на проблемную линию, чтобы увидеть причину. Нажмите на ЕСМ, контроллер или ККТ, чтобы открыть соответствующую программу. Нажмите на ЛМ ЧЗ, чтобы посмотреть его полный ответ. ГИС МТ и товароучётная система пока доступны только для просмотра." TextWrapping="Wrap" FontSize="14" LineHeight="21" Foreground="#344054"/>
+                          </StackPanel>
+                        </Border>
+                      </ToolTip>
+                    </Border.ToolTip>
                     <TextBlock Text="i" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#536078"/>
                   </Border>
                 </StackPanel>
-                <Button Style="{StaticResource OutlineButton}" HorizontalAlignment="Right" VerticalAlignment="Top">
-                  <StackPanel Orientation="Horizontal"><TextBlock Text="↻" FontSize="28" Margin="0,-5,10,0"/><TextBlock Text="Проверить снова" VerticalAlignment="Center"/></StackPanel>
-                </Button>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                  <Button x:Name="SimpleViewButton" Style="{StaticResource PrimaryButton}" Content="Простой вид" Height="44" Margin="0,0,8,0" Click="SimpleView_Click"/>
+                  <Button x:Name="DetailedViewButton" Style="{StaticResource OutlineButton}" Content="Подробная схема" Height="44" Margin="0,0,12,0" Click="DetailedView_Click"/>
+                  <Button x:Name="RefreshTopologyButton" Style="{StaticResource OutlineButton}" Height="44" Click="RefreshTopology_Click">
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="↻" FontSize="25" Margin="0,-4,8,0"/><TextBlock Text="Проверить снова" VerticalAlignment="Center"/></StackPanel>
+                  </Button>
+                </StackPanel>
               </Grid>
 
-              <Viewbox Grid.Row="1" Stretch="Uniform" Margin="0,0,0,4">
+              <Border x:Name="SimpleStatusPanel" Grid.Row="1" Grid.RowSpan="2" Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="12" Padding="28" Margin="0,4,0,0">
+                <Grid>
+                  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="720">
+                    <Grid Width="132" Height="132" HorizontalAlignment="Center">
+                      <Ellipse x:Name="SimpleStatusHalo" Fill="#E8F8F1"/>
+                      <Ellipse x:Name="SimpleStatusLamp" Width="78" Height="78" Fill="#0E9F6E" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      <TextBlock x:Name="SimpleStatusSymbol" Text="✓" Foreground="White" FontSize="42" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-5,0,0"/>
+                    </Grid>
+                    <TextBlock x:Name="SimpleStatusTitle" Text="Проверяем рабочее место…" FontSize="30" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" Margin="0,24,0,0"/>
+                    <TextBlock x:Name="SimpleStatusDescription" Text="Пожалуйста, подождите. HonestFlow проверяет готовность кассы и маркировки." Foreground="{StaticResource Muted}" FontSize="17" LineHeight="26" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" Margin="0,13,0,0"/>
+                    <TextBlock x:Name="SimpleLastCheckText" Text="Последняя проверка: ещё не выполнялась" Foreground="#7A8496" FontSize="14" HorizontalAlignment="Center" Margin="0,20,0,0"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,28,0,0">
+                      <Button x:Name="SimpleFixButton" Style="{StaticResource PrimaryButton}" Content="Исправить автоматически" Margin="0,0,10,0" Visibility="Collapsed" Click="SimpleFix_Click"/>
+                      <Button Style="{StaticResource OutlineButton}" Content="Показать подробности" Margin="0,0,10,0" Click="DetailedView_Click"/>
+                      <Button x:Name="SimpleHelpButton" Style="{StaticResource OutlineButton}" Foreground="#B8182D" BorderBrush="#E8AEB8" Content="Запросить помощь" Visibility="Collapsed" Click="RequestHelp_Click"/>
+                    </StackPanel>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <Viewbox x:Name="DetailedTopologyView" Grid.Row="1" Stretch="Uniform" Margin="0,0,0,4" Visibility="Collapsed">
                 <Canvas Width="1280" Height="500">
-                  <Line X1="260" Y1="250" X2="330" Y2="250" Stroke="#16875A" StrokeThickness="3" StrokeDashArray="8,7"/>
-                  <Line X1="650" Y1="250" X2="720" Y2="250" Stroke="#16875A" StrokeThickness="3" StrokeDashArray="8,7"/>
-                  <Line X1="980" Y1="250" X2="1040" Y2="250" Stroke="#D31A35" StrokeThickness="3" StrokeDashArray="8,7"/>
-                  <Line X1="490" Y1="116" X2="490" Y2="180" Stroke="#7C3FA0" StrokeThickness="3" StrokeDashArray="8,7"/>
-                  <Line X1="490" Y1="320" X2="490" Y2="384" Stroke="#D98A00" StrokeThickness="3" StrokeDashArray="8,7"/>
+                  <Line x:Name="CloudEsmLine" X1="260" Y1="250" X2="330" Y2="250" Stroke="#16875A" StrokeThickness="3" StrokeDashArray="8,7"/>
+                  <Line x:Name="EsmControllerLine" X1="650" Y1="250" X2="720" Y2="250" Stroke="#16875A" StrokeThickness="3" StrokeDashArray="8,7"/>
+                  <Line x:Name="ControllerLmLine" X1="980" Y1="250" X2="1040" Y2="250" Stroke="#D31A35" StrokeThickness="3" StrokeDashArray="8,7"/>
+                  <Line x:Name="AccountingEsmLine" X1="490" Y1="116" X2="490" Y2="180" Stroke="#7C3FA0" StrokeThickness="3" StrokeDashArray="8,7"/>
+                  <Line x:Name="EsmKktLine" X1="490" Y1="320" X2="490" Y2="384" Stroke="#D98A00" StrokeThickness="3" StrokeDashArray="8,7"/>
 
                   <Border Canvas.Left="20" Canvas.Top="198" Width="240" Height="104" CornerRadius="12" Background="White" BorderBrush="#16875A" BorderThickness="1.6">
                     <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="66"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -241,24 +272,28 @@
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="330" Canvas.Top="180" Width="320" Height="140" CornerRadius="15" Background="White" BorderBrush="#16875A" BorderThickness="2.4">
+                  <Border x:Name="CloudEsmMarker" Canvas.Left="281" Canvas.Top="236" Width="28" Height="28" CornerRadius="14" Background="#F4B740" Visibility="Collapsed"><TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                  <Border x:Name="EsmControllerMarker" Canvas.Left="671" Canvas.Top="236" Width="28" Height="28" CornerRadius="14" Background="#F4B740" Visibility="Collapsed"><TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                  <Border x:Name="ControllerLmMarker" Canvas.Left="996" Canvas.Top="236" Width="28" Height="28" CornerRadius="14" Background="#F4B740" Visibility="Collapsed"><TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                  <Border x:Name="EsmKktMarker" Canvas.Left="476" Canvas.Top="338" Width="28" Height="28" CornerRadius="14" Background="#F4B740" Visibility="Collapsed"><TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                  <Border x:Name="EsmNodeBorder" Canvas.Left="330" Canvas.Top="180" Width="320" Height="140" CornerRadius="15" Background="White" BorderBrush="#16875A" BorderThickness="2.4" Cursor="Hand" MouseLeftButtonUp="EsmNode_Click">
                     <Grid Margin="24,10"><Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <Border Width="64" Height="64" CornerRadius="32" Background="#EDF9F3" VerticalAlignment="Center"><TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="#118451" FontSize="45" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ТС ПИоТ (ЕСМ)" FontSize="21" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" Margin="0,10,0,0"><Ellipse Width="11" Height="11" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="9,-4,0,0" FontSize="15"/></StackPanel></StackPanel>
+                      <Border Width="64" Height="64" CornerRadius="32" Background="#EDF9F3" VerticalAlignment="Center"><TextBlock x:Name="EsmNodeIcon" Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="#118451" FontSize="45" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ТС ПИоТ (ЕСМ)" FontSize="21" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" Margin="0,10,0,0"><Ellipse Width="11" Height="11" Fill="{StaticResource Green}"/><TextBlock x:Name="EsmNodeStatusText" Text="Проверка…" Margin="9,-4,0,0" FontSize="15"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="720" Canvas.Top="195" Width="260" Height="110" CornerRadius="12" Background="White" BorderBrush="#16875A" BorderThickness="1.6">
+                  <Border x:Name="ControllerNodeBorder" Canvas.Left="720" Canvas.Top="195" Width="260" Height="110" CornerRadius="12" Background="White" BorderBrush="#16875A" BorderThickness="1.6" Cursor="Hand" MouseLeftButtonUp="EsmNode_Click">
                     <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#1267BA" FontSize="45" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Контроллер&#x0a;(локальный)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,6,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                      <TextBlock x:Name="ControllerNodeIcon" Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#1267BA" FontSize="45" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Контроллер&#x0a;(локальный)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,6,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock x:Name="ControllerNodeStatusText" Text="Проверка…" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="1040" Canvas.Top="198" Width="220" Height="104" CornerRadius="12" Background="White" BorderBrush="#D31A35" BorderThickness="1.8">
+                  <Border x:Name="LmNodeBorder" Canvas.Left="1040" Canvas.Top="198" Width="220" Height="104" CornerRadius="12" Background="White" BorderBrush="#D31A35" BorderThickness="1.8" Cursor="Hand" MouseLeftButtonUp="LmNode_Click">
                     <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="66"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#D31A35" FontSize="44" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ЛМ ЧЗ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Red}"/><TextBlock Text="Нет связи" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                      <TextBlock x:Name="LmNodeIcon" Text="&#xE950;" FontFamily="Segoe MDL2 Assets" Foreground="#D31A35" FontSize="44" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ЛМ ЧЗ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Red}"/><TextBlock x:Name="LmNodeStatusText" Text="Проверка…" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
 
@@ -269,16 +304,16 @@
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="360" Canvas.Top="384" Width="260" Height="108" CornerRadius="12" Background="White" BorderBrush="#D98A00" BorderThickness="1.6">
+                  <Border x:Name="KktNodeBorder" Canvas.Left="360" Canvas.Top="384" Width="260" Height="108" CornerRadius="12" Background="White" BorderBrush="#D98A00" BorderThickness="1.6" Cursor="Hand" MouseLeftButtonUp="KktNode_Click">
                     <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE749;" FontFamily="Segoe MDL2 Assets" Foreground="#D98A00" FontSize="45" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ККТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Работает" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                      <TextBlock x:Name="KktNodeIcon" Text="&#xE749;" FontFamily="Segoe MDL2 Assets" Foreground="#D98A00" FontSize="45" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ККТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock x:Name="KktNodeStatusText" Text="Проверка…" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
                 </Canvas>
               </Viewbox>
 
-              <Border Grid.Row="2" Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="18,0">
+              <Border x:Name="DetailedProblemPanel" Grid.Row="2" Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="18,0" Visibility="Collapsed">
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
                   <Grid Width="70" Height="70" VerticalAlignment="Center"><Ellipse Fill="#FFF0F2"/><TextBlock Text="⚠" Foreground="{StaticResource Red}" FontSize="43" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
@@ -293,16 +328,106 @@
                   </StackPanel>
                 </Grid>
               </Border>
+                <Border x:Name="ToolsPanel" Background="White" BorderBrush="#E4E8F0" BorderThickness="1" CornerRadius="12" Padding="20" Visibility="Collapsed">
+                  <ScrollViewer x:Name="ToolsScrollViewer" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
+                    <StackPanel>                      <TextBlock Text="Отчёт для поддержки" FontSize="18" FontWeight="SemiBold"/>
+                      <WrapPanel Margin="0,12,0,22"><Button Style="{StaticResource PrimaryButton}" Content="Собрать и отправить" Margin="0,0,10,10" Click="ToolsCollectAndSend_Click"/><Button Style="{StaticResource OutlineButton}" Content="Только собрать" Margin="0,0,10,10" Click="ToolsCollect_Click"/></WrapPanel>
+                      <TextBlock Text="Папки и файлы" FontSize="18" FontWeight="SemiBold"/>
+                      <WrapPanel Margin="0,12,0,22"><Button Style="{StaticResource OutlineButton}" Content="Папка ККТ" Margin="0,0,10,10" Click="OpenKktDataFolder_Click"/>
+                        <Button Style="{StaticResource OutlineButton}" Content="Папка службы ККТ" Margin="0,0,10,10" Click="OpenKktServiceFolder_Click"/>
+                        <Button Style="{StaticResource OutlineButton}" Content="Папка ЕСМ" Margin="0,0,10,10" Click="OpenEsmFolder_Click"/>
+                        <Button Style="{StaticResource OutlineButton}" Content="Кэш установщиков" Margin="0,0,10,10" Click="OpenInstallerCache_Click"/>
+                      </WrapPanel>
+                      <Grid Margin="0,0,0,12">
+                        <TextBlock Text="Службы компонентов" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Style="{StaticResource OutlineButton}" Content="Службы Windows" Margin="0,0,10,0" Click="OpenServices_Click"/><Button Style="{StaticResource OutlineButton}" Content="Обновить список" Click="RefreshServices_Click"/></StackPanel>
+                      </Grid>
+                      <Border BorderBrush="#E4E8F0" BorderThickness="1" CornerRadius="10" Margin="0,0,0,22">
+                        <DataGrid x:Name="ServiceToolsGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeight="54" ColumnHeaderHeight="44" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Disabled" PreviewMouseWheel="ServiceToolsGrid_PreviewMouseWheel">
+                          <DataGrid.Columns>
+                            <DataGridTextColumn Header="Служба" Binding="{Binding DisplayName}" Width="2*"/><DataGridTextColumn Header="Имя" Binding="{Binding ServiceName}" Width="1.6*"/><DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="1.2*"/>
+                            <DataGridTemplateColumn Width="310"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Style="{StaticResource OutlineButton}" Content="Запустить" Height="36" Padding="10,0" Margin="3" IsEnabled="{Binding CanControl}" Tag="{Binding ServiceName}" Click="StartService_Click"/><Button Style="{StaticResource OutlineButton}" Content="Остановить" Height="36" Padding="10,0" Margin="3" IsEnabled="{Binding CanControl}" Tag="{Binding ServiceName}" Click="StopService_Click"/><Button Style="{StaticResource OutlineButton}" Content="Перезапустить" Height="36" Padding="10,0" Margin="3" IsEnabled="{Binding CanControl}" Tag="{Binding ServiceName}" Click="RestartService_Click"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                          </DataGrid.Columns>
+                        </DataGrid>
+                      </Border>
+                      <TextBlock Text="Быстрые действия" FontSize="18" FontWeight="SemiBold"/>
+                      <WrapPanel Margin="0,12,0,22"><Button Style="{StaticResource OutlineButton}" Content="Убрать дубли ЕСМ GUI" Margin="0,0,10,10" Click="RemoveEsmGuiDuplicates_Click"/><Button Style="{StaticResource OutlineButton}" Content="Диспетчер задач" Margin="0,0,10,10" Click="OpenTaskManager_Click"/></WrapPanel>
+                      <TextBlock Text="Системные инструменты" FontSize="18" FontWeight="SemiBold"/>
+                      <WrapPanel Margin="0,12,0,22">
+                        <Button Style="{StaticResource OutlineButton}" Content="Просмотр событий" Margin="0,0,10,10" Tag="eventvwr.msc" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Установленные программы" Margin="0,0,10,10" Tag="appwiz.cpl" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Сетевые подключения" Margin="0,0,10,10" Tag="ncpa.cpl" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Диспетчер устройств" Margin="0,0,10,10" Tag="devmgmt.msc" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Командная строка (администратор)" Margin="0,0,10,10" Tag="cmd.exe" Click="OpenAdminTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="PowerShell (администратор)" Margin="0,0,10,10" Tag="powershell.exe" Click="OpenAdminTool_Click"/>
+                      </WrapPanel>
+                    </StackPanel>
+                  </ScrollViewer>
+                </Border>
             </Grid>
           </Border>
 
+          <Border x:Name="ActionPanel" Grid.Row="2" Style="{StaticResource CardBorder}" Padding="34" Visibility="Collapsed">
+            <Grid>
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+              <TextBlock x:Name="SectionTitle" FontSize="25" FontWeight="SemiBold"/>
+              <TextBlock x:Name="SectionDescription" Grid.Row="1" Foreground="{StaticResource Muted}" FontSize="15" TextWrapping="Wrap" Margin="0,10,0,24"/>
+              <WrapPanel Grid.Row="2">
+                <Button x:Name="PrimaryActionButton" Style="{StaticResource PrimaryButton}" Margin="0,0,10,10" Click="PrimaryAction_Click"/>
+                <Button x:Name="SecondaryActionButton" Style="{StaticResource OutlineButton}" Margin="0,0,10,10" Click="SecondaryAction_Click"/>
+                <Button x:Name="TertiaryActionButton" Style="{StaticResource OutlineButton}" Margin="0,0,10,10" Click="TertiaryAction_Click"/>
+                <Button x:Name="QuaternaryActionButton" Style="{StaticResource OutlineButton}" Margin="0,0,10,10" Click="QuaternaryAction_Click"/>
+              </WrapPanel>
+              <Grid Grid.Row="3" Margin="0,18,0,0">
+                <Border x:Name="SectionOutputBorder" Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="18">
+                  <TextBox x:Name="SectionOutput" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="14"/>
+                </Border>
+                <Border x:Name="ComponentsPanel" Background="White" BorderBrush="#E4E8F0" BorderThickness="1" CornerRadius="12" Padding="0" Visibility="Collapsed">
+                  <DataGrid x:Name="ComponentVersionsGrid" ItemsSource="{Binding}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False" CanUserResizeColumns="False" CanUserReorderColumns="False" HeadersVisibility="Column" GridLinesVisibility="None" RowHeight="72" ColumnHeaderHeight="52" BorderThickness="0" Background="White" AlternationCount="2" AlternatingRowBackground="#F8FAFC" RowHeaderWidth="0">
+                    <DataGrid.Resources>
+                      <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#F1F5F9"/>
+                        <Setter Property="Foreground" Value="#475467"/>
+                        <Setter Property="FontSize" Value="13"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="Padding" Value="16,0"/>
+                        <Setter Property="BorderBrush" Value="#E4E8F0"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                      </Style>
+                      <Style TargetType="DataGridCell">
+                        <Setter Property="Padding" Value="16,0"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="VerticalContentAlignment" Value="Center"/>
+                        <Setter Property="FontSize" Value="14"/>
+                        <Setter Property="Foreground" Value="#18243B"/>
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                      </Style>
+                      <Style TargetType="DataGridRow">
+                        <Setter Property="BorderBrush" Value="#EDF0F4"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                      </Style>
+                    </DataGrid.Resources>
+                    <DataGrid.Columns>
+                      <DataGridTextColumn Header="Компонент" Binding="{Binding Name}" Width="2*"/>
+                      <DataGridTextColumn Header="Установлена версия" Binding="{Binding InstalledVersion}" Width="1.45*"/>
+                      <DataGridTextColumn Header="Нужна версия" Binding="{Binding ExpectedVersion}" Width="1.45*"/>
+                      <DataGridTextColumn Header="Совпадает" Binding="{Binding MatchText}" Width="1.05*"/>
+                      <DataGridTemplateColumn Width="190">
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <Button Style="{StaticResource OutlineButton}" Content="Переустановить" Height="42" MinWidth="154" Margin="10,8" Padding="14,0" Tag="{Binding Component}" Click="UpdateComponent_Click"/>
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                  </DataGrid>
+                </Border>
+              </Grid>
+            </Grid>
+          </Border>
           <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="20,0">
             <Grid>
-              <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/><ColumnDefinition Width="280"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/><ColumnDefinition Width="210"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions>
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="&#xE753;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Green}" FontSize="24"/><TextBlock Text="Облако: доступно" Margin="11,4,0,0" FontSize="14"/></StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Green}" FontSize="23"/><TextBlock Text="RuDesktop: подключен" Margin="11,3,0,0" FontSize="14"/><TextBlock Text="ID: 219174069" Margin="30,3,0,0" Foreground="{StaticResource Muted}" FontSize="14"/></StackPanel>
-              <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"><Border Width="21" Height="21" BorderBrush="#1264B5" BorderThickness="1.5" CornerRadius="11"><TextBlock Text="i" Foreground="#1264B5" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock Text="Версия программы:  2.0.1" Margin="11,1,0,0" FontSize="14"/></StackPanel>
-              <Button Grid.Column="3" Style="{StaticResource OutlineButton}" Foreground="#0757A5" Content="☵  Запросить помощь" Height="44"/>
+              <TextBlock Grid.Column="2" x:Name="TariffText" Text="Тариф: не указан" VerticalAlignment="Center" Foreground="{StaticResource Muted}" FontSize="14"/>
+              <Button x:Name="RefreshLicenseButton" Grid.Column="3" Style="{StaticResource OutlineButton}" Foreground="#0757A5" Content="Обновить лицензию" Height="44" Margin="0,0,10,0" Click="RefreshLicense_Click"/>
+              <Button x:Name="FooterHelpButton" Grid.Column="4" Style="{StaticResource OutlineButton}" Foreground="#0757A5" Content="☵  Запросить помощь" Height="44" Click="RequestHelp_Click"/>
             </Grid>
           </Border>
         </Grid>

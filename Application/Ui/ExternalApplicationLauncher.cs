@@ -6,10 +6,15 @@ namespace HonestFlow.Application.Ui
 {
     public sealed class ExternalApplicationLauncher
     {
-        private const string KktDriverToolPath = @"C:\Program Files (x86)\ATOL\Drivers10\KKT\bin\fptr10_t.exe";
+        private const string KktDriverToolX64Path = @"C:\Program Files\ATOL\Drivers10\KKT\bin\fptr10_t.exe";
+        private const string KktDriverToolX86Path = @"C:\Program Files (x86)\ATOL\Drivers10\KKT\bin\fptr10_t.exe";
         private const string EsmGuiPath = @"C:\Program Files\ESP\ESM\bin\esm-gui.exe";
 
-        public void OpenKktDriver() => Open(KktDriverToolPath);
+        public void OpenKktDriver()
+        {
+            string path = File.Exists(KktDriverToolX64Path) ? KktDriverToolX64Path : KktDriverToolX86Path;
+            Open(path);
+        }
 
         public void OpenEsm() => Open(EsmGuiPath);
 

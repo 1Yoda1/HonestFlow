@@ -30,7 +30,9 @@ namespace HonestFlow.Infrastructure.Configuration
             if (localSettings != null)
                 return localSettings;
 
-            return RemoteConfig.LoadSupportMailSettings();
+            SupportMailSettings cachedSettings = LoadSupportMailSettingsFile(AppPaths.CachedSupportMailFile);
+            SupportMailSettings remoteSettings = RemoteConfig.LoadSupportMailSettings();
+            return remoteSettings ?? cachedSettings;
         }
 
         public static void InitYandexDiskDownloader()
@@ -121,6 +123,22 @@ namespace HonestFlow.Infrastructure.Configuration
             return AppPaths.BaseFolder;
         }
 
+        private static SupportMailSettings LoadSupportMailSettingsFile(string path)
+        {
+            try
+            {
+                if (!File.Exists(path))
+                    return null;
+                string encryptedJson = File.ReadAllText(path);
+                string json = ObfuscationService.Deobfuscate(encryptedJson);
+                return JsonConvert.DeserializeObject<SupportMailSettings>(json);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogToFile($"Support mail cached config loading error: {ex.Message}", true);
+                return null;
+            }
+        }
         private static SupportMailSettings LoadLocalSupportMailSettings()
         {
             try

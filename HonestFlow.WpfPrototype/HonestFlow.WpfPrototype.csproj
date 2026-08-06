@@ -9,4 +9,8 @@
     <RootNamespace>HonestFlow.WpfPrototype</RootNamespace>
     <ApplicationIcon>..\Resourses\hf.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HonestFlow.csproj" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
+  </ItemGroup>
 </Project>

@@ -51,7 +51,7 @@ namespace HonestFlow.Application.Installation
                     "ЛМ ЧЗ",
                     lmVersion,
                     expected.LmModule,
-                    CompareVersion(lmVersion, expected.LmModule)),
+                    CompareLmVersion(lmVersion, expected.LmModule)),
                 ComponentVersionStatus.Create(
                     "Драйвер ККТ",
                     atolVersion,
@@ -77,12 +77,18 @@ namespace HonestFlow.Application.Installation
 
         private static bool HasExpected(string version) => !string.IsNullOrWhiteSpace(version);
 
-        private static bool? CompareVersion(string installed, string expected)
+        private static bool? CompareLmVersion(string installed, string expected)
         {
             if (!HasExpected(expected))
                 return null;
 
-            return !string.Equals(installed?.Trim(), expected.Trim(), StringComparison.OrdinalIgnoreCase);
+            return !string.Equals(
+                NormalizeLmVersion(installed),
+                NormalizeLmVersion(expected),
+                StringComparison.OrdinalIgnoreCase);
         }
+
+        private static string NormalizeLmVersion(string version) =>
+            string.IsNullOrWhiteSpace(version) ? null : version.Trim().Split('-', 2)[0];
     }
 }

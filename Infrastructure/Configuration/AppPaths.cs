@@ -15,6 +15,7 @@ namespace HonestFlow.Infrastructure.Configuration
         public static string LocalVersionsFile => Path.Combine(BaseFolder, "versions.json");
         public static string CachedVersionsFile => Path.Combine(ProgramDataFolder, "cache", "versions.json");
         public static string LocalSupportMailFile => Path.Combine(BaseFolder, "support_mail_encrypted.json");
+        public static string CachedSupportMailFile => Path.Combine(ProgramDataFolder, "cache", "support_mail_encrypted.json");
         public static string YandexPublicKeyFile => Path.Combine(BaseFolder, "yandex_public_key.txt");
         public static string YandexPublicUrlFile => Path.Combine(BaseFolder, "yandex_public_url.txt");
         public static string DistrFolder => Path.Combine(BaseFolder, "Distr");
@@ -58,11 +59,12 @@ namespace HonestFlow.Infrastructure.Configuration
         }
 
         public static string ProgramDataFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "HonestFlow");
+        public static string UserDataFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HonestFlow");
         public static string LogsFolder => Path.Combine(ProgramDataFolder, "logs");
         public static string DiagnosticsFolder => Path.Combine(ProgramDataFolder, "diagnostics");
         public static string LicenseCacheFolder => Path.Combine(ProgramDataFolder, "license-grant-cache");
         public static string LegacyLicenseCacheFolder => Path.Combine(ProgramDataFolder, "license-cache");
-        public static string AuthorizedClientCacheFile => Path.Combine(ProgramDataFolder, "authorized-client.dpapi");
+        public static string AuthorizedClientCacheFile => Path.Combine(UserDataFolder, "authorized-client.dpapi");
         public static string DeviceIdentityFolder => Path.Combine(ProgramDataFolder, "device-identity");
         public static string DeviceIdentityFile => Path.Combine(DeviceIdentityFolder, "device-identity.dpapi");
         public static string RuDesktopStateFile => Path.Combine(ProgramDataFolder, "rudesktop_state.json");

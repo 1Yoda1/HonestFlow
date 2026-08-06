@@ -75,6 +75,19 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public void StatusService_TreatsLmPackageRevisionAsSameRegistryVersion()
+        {
+            var service = new ComponentVersionStatusService(new StubVersionCheckService(), () => "2.6.0");
+            var configured = new VersionsData { LmModule = "2.6.0-10" };
+
+            ComponentVersionStatus status = service.GetStatuses(new IPData(), configured)[0];
+
+            Assert.Equal("2.6.0", status.InstalledVersion);
+            Assert.Equal("2.6.0-10", status.ExpectedVersion);
+            Assert.Equal(ComponentVersionState.Current, status.State);
+        }
+
+        [Fact]
         public void StatusService_FallsBackToConfiguredVersions()
         {
             var checker = new StubVersionCheckService
