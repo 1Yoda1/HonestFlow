@@ -83,14 +83,26 @@
             <StackPanel x:Name="LoginPanel" VerticalAlignment="Center" Visibility="Collapsed">
               <Border Width="64" Height="64" CornerRadius="16" Background="#EDF4FD" HorizontalAlignment="Left"><TextBlock Text="&#xE8D7;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Blue}" FontSize="30" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
               <TextBlock Text="Вход в HonestFlow" FontSize="27" FontWeight="SemiBold" Margin="0,24,0,0"/>
-              <TextBlock Text="Введите логин и пароль HonestLicenseServer. После входа конфигурация и лицензия этого компьютера будут проверены автоматически." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="23" TextWrapping="Wrap" Margin="0,11,0,18"/>
-              <TextBlock Text="Логин" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
-              <TextBox x:Name="LoginInput" Height="44" Padding="13,8" FontSize="16" BorderBrush="#CFD6E2" BorderThickness="1" Margin="0,0,0,14"/>
+              <TextBlock Text="Введите пароль HonestLicenseServer. После входа конфигурация и лицензия этого компьютера будут проверены автоматически." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="23" TextWrapping="Wrap" Margin="0,11,0,18"/>
               <TextBlock Text="Пароль" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
               <PasswordBox x:Name="PasswordInput" Height="48" Padding="13,10" FontSize="16" BorderBrush="#CFD6E2" BorderThickness="1"/>
-              <TextBlock x:Name="LoginError" Text="Введите логин и пароль." Foreground="{StaticResource Red}" FontSize="13" Margin="0,8,0,0" Visibility="Collapsed"/>
+              <TextBlock x:Name="LoginError" Text="Введите пароль." Foreground="{StaticResource Red}" FontSize="13" Margin="0,8,0,0" Visibility="Collapsed"/>
               <CheckBox x:Name="RememberLoginCheckBox" Content="Сохранять защищённую сессию на этом компьютере" IsChecked="True" FontSize="14" Margin="0,17,0,18"/>
               <Button x:Name="LoginButton" Style="{StaticResource PrimaryButton}" Content="Войти и продолжить" Click="Login_Click"/>
+            </StackPanel>
+
+            <StackPanel x:Name="DeviceRegistrationPanel" VerticalAlignment="Center" Visibility="Collapsed">
+              <Border Width="64" Height="64" CornerRadius="16" Background="#FFF5F6" HorizontalAlignment="Left"><TextBlock Text="&#xEA18;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Red}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+              <TextBlock Text="Регистрация устройства" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,24,0,0"/>
+              <TextBlock Text="Введите физический адрес торговой точки. Имя этого компьютера будет передано автоматически." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="23" TextWrapping="Wrap" Margin="0,11,0,18"/>
+              <TextBlock x:Name="RegistrationAddressLabel" Text="Физический адрес" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
+              <TextBox x:Name="RegistrationAddressInput" Height="44" MaxLength="300" Padding="13,8" FontSize="16" BorderBrush="#CFD6E2" BorderThickness="1" Margin="0,0,0,4"/>
+              <TextBlock x:Name="RegistrationError" Foreground="{StaticResource Red}" FontSize="13" Margin="0,8,0,0" Visibility="Collapsed"/>
+              <Border Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,12,0,18"><TextBlock x:Name="DeviceRegistrationStatus" Foreground="#475467" FontSize="14" LineHeight="21" TextWrapping="Wrap"/></Border>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                <Button x:Name="SubmitRegistrationButton" Grid.Column="0" Style="{StaticResource PrimaryButton}" Content="Отправить заявку" Click="SubmitRegistration_Click"/>
+                <Button x:Name="CheckRegistrationButton" Grid.Column="2" Style="{StaticResource ActionButton}" Content="Проверить снова" Click="CheckRegistration_Click"/>
+              </Grid>
             </StackPanel>
 
             <StackPanel x:Name="LicenseMissingPanel" VerticalAlignment="Center" Visibility="Collapsed">

@@ -31,13 +31,14 @@ namespace HonestFlow.Infrastructure.Licensing
             }
             if (registration == null || string.IsNullOrWhiteSpace(registration.DeviceId))
                 throw new ArgumentException("DeviceId is required.", nameof(requestJson));
+            if (string.IsNullOrWhiteSpace(registration.Address) || registration.Address.Trim().Length > 300)
+                throw new ArgumentException("Address must contain 1 to 300 characters.", nameof(requestJson));
 
             string payload = JsonConvert.SerializeObject(new
             {
                 deviceId = registration.DeviceId,
-                name = string.IsNullOrWhiteSpace(registration.DeviceName)
-                    ? Environment.MachineName
-                    : registration.DeviceName
+                name = Environment.MachineName,
+                address = registration.Address.Trim()
             });
             using var request = new HttpRequestMessage(HttpMethod.Post, "api/device/request")
             {

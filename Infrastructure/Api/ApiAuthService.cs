@@ -45,6 +45,7 @@ namespace HonestFlow.Infrastructure.Api
                 return new LicenseAuthenticationResult(null, new HonestFlow.Application.Licensing.LicenseObservationSnapshot
                 {
                     ObservedAtUtc = DateTimeOffset.UtcNow,
+                    ClientId = tokens.ClientId,
                     DeviceId = identity.DeviceId,
                     Decision = HonestFlow.Application.Licensing.LicenseDecision.DeviceNotRegistered,
                     TechnicalCode = "DEVICE_REGISTRATION_" + (registration?.Status ?? "PENDING").ToUpperInvariant(),

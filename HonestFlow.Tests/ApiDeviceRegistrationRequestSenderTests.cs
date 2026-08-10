@@ -1,9 +1,11 @@
+using System;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure.Api;
 using HonestFlow.Infrastructure.Licensing;
+using Newtonsoft.Json.Linq;
 using Xunit;
 
 namespace HonestFlow.Tests
@@ -11,17 +13,30 @@ namespace HonestFlow.Tests
     public sealed class ApiDeviceRegistrationRequestSenderTests
     {
         [Fact]
-        public async Task SendsMinimalDeviceDtoToApi()
+        public async Task SendsDeviceDtoWithPhysicalAddressToApi()
         {
             var session = new CapturingSession();
             var sender = new ApiDeviceRegistrationRequestSender(session);
 
-            await sender.SendAsync("{\"deviceId\":\"device-1\",\"deviceName\":\"Workstation\",\"clientId\":\"client-1\"}", CancellationToken.None);
+            await sender.SendAsync("{\"deviceId\":\"device-1\",\"deviceName\":\"Workstation\",\"address\":\" ул. Ленина, 10 \",\"clientId\":\"client-1\"}", CancellationToken.None);
 
             Assert.Equal("api/device/request", session.Path);
-            Assert.Contains("\"deviceId\":\"device-1\"", session.Body);
-            Assert.Contains("\"name\":\"Workstation\"", session.Body);
-            Assert.DoesNotContain("clientId", session.Body);
+            JObject body = JObject.Parse(session.Body);
+            Assert.Equal("device-1", body.Value<string>("deviceId"));
+            Assert.Equal(Environment.MachineName, body.Value<string>("name"));
+            Assert.Equal("ул. Ленина, 10", body.Value<string>("address"));
+            Assert.Null(body["clientId"]);
+        }
+
+        [Fact]
+        public async Task UsesMachineNameWhenDeviceNameIsMissing()
+        {
+            var session = new CapturingSession();
+            var sender = new ApiDeviceRegistrationRequestSender(session);
+
+            await sender.SendAsync("{\"deviceId\":\"device-1\",\"address\":\"ул. Мира, 5\"}", CancellationToken.None);
+
+            Assert.Equal(Environment.MachineName, JObject.Parse(session.Body).Value<string>("name"));
         }
 
         private sealed class CapturingSession : IApiSessionService

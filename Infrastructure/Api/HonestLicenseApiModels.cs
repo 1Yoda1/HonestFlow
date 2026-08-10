@@ -9,6 +9,8 @@ namespace HonestFlow.Infrastructure.Api
         public string RefreshToken { get; set; }
         public int ExpiresInSeconds { get; set; }
         public bool DeviceRegistrationRequired { get; set; }
+        public string ClientId { get; set; }
+        public string ClientName { get; set; }
     }
 
     public sealed class ApiLicenseResponse
@@ -26,6 +28,8 @@ namespace HonestFlow.Infrastructure.Api
         public string AccessToken { get; set; }
         public string RefreshToken { get; set; }
         public DateTimeOffset AccessTokenExpiresAtUtc { get; set; }
+        public string ClientId { get; set; }
+        public string ClientName { get; set; }
     }
 
     public sealed class ApiConfigurationResponse

@@ -33,7 +33,7 @@ namespace HonestFlow.Application.Licensing
                 throw new ArgumentException("ClientId is required.", nameof(clientId));
             if (string.IsNullOrWhiteSpace(deviceId))
                 throw new ArgumentException("DeviceId is required.", nameof(deviceId));
-            if (!string.IsNullOrWhiteSpace(pointAddress) && pointAddress.Trim().Length > 500)
+            if (!string.IsNullOrWhiteSpace(pointAddress) && pointAddress.Trim().Length > 300)
                 throw new ArgumentException("Point address is too long.", nameof(pointAddress));
 
             var request = new DeviceRegistrationRequest

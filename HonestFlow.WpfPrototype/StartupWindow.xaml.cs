@@ -12,6 +12,8 @@ using HonestFlow.Application.Licensing;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Dialogs;
+using HonestFlow.Infrastructure.Api;
+using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Models;
 
 namespace HonestFlow.WpfPrototype;
@@ -26,6 +28,7 @@ public partial class StartupWindow : Window
     private readonly ApplicationStartupController _controller = new();
     private ApplicationStartupSession? _session;
     private LicenseObservationSnapshot? _restrictedSnapshot;
+    private DeviceRegistrationStartupWorkflow? _deviceRegistrationWorkflow;
     private readonly string? _accessNotice;
 
     public StartupWindow() : this(null)
@@ -85,19 +88,20 @@ public partial class StartupWindow : Window
     {
         LoadingPanel.Visibility = Visibility.Collapsed;
         LicenseMissingPanel.Visibility = Visibility.Collapsed;
+        DeviceRegistrationPanel.Visibility = Visibility.Collapsed;
         LoginPanel.Visibility = Visibility.Visible;
         SetStep(LoginStepBadge, LoginStepText, LoginStepLabel, StepState.Active);
-        LoginInput.Focus();
+        PasswordInput.Focus();
     }
 
     private async void Login_Click(object sender, RoutedEventArgs e)
     {
         if (_session == null) return;
-        if (string.IsNullOrWhiteSpace(LoginInput.Text) || string.IsNullOrWhiteSpace(PasswordInput.Password))
+        if (string.IsNullOrWhiteSpace(PasswordInput.Password))
         {
             LoginError.Text = "Введите пароль точки.";
             LoginError.Visibility = Visibility.Visible;
-            if (string.IsNullOrWhiteSpace(LoginInput.Text)) LoginInput.Focus(); else PasswordInput.Focus();
+            PasswordInput.Focus();
             return;
         }
 
@@ -107,7 +111,7 @@ public partial class StartupWindow : Window
         {
             var progress = new Progress<LicenseAuthenticationProgress>(ReportAuthenticationProgress);
             LicenseAuthenticationResult result = await _controller.AuthenticateAsync(
-                _session, LoginInput.Text.Trim(), PasswordInput.Password,
+                _session, string.Empty, PasswordInput.Password,
                 RememberLoginCheckBox.IsChecked == true, progress, _lifetime.Token);
             if (result.LicenseSnapshot?.Decision == LicenseDecision.DeviceNotRegistered)
             {
@@ -169,6 +173,11 @@ public partial class StartupWindow : Window
         LoginPanel.Visibility = Visibility.Collapsed;
         LicenseMissingPanel.Visibility = Visibility.Visible;
         _restrictedSnapshot = snapshot;
+        if (snapshot?.Decision == LicenseDecision.DeviceNotRegistered)
+        {
+            await ShowDeviceRegistrationAsync(snapshot);
+            return;
+        }
         if (snapshot?.Decision != LicenseDecision.DeviceNotRegistered)
         {
             RegistrationStatus.Text = string.IsNullOrWhiteSpace(snapshot?.Message)
@@ -177,21 +186,124 @@ public partial class StartupWindow : Window
             return;
         }
 
-        RegistrationStatus.Text = "Отправляем заявку на регистрацию этого компьютера…";
-        if (string.IsNullOrWhiteSpace(snapshot.ClientId))
+    }
+
+    private async Task ShowDeviceRegistrationAsync(LicenseObservationSnapshot snapshot)
+    {
+        LoadingPanel.Visibility = Visibility.Collapsed;
+        LoginPanel.Visibility = Visibility.Collapsed;
+        LicenseMissingPanel.Visibility = Visibility.Collapsed;
+        DeviceRegistrationPanel.Visibility = Visibility.Visible;
+        _restrictedSnapshot = snapshot;
+        _deviceRegistrationWorkflow = CreateDeviceRegistrationWorkflow();
+        await ApplyDeviceRegistrationStateAsync(await _deviceRegistrationWorkflow.CheckAsync(_lifetime.Token));
+    }
+
+    private DeviceRegistrationStartupWorkflow CreateDeviceRegistrationWorkflow()
+    {
+        if (_session?.Startup.AuthService is not IApiCredentialAuthService authentication ||
+            _session.Startup.AuthService is not IApiSessionProvider provider ||
+            provider.ApiSessionService is not IApiSessionRefresher sessionRefresher)
         {
-            RegistrationStatus.Text = string.IsNullOrWhiteSpace(snapshot.Message)
-                ? "Заявка на регистрацию устройства ожидает подтверждения."
-                : snapshot.Message;
+            throw new InvalidOperationException("API registration session is unavailable.");
+        }
+
+        IApiSessionService session = provider.ApiSessionService;
+        return new DeviceRegistrationStartupWorkflow(
+            new DeviceRegistrationWorkflow(new DeviceRegistrationCoordinator(
+                new DeviceRegistrationRequestService(),
+                new ApiDeviceRegistrationRequestSender(session),
+                new DpapiDeviceRegistrationDeliveryStateStore())),
+            new ApiDeviceRegistrationStatusProvider(session),
+            sessionRefresher,
+            authentication);
+    }
+
+    private async Task ApplyDeviceRegistrationStateAsync(DeviceRegistrationStartupResult state)
+    {
+        if (state.State == DeviceRegistrationStartupState.Allowed && state.Authentication?.Client != null)
+        {
+            _session!.Startup.AuthorizedClient = state.Authentication.Client;
+            _session.Startup.SellerAuthenticationHandled = true;
+            var mainWindow = new MainWindow(_session.Startup, state.Authentication.Client,
+                state.Authentication.LicenseSnapshot);
+            System.Windows.Application.Current.MainWindow = mainWindow;
+            mainWindow.Show();
+            Close();
             return;
         }
-        DeviceRegistrationDeliveryStatus status = await _controller.RegisterDeviceAsync(snapshot, _lifetime.Token);
-        RegistrationStatus.Text = status switch
+
+        bool canSubmitAddress = state.CanSubmitAddress;
+        RegistrationAddressLabel.Visibility = canSubmitAddress ? Visibility.Visible : Visibility.Collapsed;
+        RegistrationAddressInput.Visibility = canSubmitAddress ? Visibility.Visible : Visibility.Collapsed;
+        SubmitRegistrationButton.Visibility = canSubmitAddress ? Visibility.Visible : Visibility.Collapsed;
+        RegistrationError.Visibility = state.State == DeviceRegistrationStartupState.InvalidAddress
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RegistrationError.Text = state.State == DeviceRegistrationStartupState.InvalidAddress
+            ? state.Message
+            : string.Empty;
+        DeviceRegistrationStatus.Text = state.Message;
+        CheckRegistrationButton.Visibility = Visibility.Visible;
+        if (canSubmitAddress)
+            RegistrationAddressInput.Focus();
+
+        await Task.CompletedTask;
+    }
+
+    private async void SubmitRegistration_Click(object sender, RoutedEventArgs e)
+    {
+        string address = RegistrationAddressInput.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(address))
         {
-            DeviceRegistrationDeliveryStatus.Sent => "Заявка на регистрацию отправлена автоматически. Если работа нужна сейчас, запросите удалённую помощь.",
-            DeviceRegistrationDeliveryStatus.AlreadySent => "Заявка на регистрацию уже отправлена. Если работа нужна сейчас, запросите удалённую помощь.",
-            _ => "Автоматически отправить заявку не удалось. Запросите помощь — специалист получит сведения об этом компьютере."
-        };
+            RegistrationError.Text = "Введите физический адрес торговой точки.";
+            RegistrationError.Visibility = Visibility.Visible;
+            RegistrationAddressInput.Focus();
+            return;
+        }
+        if (address.Length > 300)
+        {
+            RegistrationError.Text = "Адрес не должен быть длиннее 300 символов.";
+            RegistrationError.Visibility = Visibility.Visible;
+            RegistrationAddressInput.Focus();
+            return;
+        }
+
+        await RunDeviceRegistrationActionAsync(async workflow =>
+        {
+            DeviceRegistrationStartupResult state = await workflow.SubmitAsync(
+                _restrictedSnapshot!, address, _lifetime.Token);
+            return state.State == DeviceRegistrationStartupState.Pending
+                ? await workflow.CheckAsync(_lifetime.Token)
+                : state;
+        });
+    }
+
+    private async void CheckRegistration_Click(object sender, RoutedEventArgs e) =>
+        await RunDeviceRegistrationActionAsync(workflow => workflow.CheckAsync(_lifetime.Token));
+
+    private async Task RunDeviceRegistrationActionAsync(
+        Func<DeviceRegistrationStartupWorkflow, Task<DeviceRegistrationStartupResult>> action)
+    {
+        if (_deviceRegistrationWorkflow == null) return;
+
+        SubmitRegistrationButton.IsEnabled = false;
+        CheckRegistrationButton.IsEnabled = false;
+        try
+        {
+            await ApplyDeviceRegistrationStateAsync(await action(_deviceRegistrationWorkflow));
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogException(ex, "WPF device registration failed", nameof(StartupWindow));
+            DeviceRegistrationStatus.Text = "Не удалось выполнить операцию. Попробуйте проверить снова.";
+        }
+        finally
+        {
+            SubmitRegistrationButton.IsEnabled = true;
+            CheckRegistrationButton.IsEnabled = true;
+        }
     }
 
     private async void RequestHelp_Click(object sender, RoutedEventArgs e)

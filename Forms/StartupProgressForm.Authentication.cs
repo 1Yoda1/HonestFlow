@@ -9,8 +9,6 @@ namespace HonestFlow
     public partial class StartupProgressForm
     {
         private readonly Panel _authenticationPanel = new();
-        private readonly Label _loginLabel = new();
-        private readonly TextBox _loginBox = new();
         private readonly Label _passwordLabel = new();
         private readonly TextBox _passwordBox = new();
         private readonly Button _loginButton = new();
@@ -27,15 +25,12 @@ namespace HonestFlow
                 TaskCreationOptions.RunContinuationsAsynchronously);
             ClientSize = new Size(460, 342);
             _authenticationPanel.Visible = true;
-            _loginLabel.Visible = true;
-            _loginBox.Visible = true;
             _passwordLabel.Visible = true;
             _passwordBox.Visible = true;
             _diagnosticsButton.Text = "Только диагностика";
             _loginButton.Text = "Войти и проверить лицензию";
             SetAuthenticationControlsEnabled(true);
             _passwordBox.Clear();
-            _loginBox.Clear();
             _authenticationMessage.Text = string.IsNullOrWhiteSpace(errorMessage)
                 ? "Введите пароль продавца для определения точки и проверки лицензии."
                 : errorMessage;
@@ -56,8 +51,6 @@ namespace HonestFlow
             _authenticationPanel.Visible = true;
             _passwordLabel.Visible = false;
             _passwordBox.Visible = false;
-            _loginLabel.Visible = false;
-            _loginBox.Visible = false;
             _authenticationMessage.Text =
                 $"Сохранённый вход для точки «{clientName}» актуален.";
             _authenticationMessage.ForeColor = Color.FromArgb(22, 163, 74);
@@ -125,19 +118,16 @@ namespace HonestFlow
             _authenticationPanel.BorderStyle = BorderStyle.FixedSingle;
             _authenticationPanel.Visible = false;
 
-            _loginLabel.SetBounds(16, 8, 180, 20);
-            _loginLabel.Text = "Логин";
-            _loginBox.SetBounds(16, 28, 382, 25);
-            _passwordLabel.SetBounds(16, 57, 180, 20);
+            _passwordLabel.SetBounds(16, 8, 180, 20);
             _passwordLabel.Text = "Пароль продавца";
             _passwordLabel.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
-            _passwordBox.SetBounds(16, 77, 382, 25);
+            _passwordBox.SetBounds(16, 28, 382, 25);
             _passwordBox.UseSystemPasswordChar = true;
 
-            _authenticationMessage.SetBounds(16, 106, 382, 30);
+            _authenticationMessage.SetBounds(16, 57, 382, 30);
             _authenticationMessage.AutoEllipsis = true;
 
-            _diagnosticsButton.SetBounds(16, 136, 174, 28);
+            _diagnosticsButton.SetBounds(16, 87, 174, 28);
             _diagnosticsButton.Text = "Только диагностика";
             _diagnosticsButton.FlatStyle = FlatStyle.Flat;
             _diagnosticsButton.FlatAppearance.BorderColor = Color.FromArgb(180, 190, 205);
@@ -149,7 +139,7 @@ namespace HonestFlow
                     CompletePasswordRequest(null);
             };
 
-            _loginButton.SetBounds(198, 136, 200, 28);
+            _loginButton.SetBounds(198, 87, 200, 28);
             _loginButton.Text = "Войти и проверить лицензию";
             _loginButton.BackColor = Color.FromArgb(37, 99, 235);
             _loginButton.ForeColor = Color.White;
@@ -163,14 +153,14 @@ namespace HonestFlow
                     return;
                 }
 
-                if (string.IsNullOrWhiteSpace(_loginBox.Text) || string.IsNullOrWhiteSpace(_passwordBox.Text))
+                if (string.IsNullOrWhiteSpace(_passwordBox.Text))
                 {
                     ShowAuthenticationError("Введите пароль продавца.");
-                    (string.IsNullOrWhiteSpace(_loginBox.Text) ? _loginBox : _passwordBox).Focus();
+                    _passwordBox.Focus();
                     return;
                 }
 
-                CompletePasswordRequest(new SellerCredentials(_loginBox.Text.Trim(), _passwordBox.Text));
+                CompletePasswordRequest(new SellerCredentials(string.Empty, _passwordBox.Text));
             };
 
             _passwordBox.KeyDown += (_, args) =>
@@ -184,8 +174,6 @@ namespace HonestFlow
 
             _authenticationPanel.Controls.AddRange(new Control[]
             {
-                _loginLabel,
-                _loginBox,
                 _passwordLabel,
                 _passwordBox,
                 _authenticationMessage,
@@ -198,7 +186,6 @@ namespace HonestFlow
         private void SetAuthenticationControlsEnabled(bool enabled)
         {
             _passwordBox.Enabled = enabled;
-            _loginBox.Enabled = enabled;
             _loginButton.Enabled = enabled;
             _diagnosticsButton.Enabled = enabled;
         }

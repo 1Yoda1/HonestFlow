@@ -73,6 +73,8 @@ namespace HonestFlow.Tests
             Assert.Null(result.Client);
             Assert.Equal(HonestFlow.Application.Licensing.LicenseDecision.DeviceNotRegistered,
                 result.LicenseSnapshot.Decision);
+            Assert.Equal("pending-client", result.LicenseSnapshot.ClientId);
+            Assert.Equal("d1", result.LicenseSnapshot.DeviceId);
             Assert.Equal("DEVICE_REGISTRATION_PENDING", result.LicenseSnapshot.TechnicalCode);
             Assert.Equal("api/device/registration/current", session.RequestedPath);
         }
@@ -106,7 +108,12 @@ namespace HonestFlow.Tests
         {
             public string RequestedPath { get; private set; }
             public Task<ApiTokenResponse> LoginAsync(string login, string password, string deviceId, string deviceName, CancellationToken cancellationToken) =>
-                Task.FromResult(new ApiTokenResponse { DeviceRegistrationRequired = true });
+                Task.FromResult(new ApiTokenResponse
+                {
+                    DeviceRegistrationRequired = true,
+                    ClientId = "pending-client",
+                    ClientName = "Pending client"
+                });
             public Task<HttpResponseMessage> SendAuthorizedAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             {
                 RequestedPath = request.RequestUri.ToString();

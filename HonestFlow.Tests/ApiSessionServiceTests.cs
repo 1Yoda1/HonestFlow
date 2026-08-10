@@ -21,7 +21,7 @@ namespace HonestFlow.Tests
                 AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1)
             });
             var handler = new QueueHandler(
-                Json(HttpStatusCode.OK, "{\"accessToken\":\"new-access\",\"refreshToken\":\"rotated-refresh\",\"expiresInSeconds\":900}"),
+                Json(HttpStatusCode.OK, "{\"accessToken\":\"new-access\",\"refreshToken\":\"rotated-refresh\",\"expiresInSeconds\":900,\"clientId\":\"client-1\",\"clientName\":\"Client 1\"}"),
                 Json(HttpStatusCode.OK, "{}"));
             using var http = new HttpClient(handler) { BaseAddress = new Uri("https://example.test/") };
             var service = new ApiSessionService(http, store);
@@ -31,6 +31,8 @@ namespace HonestFlow.Tests
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal("rotated-refresh", store.Session.RefreshToken);
+            Assert.Equal("client-1", store.Session.ClientId);
+            Assert.Equal("Client 1", store.Session.ClientName);
             Assert.Equal("Bearer new-access", handler.Authorizations[1]);
         }
 

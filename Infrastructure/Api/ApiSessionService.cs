@@ -5,11 +5,12 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using HonestFlow.Application.Auth;
 using Newtonsoft.Json;
 
 namespace HonestFlow.Infrastructure.Api
 {
-    public sealed class ApiSessionService : IApiSessionService
+    public sealed class ApiSessionService : IApiSessionService, IApiSessionRefresher
     {
         private readonly HttpClient _httpClient;
         private readonly IApiSessionStore _store;
@@ -23,7 +24,7 @@ namespace HonestFlow.Infrastructure.Api
 
         public async Task<ApiTokenResponse> LoginAsync(string login, string password, string deviceId, string deviceName, CancellationToken cancellationToken)
         {
-            var payload = new { login, password, deviceId, deviceName };
+            var payload = new { password, deviceId, deviceName };
             ApiTokenResponse tokens = await PostTokensAsync("api/auth/login", payload, cancellationToken);
             await SaveTokensAsync(tokens, cancellationToken);
             return tokens;
@@ -62,6 +63,14 @@ namespace HonestFlow.Infrastructure.Api
             {
                 await _store.ClearAsync(CancellationToken.None);
             }
+        }
+
+        public async Task<bool> RefreshSessionAsync(CancellationToken cancellationToken)
+        {
+            ApiSession session = await _store.LoadAsync(cancellationToken);
+            if (session == null || string.IsNullOrWhiteSpace(session.RefreshToken))
+                return false;
+            return await RefreshAsync(session.RefreshToken, cancellationToken) != null;
         }
 
         private async Task<ApiSession> GetUsableSessionAsync(CancellationToken cancellationToken)
@@ -122,7 +131,9 @@ namespace HonestFlow.Infrastructure.Api
             {
                 AccessToken = tokens.AccessToken,
                 RefreshToken = tokens.RefreshToken,
-                AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, tokens.ExpiresInSeconds))
+                AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, tokens.ExpiresInSeconds)),
+                ClientId = tokens.ClientId,
+                ClientName = tokens.ClientName
             };
             await _store.SaveAsync(session, cancellationToken);
             return session;
