@@ -38,7 +38,8 @@ namespace HonestFlow.Infrastructure.Licensing
             {
                 deviceId = registration.DeviceId,
                 name = Environment.MachineName,
-                address = registration.Address.Trim()
+                address = registration.Address.Trim(),
+                honestFlowVersion = registration.HonestFlowVersion
             });
             using var request = new HttpRequestMessage(HttpMethod.Post, "api/device/request")
             {

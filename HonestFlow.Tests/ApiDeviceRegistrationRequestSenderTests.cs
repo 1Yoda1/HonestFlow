@@ -18,13 +18,14 @@ namespace HonestFlow.Tests
             var session = new CapturingSession();
             var sender = new ApiDeviceRegistrationRequestSender(session);
 
-            await sender.SendAsync("{\"deviceId\":\"device-1\",\"deviceName\":\"Workstation\",\"address\":\" ул. Ленина, 10 \",\"clientId\":\"client-1\"}", CancellationToken.None);
+            await sender.SendAsync("{\"deviceId\":\"device-1\",\"deviceName\":\"Workstation\",\"address\":\" ул. Ленина, 10 \",\"honestFlowVersion\":\"3.0.1.0\",\"clientId\":\"client-1\"}", CancellationToken.None);
 
             Assert.Equal("api/device/request", session.Path);
             JObject body = JObject.Parse(session.Body);
             Assert.Equal("device-1", body.Value<string>("deviceId"));
             Assert.Equal(Environment.MachineName, body.Value<string>("name"));
             Assert.Equal("ул. Ленина, 10", body.Value<string>("address"));
+            Assert.Equal("3.0.1.0", body.Value<string>("honestFlowVersion"));
             Assert.Null(body["clientId"]);
         }
 
