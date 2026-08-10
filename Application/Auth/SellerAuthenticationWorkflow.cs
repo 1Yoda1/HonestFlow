@@ -32,5 +32,16 @@ namespace HonestFlow.Application.Auth
             IPData client = _authService.Authenticate(password);
             return new LicenseAuthenticationResult(client, _snapshotStore.Current);
         }
+
+        public async Task<LicenseAuthenticationResult> AuthenticateAsync(
+            string login,
+            string password,
+            IProgress<LicenseAuthenticationProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            if (_authService is IApiCredentialAuthService apiAuth)
+                return await apiAuth.AuthenticateAsync(login, password, progress, cancellationToken);
+            return await AuthenticateAsync(password, progress, cancellationToken);
+        }
     }
 }

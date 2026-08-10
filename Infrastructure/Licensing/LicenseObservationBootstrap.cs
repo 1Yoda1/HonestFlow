@@ -5,6 +5,7 @@ using HonestFlow.Application.Auth;
 using HonestFlow.Application.Licensing;
 using HonestFlow.Infrastructure.DeviceIdentity;
 using HonestFlow.Infrastructure.Configuration;
+using HonestFlow.Infrastructure.Api;
 
 namespace HonestFlow.Infrastructure.Licensing
 {
@@ -24,7 +25,9 @@ namespace HonestFlow.Infrastructure.Licensing
             }
 
             var signatureVerifier = new EcdsaLicenseSignatureVerifier(new LicensePublicKeyRegistry(keys));
-            ILicenseManifestRepository remoteRepository = CreateRemoteRepository(configuration, signatureVerifier);
+            ILicenseManifestRepository remoteRepository = authService is IApiSessionProvider apiProvider
+                ? new ApiLicenseManifestRepository(apiProvider.ApiSessionService, signatureVerifier, configuration.RequestTimeout)
+                : CreateRemoteRepository(configuration, signatureVerifier);
             var trustedClock = new DpapiTrustedLicenseClock();
             var observer = new LicenseObservationService(
                 remoteRepository,
@@ -43,7 +46,7 @@ namespace HonestFlow.Infrastructure.Licensing
 
             Logger.Info(
                 $"Event=LicenseObservationConfigured Mode={configuration.EnforcementMode} " +
-                $"RemoteSource={(configuration.ManifestUrl != null && configuration.SignatureUrl != null ? "DirectUrls" : "YandexPointer")} " +
+                $"RemoteSource={(authService is IApiSessionProvider ? "HonestLicenseApi" : configuration.ManifestUrl != null && configuration.SignatureUrl != null ? "DirectUrls" : "YandexPointer")} " +
                 $"PublicKeyConfigured={keys.Count > 0}",
                 nameof(LicenseObservationBootstrap));
             return new LicenseObservingAuthService(authService, observer);

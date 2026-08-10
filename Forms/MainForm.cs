@@ -496,9 +496,10 @@ namespace HonestFlow
             if (!EnsureNoLongOperation("вход"))
                 return;
 
+            string enteredLogin = loginForm.Login;
             string enteredPassword = loginForm.Password;
 
-            LicenseAuthenticationResult authentication = await AuthenticateWithLicenseAsync(enteredPassword);
+            LicenseAuthenticationResult authentication = await AuthenticateWithLicenseAsync(enteredLogin, enteredPassword);
             var selectedIP = authentication.Client;
             if (selectedIP == null)
             {
@@ -533,11 +534,12 @@ namespace HonestFlow
             await StartInstallationForAuthorizedUser();
         }
 
-        private async Task<LicenseAuthenticationResult> AuthenticateWithLicenseAsync(string password)
+        private async Task<LicenseAuthenticationResult> AuthenticateWithLicenseAsync(string login, string password)
         {
             if (!_sellerAuthenticationWorkflow.ReportsLicenseProgress)
             {
                 return await _sellerAuthenticationWorkflow.AuthenticateAsync(
+                    login,
                     password,
                     null,
                     CancellationToken.None);
@@ -551,6 +553,7 @@ namespace HonestFlow
             try
             {
                 LicenseAuthenticationResult result = await _sellerAuthenticationWorkflow.AuthenticateAsync(
+                    login,
                     password,
                     progress,
                     CancellationToken.None);
@@ -566,6 +569,18 @@ namespace HonestFlow
             {
                 progressForm.Close();
             }
+        }
+
+        private Task<LicenseAuthenticationResult> AuthenticateWithLicenseAsync(string password)
+        {
+            if (_selectedIP != null)
+            {
+                return Task.FromResult(new LicenseAuthenticationResult(
+                    _selectedIP,
+                    _licenseSnapshotStore.Current));
+            }
+
+            return AuthenticateWithLicenseAsync(string.Empty, password);
         }
 
         private async Task StartInstallationForAuthorizedUser()

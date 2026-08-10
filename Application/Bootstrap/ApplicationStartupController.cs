@@ -12,11 +12,14 @@ using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.DeviceIdentity;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Licensing;
+using HonestFlow.Infrastructure.Api;
 
 namespace HonestFlow.Application.Bootstrap
 {
     public sealed class ApplicationStartupController
     {
+        private ApplicationStartupSession _activeSession;
+
         public async Task<ApplicationStartupSession> InitializeAsync(IProgressService progress, IUserDialogService dialogs, CancellationToken cancellationToken)
         {
             if (progress == null) throw new ArgumentNullException(nameof(progress));
@@ -30,13 +33,14 @@ namespace HonestFlow.Application.Bootstrap
             progress.SetProgress(28, "Загружаем конфигурацию точки...");
             StartupResult startup = await Task.Run(() => new ApplicationStartupService(logService, progress, dialogs).Start(), cancellationToken);
             startup.AuthService = LicenseObservationBootstrap.WrapAuthService(startup.AuthService);
-            return new ApplicationStartupSession(startup, logService, new SellerAuthenticationWorkflow(startup.AuthService, LicenseObservationSnapshotStore.Instance));
+            _activeSession = new ApplicationStartupSession(startup, logService, new SellerAuthenticationWorkflow(startup.AuthService, LicenseObservationSnapshotStore.Instance));
+            return _activeSession;
         }
 
-        public async Task<LicenseAuthenticationResult> AuthenticateAsync(ApplicationStartupSession session, string password, bool remember, IProgress<LicenseAuthenticationProgress> progress, CancellationToken cancellationToken)
+        public async Task<LicenseAuthenticationResult> AuthenticateAsync(ApplicationStartupSession session, string login, string password, bool remember, IProgress<LicenseAuthenticationProgress> progress, CancellationToken cancellationToken)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
-            LicenseAuthenticationResult result = await session.Authentication.AuthenticateAsync(password, progress, cancellationToken);
+            LicenseAuthenticationResult result = await session.Authentication.AuthenticateAsync(login, password, progress, cancellationToken);
             if (result.Client == null) return result;
             if (remember)
             {
@@ -73,6 +77,32 @@ namespace HonestFlow.Application.Bootstrap
             return result;
         }
 
+        public Task<LicenseAuthenticationResult> AuthenticateAsync(ApplicationStartupSession session, string password, bool remember, IProgress<LicenseAuthenticationProgress> progress, CancellationToken cancellationToken) =>
+            AuthenticateAsync(session, string.Empty, password, remember, progress, cancellationToken);
+
+        public async Task<LicenseAuthenticationResult> TryResumeAsync(
+            ApplicationStartupSession session,
+            IProgress<LicenseAuthenticationProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            if (session?.Startup.AuthService is not IApiCredentialAuthService apiAuth)
+                return new LicenseAuthenticationResult(null, null);
+            LicenseAuthenticationResult result = await apiAuth.TryResumeAsync(progress, cancellationToken);
+            if (result.Client != null)
+            {
+                session.Startup.AuthorizedClient = result.Client;
+                session.Startup.SellerAuthenticationHandled = true;
+            }
+            return result;
+        }
+
+        public async Task LogoutAsync(ApplicationStartupSession session, CancellationToken cancellationToken)
+        {
+            if (session?.Startup.AuthService is IApiSessionProvider provider && provider.ApiSessionService != null)
+                await provider.ApiSessionService.LogoutAsync(cancellationToken);
+            await new FileApiConfigurationCache().ClearAsync(CancellationToken.None);
+        }
+
         public async Task SendHelpRequestAsync(
             ApplicationStartupSession session,
             LicenseObservationSnapshot snapshot,
@@ -104,7 +134,11 @@ namespace HonestFlow.Application.Bootstrap
         }
         public Task<DeviceRegistrationDeliveryStatus> RegisterDeviceAsync(LicenseObservationSnapshot snapshot, CancellationToken cancellationToken)
         {
-            var workflow = new DeviceRegistrationWorkflow(new DeviceRegistrationCoordinator(new DeviceRegistrationRequestService(), new SmtpDeviceRegistrationRequestSender(), new DpapiDeviceRegistrationDeliveryStateStore()));
+            IDeviceRegistrationRequestSender sender = _activeSession?.Startup.AuthService is IApiSessionProvider provider &&
+                provider.ApiSessionService != null
+                ? new ApiDeviceRegistrationRequestSender(provider.ApiSessionService)
+                : new SmtpDeviceRegistrationRequestSender();
+            var workflow = new DeviceRegistrationWorkflow(new DeviceRegistrationCoordinator(new DeviceRegistrationRequestService(), sender, new DpapiDeviceRegistrationDeliveryStateStore()));
             return workflow.SendAsync(snapshot, snapshot?.PointAddress, Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown", cancellationToken);
         }
     }

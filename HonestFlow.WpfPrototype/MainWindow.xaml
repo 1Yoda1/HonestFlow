@@ -127,6 +127,8 @@
           <TextBlock Text="HonestFlow" FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,0,0,0"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <Button Content="Сменить пользователя" Width="170" Height="36" Margin="0,6,8,0"
+                  Background="Transparent" BorderBrush="#D8DEE9" Cursor="Hand" Click="Logout_Click"/>
           <Button Style="{StaticResource TopButton}" Content="−" Click="Minimize_Click"/>
           <Button Style="{StaticResource TopButton}" Content="□" Click="Maximize_Click"/>
           <Button Style="{StaticResource TopButton}" Content="×" FontSize="24" Click="Close_Click"/>

@@ -7,6 +7,9 @@ using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Models;
+using HonestFlow.Infrastructure.Api;
+using HonestFlow.Infrastructure.DeviceIdentity;
+using System.Net.Http;
 
 namespace HonestFlow.Application.Bootstrap
 {
@@ -28,6 +31,14 @@ namespace HonestFlow.Application.Bootstrap
 
         public StartupResult Start()
         {
+            if (!string.Equals(
+                    Environment.GetEnvironmentVariable("HONESTFLOW_USE_LEGACY_STARTUP"),
+                    "1",
+                    StringComparison.Ordinal))
+            {
+                return StartApiFirst();
+            }
+
             try
             {
                 _progressService.SetProgress(35, "\u041f\u0440\u043e\u0431\u0443\u0435\u043c \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u043a\u043e\u043d\u0444\u0438\u0433\u0438 \u0438\u0437 \u043e\u0431\u043b\u0430\u043a\u0430...");
@@ -78,6 +89,37 @@ namespace HonestFlow.Application.Bootstrap
                     AuthService = authService
                 };
             }
+        }
+
+        private StartupResult StartApiFirst()
+        {
+            _progressService.SetProgress(58, "Подготавливаем безопасное подключение к HonestLicenseServer...");
+            string configuredBaseUrl = Environment.GetEnvironmentVariable("HONESTFLOW_API_BASE_URL");
+            var httpClient = new HttpClient
+            {
+                BaseAddress = new Uri(string.IsNullOrWhiteSpace(configuredBaseUrl)
+                    ? "https://api.honestflow.ru/"
+                    : configuredBaseUrl.TrimEnd('/') + "/"),
+                Timeout = System.Threading.Timeout.InfiniteTimeSpan
+            };
+            var session = new ApiSessionService(httpClient, new FileApiSessionStore());
+            var auth = new ApiAuthService(
+                session,
+                new FileDeviceIdentityService(new DpapiDeviceIdentityStateProtector()),
+                _logService,
+                new FileApiConfigurationCache());
+
+            // Yandex Disk remains available only to the installer download infrastructure.
+            ConfigManager.InitYandexDiskDownloader();
+            _progressService.SetProgress(78, "Введите логин и пароль HonestFlow.");
+            Logger.Info("Event=ApiFirstStartupConfigured Source=HonestLicenseServer", nameof(ApplicationStartupService));
+            return new StartupResult
+            {
+                UseRemoteConfigMode = true,
+                Ips = new System.Collections.Generic.List<IPData>(),
+                RemoteIps = new System.Collections.Generic.List<IPData>(),
+                AuthService = auth
+            };
         }
 
         private static void RemoveLegacyFullClientList()

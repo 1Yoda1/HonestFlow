@@ -8,6 +8,18 @@ namespace HonestFlow.Tests
     public sealed class EmbeddedLicenseTrustTests
     {
         [Fact]
+        public void ProductionAliasesResolveToSameVerifiedPublicKey()
+        {
+            var registry = EmbeddedLicenseTrust.CreateKeyRegistry();
+
+            Assert.Equal(
+                registry[EmbeddedLicenseTrust.ProductionKeyId],
+                registry[EmbeddedLicenseTrust.Primary2026KeyId]);
+            Assert.Equal(
+                EmbeddedLicenseTrust.ProductionPublicKeySubjectPublicKeyInfoBase64,
+                registry[EmbeddedLicenseTrust.Primary2026KeyId]);
+        }
+        [Fact]
         public void ProductionPublicKey_IsValidEcdsaP256SubjectPublicKeyInfo()
         {
             var keys = EmbeddedLicenseTrust.CreateKeyRegistry();

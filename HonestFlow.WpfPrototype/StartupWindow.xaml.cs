@@ -28,7 +28,11 @@ public partial class StartupWindow : Window
     private LicenseObservationSnapshot? _restrictedSnapshot;
     private readonly string? _accessNotice;
 
-    public StartupWindow(string? accessNotice = null)
+    public StartupWindow() : this(null)
+    {
+    }
+
+    public StartupWindow(string? accessNotice)
     {
         _accessNotice = accessNotice;
         InitializeComponent();
@@ -43,17 +47,28 @@ public partial class StartupWindow : Window
             LoadingPercent.Text = "100%";
             LoadingStatus.Text = "Готово";
             await Task.Delay(250, _lifetime.Token);
+            var resumeProgress = new Progress<LicenseAuthenticationProgress>(ReportAuthenticationProgress);
+            LicenseAuthenticationResult resumed = await _controller.TryResumeAsync(
+                _session, resumeProgress, _lifetime.Token);
+            if (resumed.Client != null)
+            {
+                if (resumed.LicenseSnapshot?.Decision == LicenseDecision.Allowed)
+                {
+                    var mainWindow = new MainWindow(_session.Startup, resumed.Client, resumed.LicenseSnapshot);
+                    System.Windows.Application.Current.MainWindow = mainWindow;
+                    mainWindow.Show();
+                    Close();
+                    return;
+                }
+
+                await ShowRestrictedAccessAsync(resumed.LicenseSnapshot);
+                return;
+            }
             ShowLogin();
             if (!string.IsNullOrWhiteSpace(_accessNotice))
             {
                 LoginError.Text = _accessNotice;
                 LoginError.Visibility = Visibility.Visible;
-            }
-            IPData? remembered = new AuthorizedClientCache().Load();
-            if (!string.IsNullOrWhiteSpace(remembered?.Password))
-            {
-                PasswordInput.Password = remembered.Password;
-                RememberLoginCheckBox.IsChecked = true;
             }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
@@ -72,17 +87,17 @@ public partial class StartupWindow : Window
         LicenseMissingPanel.Visibility = Visibility.Collapsed;
         LoginPanel.Visibility = Visibility.Visible;
         SetStep(LoginStepBadge, LoginStepText, LoginStepLabel, StepState.Active);
-        PasswordInput.Focus();
+        LoginInput.Focus();
     }
 
     private async void Login_Click(object sender, RoutedEventArgs e)
     {
         if (_session == null) return;
-        if (string.IsNullOrWhiteSpace(PasswordInput.Password))
+        if (string.IsNullOrWhiteSpace(LoginInput.Text) || string.IsNullOrWhiteSpace(PasswordInput.Password))
         {
             LoginError.Text = "Введите пароль точки.";
             LoginError.Visibility = Visibility.Visible;
-            PasswordInput.Focus();
+            if (string.IsNullOrWhiteSpace(LoginInput.Text)) LoginInput.Focus(); else PasswordInput.Focus();
             return;
         }
 
@@ -92,7 +107,13 @@ public partial class StartupWindow : Window
         {
             var progress = new Progress<LicenseAuthenticationProgress>(ReportAuthenticationProgress);
             LicenseAuthenticationResult result = await _controller.AuthenticateAsync(
-                _session, PasswordInput.Password, RememberLoginCheckBox.IsChecked == true, progress, _lifetime.Token);
+                _session, LoginInput.Text.Trim(), PasswordInput.Password,
+                RememberLoginCheckBox.IsChecked == true, progress, _lifetime.Token);
+            if (result.LicenseSnapshot?.Decision == LicenseDecision.DeviceNotRegistered)
+            {
+                await ShowRestrictedAccessAsync(result.LicenseSnapshot);
+                return;
+            }
             if (result.Client == null)
             {
                 LoginError.Text = "Неверный пароль точки. Попробуйте ещё раз.";
@@ -144,6 +165,7 @@ public partial class StartupWindow : Window
 
     private async Task ShowRestrictedAccessAsync(LicenseObservationSnapshot? snapshot)
     {
+        LoadingPanel.Visibility = Visibility.Collapsed;
         LoginPanel.Visibility = Visibility.Collapsed;
         LicenseMissingPanel.Visibility = Visibility.Visible;
         _restrictedSnapshot = snapshot;
@@ -156,6 +178,13 @@ public partial class StartupWindow : Window
         }
 
         RegistrationStatus.Text = "Отправляем заявку на регистрацию этого компьютера…";
+        if (string.IsNullOrWhiteSpace(snapshot.ClientId))
+        {
+            RegistrationStatus.Text = string.IsNullOrWhiteSpace(snapshot.Message)
+                ? "Заявка на регистрацию устройства ожидает подтверждения."
+                : snapshot.Message;
+            return;
+        }
         DeviceRegistrationDeliveryStatus status = await _controller.RegisterDeviceAsync(snapshot, _lifetime.Token);
         RegistrationStatus.Text = status switch
         {

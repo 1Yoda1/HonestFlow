@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$projectPath = Join-Path $repoRoot "HonestFlow.csproj"
+$projectPath = Join-Path $repoRoot "HonestFlow.WpfPrototype\HonestFlow.WpfPrototype.csproj"
 $artifactsRoot = Join-Path $repoRoot "artifacts\HonestFlow"
 $currentDir = Join-Path $artifactsRoot "current"
 $versionsDir = Join-Path $artifactsRoot "versions"
@@ -15,7 +15,7 @@ $versionsDir = Join-Path $artifactsRoot "versions"
 [xml]$project = Get-Content -LiteralPath $projectPath
 $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
 if ([string]::IsNullOrWhiteSpace($version)) {
-    throw "Version is not set in HonestFlow.csproj."
+    throw "Version is not set in the WPF HonestFlow project."
 }
 
 $versionDir = Join-Path $versionsDir $version

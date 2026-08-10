@@ -511,6 +511,29 @@ public partial class MainWindow : Window
     private async void RequestHelp_Click(object sender, RoutedEventArgs e) => await SendHelpAsync();
     private async void RefreshLicense_Click(object sender, RoutedEventArgs e) => await RefreshLicenseAsync();
 
+    private async void Logout_Click(object sender, RoutedEventArgs e)
+    {
+        if (_startup == null || _returningToStartup) return;
+        _returningToStartup = true;
+        try
+        {
+            var session = new ApplicationStartupSession(
+                _startup,
+                _logService,
+                new HonestFlow.Application.Auth.SellerAuthenticationWorkflow(
+                    _startup.AuthService,
+                    LicenseObservationSnapshotStore.Instance));
+            await _startupController.LogoutAsync(session, _lifetime.Token);
+        }
+        finally
+        {
+            var startupWindow = new StartupWindow("Сессия завершена. Войдите под нужной учётной записью.");
+            System.Windows.Application.Current.MainWindow = startupWindow;
+            startupWindow.Show();
+            Close();
+        }
+    }
+
     private async void Rate_Click(object sender, RoutedEventArgs e)
     {
         if (_client == null) return;

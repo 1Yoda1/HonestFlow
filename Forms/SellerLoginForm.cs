@@ -5,6 +5,7 @@ namespace HonestFlow
 {
     public sealed class SellerLoginForm : Form
     {
+        private readonly TextBox _login = new TextBox();
         private readonly TextBox _password = new TextBox
         {
             UseSystemPasswordChar = true
@@ -17,7 +18,7 @@ namespace HonestFlow
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(460, 235);
+            ClientSize = new Size(460, 285);
 
             var title = new Label
             {
@@ -40,17 +41,26 @@ namespace HonestFlow
             var passwordLabel = new Label
             {
                 Left = 22,
-                Top = 105,
+                Top = 155,
                 Width = 180,
                 Height = 22,
                 Text = "Пароль продавца"
             };
-            _password.SetBounds(22, 130, 415, 27);
+            var loginLabel = new Label
+            {
+                Left = 22,
+                Top = 101,
+                Width = 180,
+                Height = 22,
+                Text = "Логин"
+            };
+            _login.SetBounds(22, 126, 415, 27);
+            _password.SetBounds(22, 180, 415, 27);
 
             var login = new Button
             {
                 Left = 237,
-                Top = 180,
+                Top = 230,
                 Width = 120,
                 Height = 34,
                 Text = "Проверить доступ",
@@ -59,7 +69,7 @@ namespace HonestFlow
             var diagnostics = new Button
             {
                 Left = 92,
-                Top = 180,
+                Top = 230,
                 Width = 140,
                 Height = 34,
                 Text = "Только диагностика",
@@ -68,7 +78,7 @@ namespace HonestFlow
 
             login.Click += (_, _) =>
             {
-                if (string.IsNullOrWhiteSpace(_password.Text))
+                if (string.IsNullOrWhiteSpace(_login.Text) || string.IsNullOrWhiteSpace(_password.Text))
                 {
                     DialogResult = DialogResult.None;
                     MessageBox.Show(
@@ -77,19 +87,20 @@ namespace HonestFlow
                         "Вход продавца",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
-                    _password.Focus();
+                    (string.IsNullOrWhiteSpace(_login.Text) ? _login : _password).Focus();
                 }
             };
 
             Controls.AddRange(new Control[]
             {
-                title, explanation, passwordLabel, _password, diagnostics, login
+                title, explanation, loginLabel, _login, passwordLabel, _password, diagnostics, login
             });
             AcceptButton = login;
             CancelButton = diagnostics;
-            Shown += (_, _) => _password.Focus();
+            Shown += (_, _) => _login.Focus();
         }
 
+        public string Login => _login.Text.Trim();
         public string Password => _password.Text;
     }
 }

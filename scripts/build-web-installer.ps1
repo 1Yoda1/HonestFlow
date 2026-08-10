@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$projectPath = Join-Path $repoRoot "HonestFlow.csproj"
+$projectPath = Join-Path $repoRoot "HonestFlow.WpfPrototype\HonestFlow.WpfPrototype.csproj"
 $publishScript = Join-Path $PSScriptRoot "publish-honestflow.ps1"
 $publishDir = Join-Path $repoRoot "artifacts\HonestFlow\current"
 $outputDir = Join-Path $repoRoot "artifacts\installer\web"
@@ -32,7 +32,7 @@ if (-not [Uri]::IsWellFormedUriString($DotNetRuntimeUrl, [UriKind]::Absolute) -o
 [xml]$project = Get-Content -LiteralPath $projectPath
 $version = $project.Project.PropertyGroup.Version | Select-Object -First 1
 if ([string]::IsNullOrWhiteSpace($version)) {
-    throw "Version is not set in HonestFlow.csproj."
+    throw "Version is not set in the WPF HonestFlow project."
 }
 
 & $publishScript `

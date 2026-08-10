@@ -4,15 +4,21 @@ using System.Threading.Tasks;
 using HonestFlow.Application.Licensing;
 using HonestFlow.Models;
 using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure.Api;
 
 namespace HonestFlow.Application.Auth
 {
     public sealed class LicenseObservingAuthService :
         ILicenseAuthenticatingAuthService,
+        IApiCredentialAuthService,
+        IApiSessionProvider,
         ILicenseObservationRefresher
     {
         private readonly IAuthService _inner;
         private readonly ILicenseObservationService _observationService;
+
+        public IApiSessionService ApiSessionService =>
+            (_inner as IApiSessionProvider)?.ApiSessionService;
 
         public LicenseObservingAuthService(
             IAuthService inner,
@@ -59,6 +65,47 @@ namespace HonestFlow.Application.Auth
                 LicenseAuthenticationStage.Completed,
                 client.Name));
             return new LicenseAuthenticationResult(client, snapshot);
+        }
+
+        public async Task<LicenseAuthenticationResult> AuthenticateAsync(
+            string login,
+            string password,
+            IProgress<LicenseAuthenticationProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            if (_inner is not IApiCredentialAuthService apiAuth)
+                return await AuthenticateAsync(password, progress, cancellationToken);
+
+            LicenseAuthenticationResult authentication = await apiAuth.AuthenticateAsync(
+                login, password, progress, cancellationToken);
+            if (authentication.Client == null)
+                return authentication;
+            progress?.Report(new LicenseAuthenticationProgress(
+                LicenseAuthenticationStage.CheckingDeviceAndLicense,
+                authentication.Client.Name));
+            LicenseObservationSnapshot snapshot = await ObserveWithRetryAsync(authentication.Client, cancellationToken);
+            progress?.Report(new LicenseAuthenticationProgress(
+                LicenseAuthenticationStage.Completed,
+                authentication.Client.Name));
+            return new LicenseAuthenticationResult(authentication.Client, snapshot);
+        }
+
+        public async Task<LicenseAuthenticationResult> TryResumeAsync(
+            IProgress<LicenseAuthenticationProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            if (_inner is not IApiCredentialAuthService apiAuth)
+                return new LicenseAuthenticationResult(null, null);
+            LicenseAuthenticationResult authentication = await apiAuth.TryResumeAsync(progress, cancellationToken);
+            if (authentication.Client == null) return authentication;
+            progress?.Report(new LicenseAuthenticationProgress(
+                LicenseAuthenticationStage.CheckingDeviceAndLicense,
+                authentication.Client.Name));
+            LicenseObservationSnapshot snapshot = await ObserveWithRetryAsync(authentication.Client, cancellationToken);
+            progress?.Report(new LicenseAuthenticationProgress(
+                LicenseAuthenticationStage.Completed,
+                authentication.Client.Name));
+            return new LicenseAuthenticationResult(authentication.Client, snapshot);
         }
 
         public async Task<LicenseObservationSnapshot> RefreshLicenseAsync(

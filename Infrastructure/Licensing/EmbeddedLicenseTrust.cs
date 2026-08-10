@@ -6,6 +6,7 @@ namespace HonestFlow.Infrastructure.Licensing
     public static class EmbeddedLicenseTrust
     {
         public const string ProductionKeyId = "production-2026-01";
+        public const string Primary2026KeyId = "primary-2026";
 
         // Public ECDSA P-256 SubjectPublicKeyInfo. The private key is not part of HonestFlow.
         public const string ProductionPublicKeySubjectPublicKeyInfoBase64 =
@@ -15,7 +16,8 @@ namespace HonestFlow.Infrastructure.Licensing
         {
             return new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                [ProductionKeyId] = ProductionPublicKeySubjectPublicKeyInfoBase64
+                [ProductionKeyId] = ProductionPublicKeySubjectPublicKeyInfoBase64,
+                [Primary2026KeyId] = ProductionPublicKeySubjectPublicKeyInfoBase64
             };
         }
     }

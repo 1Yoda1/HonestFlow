@@ -15,6 +15,7 @@ using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Application.Ui;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Licensing;
+using HonestFlow.Infrastructure.Api;
 using HonestFlow.Models;
 
 namespace HonestFlow.Infrastructure.Composition
@@ -106,9 +107,13 @@ namespace HonestFlow.Infrastructure.Composition
                 helpRequestEmailSender,
                 new UnlicensedHelpRequestStore());
 
+            IDeviceRegistrationRequestSender registrationSender = startup.AuthService is IApiSessionProvider apiProvider &&
+                apiProvider.ApiSessionService != null
+                ? new ApiDeviceRegistrationRequestSender(apiProvider.ApiSessionService)
+                : new SmtpDeviceRegistrationRequestSender();
             var deviceRegistrationCoordinator = new DeviceRegistrationCoordinator(
                 new DeviceRegistrationRequestService(),
-                new SmtpDeviceRegistrationRequestSender(),
+                registrationSender,
                 new DpapiDeviceRegistrationDeliveryStateStore());
 
             return new MainFormDependencies

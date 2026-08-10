@@ -141,26 +141,37 @@ namespace HonestFlow
                 string errorMessage = null;
                 while (true)
                 {
-                    string password = await _startupForm.RequestSellerPasswordAsync(errorMessage);
-                    if (password == null)
+                    SellerCredentials credentials = await _startupForm.RequestSellerPasswordAsync(errorMessage);
+                    if (credentials == null)
                         return null;
 
                     try
                     {
                         IPData client;
-                        if (authService is ILicenseAuthenticatingAuthService licenseAuth)
+                        if (authService is IApiCredentialAuthService apiAuth)
+                        {
+                            var progress = new Progress<LicenseAuthenticationProgress>(
+                                _startupForm.ReportLicenseAuthentication);
+                            LicenseAuthenticationResult result = await apiAuth.AuthenticateAsync(
+                                credentials.Login,
+                                credentials.Password,
+                                progress,
+                                CancellationToken.None);
+                            client = result.Client;
+                        }
+                        else if (authService is ILicenseAuthenticatingAuthService licenseAuth)
                         {
                             var progress = new Progress<LicenseAuthenticationProgress>(
                                 _startupForm.ReportLicenseAuthentication);
                             LicenseAuthenticationResult result = await licenseAuth.AuthenticateAsync(
-                                password,
+                                credentials.Password,
                                 progress,
                                 CancellationToken.None);
                             client = result.Client;
                         }
                         else
                         {
-                            client = authService.Authenticate(password);
+                            client = authService.Authenticate(credentials.Password);
                         }
 
                         if (client == null)

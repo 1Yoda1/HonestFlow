@@ -6,13 +6,13 @@ Use this checklist before creating a public GitHub release.
 
 - [ ] Release branch is intentional.
 - [ ] `git status` is clean.
-- [ ] Version in `HonestFlow.csproj` matches the release tag.
+- [ ] Version in `HonestFlow.WpfPrototype/HonestFlow.WpfPrototype.csproj` matches the release tag.
 - [ ] No runtime configuration, logs, diagnostics, installer caches, or secrets are staged.
 
 ## Validation
 
 - [ ] `dotnet restore`
-- [ ] `dotnet build HonestFlow.csproj -c Release`
+- [ ] `dotnet build HonestFlow.WpfPrototype/HonestFlow.WpfPrototype.csproj -c Release`
 - [ ] `dotnet test HonestFlow.Tests\HonestFlow.Tests.csproj -c Release`
 - [ ] Target framework support status is accepted for this release. HonestFlow targets `net10.0-windows`.
 - [ ] Published executable starts on a clean Windows x64 machine.
