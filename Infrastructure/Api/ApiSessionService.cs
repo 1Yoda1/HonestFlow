@@ -10,16 +10,26 @@ using Newtonsoft.Json;
 
 namespace HonestFlow.Infrastructure.Api
 {
-    public sealed class ApiSessionService : IApiSessionService, IApiSessionRefresher
+    public sealed class ApiSessionService :
+        IApiSessionService,
+        IApiSessionRefresher,
+        IApiSessionPersistenceController
     {
         private readonly HttpClient _httpClient;
         private readonly IApiSessionStore _store;
         private readonly SemaphoreSlim _refreshLock = new(1, 1);
+        private ApiSession _processSession;
+        private bool _persistSession = true;
 
         public ApiSessionService(HttpClient httpClient, IApiSessionStore store)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _store = store ?? throw new ArgumentNullException(nameof(store));
+        }
+
+        public void SetPersistSession(bool persistSession)
+        {
+            _persistSession = persistSession;
         }
 
         public async Task<ApiTokenResponse> LoginAsync(string login, string password, string deviceId, string deviceName, CancellationToken cancellationToken)
@@ -61,13 +71,13 @@ namespace HonestFlow.Infrastructure.Api
             }
             finally
             {
-                await _store.ClearAsync(CancellationToken.None);
+                await ClearSessionAsync(CancellationToken.None);
             }
         }
 
         public async Task<bool> RefreshSessionAsync(CancellationToken cancellationToken)
         {
-            ApiSession session = await _store.LoadAsync(cancellationToken);
+            ApiSession session = await LoadCurrentSessionAsync(cancellationToken);
             if (session == null || string.IsNullOrWhiteSpace(session.RefreshToken))
                 return false;
             return await RefreshAsync(session.RefreshToken, cancellationToken) != null;
@@ -75,7 +85,7 @@ namespace HonestFlow.Infrastructure.Api
 
         private async Task<ApiSession> GetUsableSessionAsync(CancellationToken cancellationToken)
         {
-            ApiSession session = await _store.LoadAsync(cancellationToken);
+            ApiSession session = await LoadCurrentSessionAsync(cancellationToken);
             if (session == null)
                 return null;
             if (session.AccessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddSeconds(30))
@@ -88,7 +98,7 @@ namespace HonestFlow.Infrastructure.Api
             await _refreshLock.WaitAsync(cancellationToken);
             try
             {
-                ApiSession current = await _store.LoadAsync(cancellationToken);
+                ApiSession current = await LoadCurrentSessionAsync(cancellationToken);
                 if (current != null && current.AccessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddSeconds(30) &&
                     !string.Equals(current.RefreshToken, refreshToken, StringComparison.Ordinal))
                     return current;
@@ -99,7 +109,7 @@ namespace HonestFlow.Infrastructure.Api
                 }
                 catch (ApiRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
                 {
-                    await _store.ClearAsync(cancellationToken);
+                    await ClearSessionAsync(cancellationToken);
                     return null;
                 }
             }
@@ -117,7 +127,19 @@ namespace HonestFlow.Infrastructure.Api
             };
             using HttpResponseMessage response = await _httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
-                throw new ApiRequestException(response.StatusCode);
+            {
+                string errorCode = null;
+                try
+                {
+                    string errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                    errorCode = JsonConvert.DeserializeObject<ApiErrorResponse>(errorJson)?.Code;
+                }
+                catch (JsonException)
+                {
+                    // Preserve the HTTP failure even if an older server returned a non-JSON body.
+                }
+                throw new ApiRequestException(response.StatusCode, errorCode);
+            }
             string json = await response.Content.ReadAsStringAsync(cancellationToken);
             ApiTokenResponse tokens = JsonConvert.DeserializeObject<ApiTokenResponse>(json);
             if (tokens == null || string.IsNullOrWhiteSpace(tokens.AccessToken) || string.IsNullOrWhiteSpace(tokens.RefreshToken))
@@ -135,8 +157,38 @@ namespace HonestFlow.Infrastructure.Api
                 ClientId = tokens.ClientId,
                 ClientName = tokens.ClientName
             };
-            await _store.SaveAsync(session, cancellationToken);
+            if (_persistSession)
+            {
+                await _store.SaveAsync(session, cancellationToken);
+            }
+            else
+            {
+                // A previous remembered login must not survive a successful
+                // process-only login. Cleanup is part of completing that login.
+                await _store.ClearAsync(CancellationToken.None);
+            }
+            _processSession = session;
             return session;
+        }
+
+        private async Task<ApiSession> LoadCurrentSessionAsync(CancellationToken cancellationToken)
+        {
+            if (_processSession != null)
+                return _processSession;
+
+            ApiSession persisted = await _store.LoadAsync(cancellationToken);
+            if (persisted != null)
+            {
+                _processSession = persisted;
+                _persistSession = true;
+            }
+            return persisted;
+        }
+
+        private async Task ClearSessionAsync(CancellationToken cancellationToken)
+        {
+            _processSession = null;
+            await _store.ClearAsync(cancellationToken);
         }
 
         private async Task<HttpResponseMessage> SendCloneAsync(HttpRequestMessage source, string accessToken, CancellationToken cancellationToken)
@@ -153,6 +205,11 @@ namespace HonestFlow.Infrastructure.Api
             }
             clone.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             return await _httpClient.SendAsync(clone, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+
+        private sealed class ApiErrorResponse
+        {
+            public string Code { get; set; }
         }
     }
 }

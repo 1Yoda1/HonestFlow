@@ -60,6 +60,23 @@ namespace HonestFlow.Application.Licensing
             string honestFlowVersion,
             CancellationToken cancellationToken)
         {
+            return await TrySendAsync(
+                snapshot,
+                deviceName,
+                pointAddress,
+                honestFlowVersion,
+                false,
+                cancellationToken);
+        }
+
+        public async Task<DeviceRegistrationDeliveryStatus> TrySendAsync(
+            LicenseObservationSnapshot snapshot,
+            string deviceName,
+            string pointAddress,
+            string honestFlowVersion,
+            bool forceDelivery,
+            CancellationToken cancellationToken)
+        {
             bool isNewDevice = snapshot?.Decision == LicenseDecision.DeviceNotRegistered;
             bool needsAddress = snapshot?.Decision == LicenseDecision.Allowed &&
                                 string.IsNullOrWhiteSpace(snapshot.PointAddress) &&
@@ -78,7 +95,7 @@ namespace HonestFlow.Application.Licensing
                 await _gate.WaitAsync(cancellationToken);
                 try
                 {
-                    if (await _stateStore.WasSentAsync(
+                    if (!forceDelivery && await _stateStore.WasSentAsync(
                         snapshot.ClientId,
                         snapshot.DeviceId,
                         cancellationToken))
@@ -97,10 +114,13 @@ namespace HonestFlow.Application.Licensing
                         honestFlowVersion,
                         DateTimeOffset.UtcNow);
                     await _sender.SendAsync(request, cancellationToken);
-                    await _stateStore.MarkSentAsync(
-                        snapshot.ClientId,
-                        snapshot.DeviceId,
-                        cancellationToken);
+                    if (!forceDelivery)
+                    {
+                        await _stateStore.MarkSentAsync(
+                            snapshot.ClientId,
+                            snapshot.DeviceId,
+                            cancellationToken);
+                    }
                     Logger.Info(
                         "Event=DeviceRegistrationRequestDelivery Status=Sent",
                         nameof(DeviceRegistrationCoordinator));

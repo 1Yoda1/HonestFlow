@@ -462,6 +462,7 @@ public partial class MainWindow : Window
             LicenseDecision.ClientDisabled => "Лицензия клиента отключена. Обратитесь в поддержку.",
             LicenseDecision.DeviceDisabled => "Это устройство отключено в лицензии. Обратитесь в поддержку.",
             LicenseDecision.DeviceNotRegistered => "Устройство больше не зарегистрировано в лицензии.",
+            LicenseDecision.LicenseNotIssued => "Устройство зарегистрировано. Лицензия для этого компьютера ещё не выдана.",
             LicenseDecision.ManifestExpired => "Срок действия лицензии истёк.",
             LicenseDecision.VersionTooOld => "Для этой лицензии требуется более новая версия HonestFlow.",
             _ => string.IsNullOrWhiteSpace(snapshot?.Message)

@@ -6,6 +6,7 @@ namespace HonestFlow.Application.Licensing
         ClientNotFound,
         ClientDisabled,
         DeviceNotRegistered,
+        LicenseNotIssued,
         DeviceDisabled,
         VersionTooOld,
         ManifestExpired,

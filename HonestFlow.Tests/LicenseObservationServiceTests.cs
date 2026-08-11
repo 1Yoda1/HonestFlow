@@ -82,7 +82,7 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public async Task Observe_GrantNotFound_ReturnsDeviceNotRegistered()
+        public async Task Observe_GrantNotFound_ReturnsLicenseNotIssued()
         {
             var fixture = CreateFixture(LicenseManifestReadResult.Failure(
                 LicenseManifestReadStatus.NotFound,
@@ -92,8 +92,11 @@ namespace HonestFlow.Tests
                 Client(),
                 CancellationToken.None);
 
-            Assert.Equal(LicenseDecision.DeviceNotRegistered, result.Decision);
+            Assert.Equal(LicenseDecision.LicenseNotIssued, result.Decision);
             Assert.Equal("LICENSE_GRANT_NOT_FOUND", result.TechnicalCode);
+            Assert.Equal(
+                "Устройство зарегистрировано. Лицензия для этого компьютера ещё не выдана.",
+                result.Message);
         }
 
         [Fact]

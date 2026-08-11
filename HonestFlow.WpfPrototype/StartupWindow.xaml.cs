@@ -29,6 +29,7 @@ public partial class StartupWindow : Window
     private ApplicationStartupSession? _session;
     private LicenseObservationSnapshot? _restrictedSnapshot;
     private DeviceRegistrationStartupWorkflow? _deviceRegistrationWorkflow;
+    private LicenseNotIssuedStartupWorkflow? _licenseNotIssuedWorkflow;
     private readonly string? _accessNotice;
 
     public StartupWindow() : this(null)
@@ -139,6 +140,15 @@ public partial class StartupWindow : Window
             await ShowRestrictedAccessAsync(result.LicenseSnapshot);
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (ApiRequestException ex) when (
+            !string.IsNullOrWhiteSpace(ApiAuthenticationErrorPresentation.GetMessage(ex)))
+        {
+            Logger.LogException(ex, "WPF authentication rejected", nameof(StartupWindow));
+            LoginError.Text = ApiAuthenticationErrorPresentation.GetMessage(ex);
+            LoginError.Visibility = Visibility.Visible;
+            PasswordInput.SelectAll();
+            PasswordInput.Focus();
+        }
         catch (Exception ex)
         {
             Logger.LogException(ex, "WPF authentication failed", nameof(StartupWindow));
@@ -173,19 +183,36 @@ public partial class StartupWindow : Window
         LoginPanel.Visibility = Visibility.Collapsed;
         LicenseMissingPanel.Visibility = Visibility.Visible;
         _restrictedSnapshot = snapshot;
+        _deviceRegistrationWorkflow = null;
+        _licenseNotIssuedWorkflow = null;
         if (snapshot?.Decision == LicenseDecision.DeviceNotRegistered)
         {
             await ShowDeviceRegistrationAsync(snapshot);
             return;
         }
-        if (snapshot?.Decision != LicenseDecision.DeviceNotRegistered)
+
+        if (snapshot?.Decision == LicenseDecision.LicenseNotIssued &&
+            _session?.Startup.AuthorizedClient != null &&
+            _session.Startup.AuthService is ILicenseObservationRefresher licenseRefresher)
         {
-            RegistrationStatus.Text = string.IsNullOrWhiteSpace(snapshot?.Message)
-                ? "Лицензия не разрешает вход. Запросите помощь, чтобы специалист проверил доступ."
-                : snapshot.Message;
+            LicenseMissingTitle.Text = "Лицензия ещё не выдана";
+            LicenseMissingDescription.Text =
+                "Устройство уже зарегистрировано. После выдачи лицензии запуск продолжится без повторного входа.";
+            RegistrationStatus.Text = LicenseNotIssuedStartupWorkflow.WaitingMessage;
+            RetryLicenseButton.Visibility = Visibility.Visible;
+            _licenseNotIssuedWorkflow = new LicenseNotIssuedStartupWorkflow(
+                licenseRefresher,
+                _session.Startup.AuthorizedClient);
             return;
         }
 
+        LicenseMissingTitle.Text = "Доступ ограничен";
+        LicenseMissingDescription.Text =
+            "HonestFlow не может продолжить запуск при текущем состоянии лицензии.";
+        RetryLicenseButton.Visibility = Visibility.Collapsed;
+        RegistrationStatus.Text = string.IsNullOrWhiteSpace(snapshot?.Message)
+            ? "Лицензия не разрешает вход. Запросите помощь, чтобы специалист проверил доступ."
+            : snapshot.Message;
     }
 
     private async Task ShowDeviceRegistrationAsync(LicenseObservationSnapshot snapshot)
@@ -237,6 +264,9 @@ public partial class StartupWindow : Window
         RegistrationAddressLabel.Visibility = canSubmitAddress ? Visibility.Visible : Visibility.Collapsed;
         RegistrationAddressInput.Visibility = canSubmitAddress ? Visibility.Visible : Visibility.Collapsed;
         SubmitRegistrationButton.Visibility = canSubmitAddress ? Visibility.Visible : Visibility.Collapsed;
+        SubmitRegistrationButton.Content = state.State == DeviceRegistrationStartupState.Rejected
+            ? "Отправить повторно"
+            : "Отправить заявку";
         RegistrationError.Visibility = state.State == DeviceRegistrationStartupState.InvalidAddress
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -269,18 +299,56 @@ public partial class StartupWindow : Window
             return;
         }
 
+        RegistrationError.Visibility = Visibility.Collapsed;
+        DeviceRegistrationStatus.Text = "Отправляем заявку на регистрацию…";
         await RunDeviceRegistrationActionAsync(async workflow =>
         {
-            DeviceRegistrationStartupResult state = await workflow.SubmitAsync(
+            return await workflow.SubmitAsync(
                 _restrictedSnapshot!, address, _lifetime.Token);
-            return state.State == DeviceRegistrationStartupState.Pending
-                ? await workflow.CheckAsync(_lifetime.Token)
-                : state;
         });
     }
 
     private async void CheckRegistration_Click(object sender, RoutedEventArgs e) =>
         await RunDeviceRegistrationActionAsync(workflow => workflow.CheckAsync(_lifetime.Token));
+
+    private async void RetryLicense_Click(object sender, RoutedEventArgs e)
+    {
+        if (_licenseNotIssuedWorkflow == null) return;
+
+        RetryLicenseButton.IsEnabled = false;
+        RegistrationStatus.Text = "Проверяем лицензию…";
+        try
+        {
+            LicenseNotIssuedStartupResult result = await _licenseNotIssuedWorkflow.CheckAsync(_lifetime.Token);
+            if (result.IsAllowed && result.Authentication?.Client != null)
+            {
+                _session!.Startup.AuthorizedClient = result.Authentication.Client;
+                _session.Startup.SellerAuthenticationHandled = true;
+                var mainWindow = new MainWindow(
+                    _session.Startup,
+                    result.Authentication.Client,
+                    result.Authentication.LicenseSnapshot);
+                System.Windows.Application.Current.MainWindow = mainWindow;
+                mainWindow.Show();
+                Close();
+                return;
+            }
+
+            if (result.Snapshot != null)
+                _restrictedSnapshot = result.Snapshot;
+            RegistrationStatus.Text = result.Message;
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogException(ex, "WPF license retry failed", nameof(StartupWindow));
+            RegistrationStatus.Text = "Не удалось проверить лицензию. Попробуйте проверить снова.";
+        }
+        finally
+        {
+            RetryLicenseButton.IsEnabled = true;
+        }
+    }
 
     private async Task RunDeviceRegistrationActionAsync(
         Func<DeviceRegistrationStartupWorkflow, Task<DeviceRegistrationStartupResult>> action)

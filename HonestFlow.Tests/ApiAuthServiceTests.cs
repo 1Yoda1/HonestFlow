@@ -18,7 +18,11 @@ namespace HonestFlow.Tests
         {
             const string json = "{\"client\":{\"clientId\":\"c1\",\"name\":\"Point\",\"architecture\":\"x64\",\"hasLmDatabaseBackup\":true,\"ruDesktopEnabled\":true},\"device\":{\"deviceId\":\"d1\",\"status\":\"Approved\"},\"components\":[{\"component\":\"LmModule\",\"effectiveVersion\":\"4.2\"}]}";
             var session = new FakeSession(json);
-            var service = new ApiAuthService(session, new FakeIdentity(), new FakeLog());
+            var service = new ApiAuthService(
+                session,
+                new FakeIdentity(),
+                new FakeLog(),
+                new MemoryConfigurationCache(null));
 
             var result = await service.AuthenticateAsync("seller", "password", null, CancellationToken.None);
 
@@ -62,7 +66,7 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public async Task Login_PendingDeviceReturnsRegistrationDecisionWithoutConfigurationRequest()
+        public async Task Login_PendingDeviceReturnsRegistrationDecisionWithoutAnyStatusRequest()
         {
             var session = new PendingDeviceSession();
             var service = new ApiAuthService(session, new FakeIdentity(), new FakeLog(),
@@ -75,8 +79,8 @@ namespace HonestFlow.Tests
                 result.LicenseSnapshot.Decision);
             Assert.Equal("pending-client", result.LicenseSnapshot.ClientId);
             Assert.Equal("d1", result.LicenseSnapshot.DeviceId);
-            Assert.Equal("DEVICE_REGISTRATION_PENDING", result.LicenseSnapshot.TechnicalCode);
-            Assert.Equal("api/device/registration/current", session.RequestedPath);
+            Assert.Equal("DEVICE_REGISTRATION_REQUIRED", result.LicenseSnapshot.TechnicalCode);
+            Assert.Equal(0, session.AuthorizedRequestCalls);
         }
 
         private sealed class FakeSession : IApiSessionService
@@ -106,7 +110,7 @@ namespace HonestFlow.Tests
 
         private sealed class PendingDeviceSession : IApiSessionService
         {
-            public string RequestedPath { get; private set; }
+            public int AuthorizedRequestCalls { get; private set; }
             public Task<ApiTokenResponse> LoginAsync(string login, string password, string deviceId, string deviceName, CancellationToken cancellationToken) =>
                 Task.FromResult(new ApiTokenResponse
                 {
@@ -116,11 +120,8 @@ namespace HonestFlow.Tests
                 });
             public Task<HttpResponseMessage> SendAuthorizedAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             {
-                RequestedPath = request.RequestUri.ToString();
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent("{\"deviceId\":\"d1\",\"status\":\"Pending\",\"requestedAtUtc\":\"2026-08-10T00:00:00Z\"}")
-                });
+                AuthorizedRequestCalls++;
+                throw new InvalidOperationException("Pending login must not load registration status or configuration.");
             }
         }
 

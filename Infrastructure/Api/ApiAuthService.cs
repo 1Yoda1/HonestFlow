@@ -41,17 +41,14 @@ namespace HonestFlow.Infrastructure.Api
                 login, password, identity.DeviceId, Environment.MachineName, cancellationToken);
             if (tokens.DeviceRegistrationRequired)
             {
-                ApiRegistrationStatusResponse registration = await LoadRegistrationStatusAsync(cancellationToken);
                 return new LicenseAuthenticationResult(null, new HonestFlow.Application.Licensing.LicenseObservationSnapshot
                 {
                     ObservedAtUtc = DateTimeOffset.UtcNow,
                     ClientId = tokens.ClientId,
                     DeviceId = identity.DeviceId,
                     Decision = HonestFlow.Application.Licensing.LicenseDecision.DeviceNotRegistered,
-                    TechnicalCode = "DEVICE_REGISTRATION_" + (registration?.Status ?? "PENDING").ToUpperInvariant(),
-                    Message = string.Equals(registration?.Status, "Rejected", StringComparison.OrdinalIgnoreCase)
-                        ? (string.IsNullOrWhiteSpace(registration.Comment) ? "Регистрация устройства отклонена." : registration.Comment)
-                        : "Заявка на регистрацию устройства ожидает подтверждения."
+                    TechnicalCode = "DEVICE_REGISTRATION_REQUIRED",
+                    Message = "Устройство требует регистрации."
                 });
             }
 
@@ -105,16 +102,6 @@ namespace HonestFlow.Infrastructure.Api
             if (configuration?.Client == null || string.IsNullOrWhiteSpace(configuration.Device?.DeviceId))
                 throw new InvalidOperationException("API returned an incomplete current-client configuration.");
             return configuration;
-        }
-
-        private async Task<ApiRegistrationStatusResponse> LoadRegistrationStatusAsync(CancellationToken cancellationToken)
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, "api/device/registration/current");
-            using HttpResponseMessage response = await _session.SendAuthorizedAsync(request, cancellationToken);
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-            if (!response.IsSuccessStatusCode) throw new ApiRequestException(response.StatusCode);
-            return JsonConvert.DeserializeObject<ApiRegistrationStatusResponse>(
-                await response.Content.ReadAsStringAsync(cancellationToken));
         }
 
         private static IPData Map(ApiConfigurationResponse configuration)

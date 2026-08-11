@@ -12,6 +12,8 @@ namespace HonestFlow.Application.Licensing
         private readonly IDeviceRegistrationStatusProvider _statusProvider;
         private readonly IApiSessionRefresher _sessionRefresher;
         private readonly IApiCredentialAuthService _authentication;
+        private DeviceRegistrationStartupState? _lastState;
+        private bool _isResubmission;
 
         public DeviceRegistrationStartupWorkflow(
             DeviceRegistrationWorkflow registrationWorkflow,
@@ -32,24 +34,31 @@ namespace HonestFlow.Application.Licensing
         {
             string trimmedAddress = address?.Trim();
             if (string.IsNullOrWhiteSpace(trimmedAddress))
-                return DeviceRegistrationStartupResult.InvalidAddress("Введите физический адрес торговой точки.");
+                return Remember(DeviceRegistrationStartupResult.InvalidAddress("Введите физический адрес торговой точки."));
             if (trimmedAddress.Length > 300)
-                return DeviceRegistrationStartupResult.InvalidAddress("Адрес не должен быть длиннее 300 символов.");
+                return Remember(DeviceRegistrationStartupResult.InvalidAddress("Адрес не должен быть длиннее 300 символов."));
 
-            DeviceRegistrationDeliveryStatus delivery = await _registrationWorkflow.SendAsync(
+            bool isResubmission = _isResubmission ||
+                                  _lastState == DeviceRegistrationStartupState.Rejected;
+            DeviceRegistrationDeliveryStatus delivery = await _registrationWorkflow.SendExplicitAsync(
                 snapshot,
                 trimmedAddress,
                 Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown",
                 cancellationToken);
-            return delivery switch
+            DeviceRegistrationStartupResult result = delivery switch
             {
                 DeviceRegistrationDeliveryStatus.Sent => DeviceRegistrationStartupResult.Pending(
-                    "Заявка на регистрацию отправлена. Ожидается обработка."),
+                    isResubmission
+                        ? "Заявка отправлена повторно. Ожидается подтверждение."
+                        : "Заявка на регистрацию отправлена. Ожидается подтверждение."),
                 DeviceRegistrationDeliveryStatus.AlreadySent => DeviceRegistrationStartupResult.Pending(
                     "Заявка уже отправлена. Ожидается обработка."),
                 _ => DeviceRegistrationStartupResult.SendFailed(
                     "Не удалось отправить заявку. Проверьте адрес и повторите попытку.")
             };
+            if (delivery == DeviceRegistrationDeliveryStatus.Sent)
+                _isResubmission = false;
+            return Remember(result);
         }
 
         public async Task<DeviceRegistrationStartupResult> CheckAsync(CancellationToken cancellationToken)
@@ -61,28 +70,35 @@ namespace HonestFlow.Application.Licensing
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                return DeviceRegistrationStartupResult.StatusUnavailable(
-                    "Не удалось получить статус заявки. Попробуйте проверить снова.", ex);
+                return Remember(DeviceRegistrationStartupResult.StatusUnavailable(
+                    "Не удалось получить статус заявки. Попробуйте проверить снова.", ex));
             }
 
             if (status == null || string.IsNullOrWhiteSpace(status.Status))
-                return DeviceRegistrationStartupResult.AwaitingAddress(
-                    "Введите физический адрес торговой точки для регистрации устройства.");
+            {
+                _isResubmission = false;
+                return Remember(DeviceRegistrationStartupResult.AwaitingAddress(
+                    "Введите физический адрес торговой точки для регистрации устройства."));
+            }
 
             if (string.Equals(status.Status, "Pending", StringComparison.OrdinalIgnoreCase))
-                return DeviceRegistrationStartupResult.Pending("Заявка ожидает обработки.");
+            {
+                _isResubmission = false;
+                return Remember(DeviceRegistrationStartupResult.Pending("Заявка ожидает обработки."));
+            }
 
             if (string.Equals(status.Status, "Rejected", StringComparison.OrdinalIgnoreCase))
             {
+                _isResubmission = true;
                 string message = string.IsNullOrWhiteSpace(status.Comment)
                     ? "Заявка на регистрацию отклонена."
                     : "Заявка на регистрацию отклонена: " + status.Comment;
-                return DeviceRegistrationStartupResult.Rejected(message);
+                return Remember(DeviceRegistrationStartupResult.Rejected(message));
             }
 
             if (!string.Equals(status.Status, "Approved", StringComparison.OrdinalIgnoreCase))
-                return DeviceRegistrationStartupResult.StatusUnavailable(
-                    "Сервер вернул неизвестный статус заявки. Попробуйте проверить снова.");
+                return Remember(DeviceRegistrationStartupResult.StatusUnavailable(
+                    "Сервер вернул неизвестный статус заявки. Попробуйте проверить снова."));
 
             bool refreshed;
             try
@@ -91,13 +107,13 @@ namespace HonestFlow.Application.Licensing
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                return DeviceRegistrationStartupResult.ApprovedNotReady(
-                    "Устройство одобрено, но не удалось обновить сессию. Попробуйте проверить снова.", ex);
+                return Remember(DeviceRegistrationStartupResult.ApprovedNotReady(
+                    "Устройство одобрено, но не удалось обновить сессию. Попробуйте проверить снова.", ex));
             }
 
             if (!refreshed)
-                return DeviceRegistrationStartupResult.ApprovedNotReady(
-                    "Устройство одобрено, но сессию пока не удалось обновить. Попробуйте проверить снова.");
+                return Remember(DeviceRegistrationStartupResult.ApprovedNotReady(
+                    "Устройство одобрено, но сессию пока не удалось обновить. Попробуйте проверить снова."));
 
             LicenseAuthenticationResult authentication;
             try
@@ -106,21 +122,27 @@ namespace HonestFlow.Application.Licensing
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                return DeviceRegistrationStartupResult.ApprovedNotReady(
-                    "Устройство одобрено, но конфигурация или лицензия ещё недоступны. Попробуйте проверить снова.", ex);
+                return Remember(DeviceRegistrationStartupResult.ApprovedNotReady(
+                    "Устройство одобрено, но конфигурация или лицензия ещё недоступны. Попробуйте проверить снова.", ex));
             }
 
             if (authentication?.Client != null &&
                 authentication.LicenseSnapshot?.Decision == LicenseDecision.Allowed)
             {
-                return DeviceRegistrationStartupResult.Allowed(authentication);
+                return Remember(DeviceRegistrationStartupResult.Allowed(authentication));
             }
 
             string unavailableMessage = authentication?.LicenseSnapshot?.Message;
-            return DeviceRegistrationStartupResult.ApprovedNotReady(
+            return Remember(DeviceRegistrationStartupResult.ApprovedNotReady(
                 string.IsNullOrWhiteSpace(unavailableMessage)
                     ? "Устройство одобрено, но лицензия ещё не готова. Попробуйте проверить снова позже."
-                    : unavailableMessage);
+                    : unavailableMessage));
+        }
+
+        private DeviceRegistrationStartupResult Remember(DeviceRegistrationStartupResult result)
+        {
+            _lastState = result.State;
+            return result;
         }
     }
 
@@ -156,6 +178,7 @@ namespace HonestFlow.Application.Licensing
         public Exception Exception { get; }
         public bool CanSubmitAddress => State == DeviceRegistrationStartupState.AwaitingAddress ||
                                         State == DeviceRegistrationStartupState.InvalidAddress ||
+                                        State == DeviceRegistrationStartupState.Rejected ||
                                         State == DeviceRegistrationStartupState.SendFailed;
 
         public static DeviceRegistrationStartupResult AwaitingAddress(string message) =>

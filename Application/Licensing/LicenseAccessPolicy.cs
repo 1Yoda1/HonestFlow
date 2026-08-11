@@ -60,6 +60,7 @@ namespace HonestFlow.Application.Licensing
                 case LicenseDecision.VersionTooOld:
                 case LicenseDecision.ClientDisabled:
                 case LicenseDecision.DeviceNotRegistered:
+                case LicenseDecision.LicenseNotIssued:
                 case LicenseDecision.DeviceDisabled:
                 case LicenseDecision.OfflineGraceExpired:
                 case LicenseDecision.ClientNotFound:

@@ -40,11 +40,19 @@ namespace HonestFlow.Application.Bootstrap
         public async Task<LicenseAuthenticationResult> AuthenticateAsync(ApplicationStartupSession session, string login, string password, bool remember, IProgress<LicenseAuthenticationProgress> progress, CancellationToken cancellationToken)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
+            IApiSessionService apiSession =
+                (session.Startup.AuthService as IApiSessionProvider)?.ApiSessionService;
+            bool usesApiSession = apiSession != null;
+            if (apiSession is IApiSessionPersistenceController persistenceController)
+            {
+                persistenceController.SetPersistSession(remember);
+            }
+
             LicenseAuthenticationResult result = await session.Authentication.AuthenticateAsync(login, password, progress, cancellationToken);
             if (result.Client == null) return result;
             if (remember)
             {
-                if (session.Startup.UseRemoteConfigMode)
+                if (session.Startup.UseRemoteConfigMode && !usesApiSession)
                 {
                     try
                     {

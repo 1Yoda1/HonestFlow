@@ -60,6 +60,86 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task Check_NoServerRequest_AllowsSubmissionAndPerformsOneStatusRead()
+        {
+            var status = new FakeStatusProvider();
+            var workflow = CreateWorkflow(new FakeSender(), status);
+
+            DeviceRegistrationStartupResult result = await workflow.CheckAsync(CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.AwaitingAddress, result.State);
+            Assert.True(result.CanSubmitAddress);
+            Assert.Equal(1, status.Calls);
+        }
+
+        [Fact]
+        public async Task Check_PendingDoesNotSendAnotherRequest()
+        {
+            var sender = new FakeSender();
+            var status = new FakeStatusProvider
+            {
+                Current = new DeviceRegistrationStatus { Status = "Pending" }
+            };
+            var workflow = CreateWorkflow(sender, status);
+
+            DeviceRegistrationStartupResult result = await workflow.CheckAsync(CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.Pending, result.State);
+            Assert.False(result.CanSubmitAddress);
+            Assert.Equal(0, sender.SendCalls);
+            Assert.Equal(1, status.Calls);
+        }
+
+        [Fact]
+        public async Task Rejected_AllowsEditedAddressAndSuccessfulResubmissionBecomesPending()
+        {
+            var sender = new FakeSender();
+            var status = new FakeStatusProvider
+            {
+                Current = new DeviceRegistrationStatus
+                {
+                    Status = "Rejected",
+                    Comment = "Уточните номер дома."
+                }
+            };
+            var workflow = CreateWorkflow(sender, status);
+
+            DeviceRegistrationStartupResult rejected = await workflow.CheckAsync(CancellationToken.None);
+            DeviceRegistrationStartupResult submitted = await workflow.SubmitAsync(
+                Snapshot(),
+                "  ул. Новая, 12  ",
+                CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.Rejected, rejected.State);
+            Assert.True(rejected.CanSubmitAddress);
+            Assert.Contains("Уточните номер дома.", rejected.Message);
+            Assert.Equal(DeviceRegistrationStartupState.Pending, submitted.State);
+            Assert.Equal("Заявка отправлена повторно. Ожидается подтверждение.", submitted.Message);
+            Assert.Equal(1, sender.SendCalls);
+            Assert.Contains("ул. Новая, 12", sender.LastRequest);
+        }
+
+        [Fact]
+        public async Task ServerHasNoRequest_StaleLocalDeliveryStateDoesNotBlockSubmission()
+        {
+            var sender = new FakeSender();
+            var stateStore = new FakeStateStore();
+            LicenseObservationSnapshot snapshot = Snapshot();
+            await stateStore.MarkSentAsync(snapshot.ClientId, snapshot.DeviceId, CancellationToken.None);
+            var workflow = CreateWorkflow(sender, new FakeStatusProvider(), stateStore: stateStore);
+
+            DeviceRegistrationStartupResult current = await workflow.CheckAsync(CancellationToken.None);
+            DeviceRegistrationStartupResult submitted = await workflow.SubmitAsync(
+                snapshot,
+                "ул. Ленина, 10",
+                CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.AwaitingAddress, current.State);
+            Assert.Equal(DeviceRegistrationStartupState.Pending, submitted.State);
+            Assert.Equal(1, sender.SendCalls);
+        }
+
+        [Fact]
         public async Task Check_PendingKeepsRestrictedState()
         {
             var refresher = new FakeSessionRefresher();
@@ -111,7 +191,7 @@ namespace HonestFlow.Tests
                     new IPData { ClientId = "client-1" },
                     new LicenseObservationSnapshot
                     {
-                        Decision = LicenseDecision.DeviceNotRegistered,
+                        Decision = LicenseDecision.LicenseNotIssued,
                         Message = "Лицензия ещё не опубликована."
                     })
             };
@@ -155,10 +235,11 @@ namespace HonestFlow.Tests
             FakeSender sender,
             IDeviceRegistrationStatusProvider statusProvider,
             IApiSessionRefresher refresher = null,
-            IApiCredentialAuthService authentication = null)
+            IApiCredentialAuthService authentication = null,
+            IDeviceRegistrationDeliveryStateStore stateStore = null)
         {
             var registration = new DeviceRegistrationWorkflow(new DeviceRegistrationCoordinator(
-                new DeviceRegistrationRequestService(), sender, new FakeStateStore()));
+                new DeviceRegistrationRequestService(), sender, stateStore ?? new FakeStateStore()));
             return new DeviceRegistrationStartupWorkflow(
                 registration,
                 statusProvider,
@@ -203,7 +284,12 @@ namespace HonestFlow.Tests
         private sealed class FakeStatusProvider : IDeviceRegistrationStatusProvider
         {
             public DeviceRegistrationStatus Current { get; set; }
-            public Task<DeviceRegistrationStatus> GetCurrentAsync(CancellationToken cancellationToken) => Task.FromResult(Current);
+            public int Calls { get; private set; }
+            public Task<DeviceRegistrationStatus> GetCurrentAsync(CancellationToken cancellationToken)
+            {
+                Calls++;
+                return Task.FromResult(Current);
+            }
         }
 
         private sealed class FakeSessionRefresher : IApiSessionRefresher

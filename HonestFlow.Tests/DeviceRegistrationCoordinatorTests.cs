@@ -47,6 +47,23 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task TrySend_ExplicitRetryBypassesStaleDeliveryState()
+        {
+            var sender = new FakeSender();
+            var state = new FakeStateStore();
+            LicenseObservationSnapshot snapshot = UnregisteredSnapshot();
+            await state.MarkSentAsync(snapshot.ClientId, snapshot.DeviceId, CancellationToken.None);
+            var coordinator = CreateCoordinator(sender, state);
+
+            DeviceRegistrationDeliveryStatus result = await coordinator.TrySendAsync(
+                snapshot, "PC", "ул. Ленина, 10", "3.0.0", true, CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationDeliveryStatus.Sent, result);
+            Assert.Equal(1, sender.SendCalls);
+            Assert.Equal(1, state.MarkCalls);
+        }
+
+        [Fact]
         public async Task TrySend_IgnoresOtherLicenseDecisions()
         {
             var sender = new FakeSender();

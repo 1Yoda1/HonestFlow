@@ -22,6 +22,8 @@ namespace HonestFlow.Application.Licensing
                     "Лицензия проверена. Доступные функции применены."),
                 LicenseDecision.DeviceNotRegistered => LicenseDecisionPresentation.Status(
                     "Устройство не зарегистрировано. Заявка на регистрацию отправляется автоматически."),
+                LicenseDecision.LicenseNotIssued => LicenseDecisionPresentation.Status(
+                    "Устройство зарегистрировано. Лицензия для этого компьютера ещё не выдана."),
                 LicenseDecision.ClientDisabled => LicenseDecisionPresentation.Warning(
                     "Клиент отключён",
                     "Лицензия клиента отключена. Доступны диагностика и отправка логов."),

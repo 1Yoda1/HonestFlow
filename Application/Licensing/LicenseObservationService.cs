@@ -152,19 +152,19 @@ namespace HonestFlow.Application.Licensing
 
                 if (remote.Status == LicenseManifestReadStatus.NotFound)
                 {
-                    var unregistered = new LicenseObservationSnapshot
+                    var notIssued = new LicenseObservationSnapshot
                     {
                         ObservedAtUtc = observedAtUtc,
                         ClientId = client?.ClientId,
                         DeviceId = identity.DeviceId,
                         EnforcementMode = _mode,
                         RemoteStatus = remote.Status,
-                        Decision = LicenseDecision.DeviceNotRegistered,
+                        Decision = LicenseDecision.LicenseNotIssued,
                         TechnicalCode = "LICENSE_GRANT_NOT_FOUND",
-                        Message = "Для этого устройства ещё не выпущена персональная лицензия."
+                        Message = "Устройство зарегистрировано. Лицензия для этого компьютера ещё не выдана."
                     };
-                    Publish(unregistered);
-                    return unregistered;
+                    Publish(notIssued);
+                    return notIssued;
                 }
 
                 if (CanUseCache(remote.Status))

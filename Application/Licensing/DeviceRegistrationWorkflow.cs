@@ -52,6 +52,19 @@ namespace HonestFlow.Application.Licensing
                 pointAddress,
                 honestFlowVersion,
                 cancellationToken);
+
+        public Task<DeviceRegistrationDeliveryStatus> SendExplicitAsync(
+            LicenseObservationSnapshot snapshot,
+            string pointAddress,
+            string honestFlowVersion,
+            CancellationToken cancellationToken) =>
+            _coordinator.TrySendAsync(
+                snapshot,
+                Environment.MachineName,
+                pointAddress,
+                honestFlowVersion,
+                true,
+                cancellationToken);
     }
 
     public enum DeviceRegistrationAction
