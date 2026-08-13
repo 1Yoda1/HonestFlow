@@ -11,5 +11,6 @@ namespace HonestFlow.Application.Licensing
         public LicenseGrant Grant { get; set; }
         public LicenseManifestSource ManifestSource { get; set; }
         public DateTimeOffset? LastSuccessfulOnlineCheckUtc { get; set; }
+        public bool? OnlineClientPolicyEnabled { get; set; }
     }
 }

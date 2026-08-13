@@ -39,12 +39,15 @@ namespace HonestFlow.Infrastructure.Api
             if (!identity.IsAvailable) throw new InvalidOperationException("Device identity is unavailable.");
             ApiTokenResponse tokens = await _session.LoginAsync(
                 login, password, identity.DeviceId, Environment.MachineName, cancellationToken);
+            if (tokens.LicensePolicyEnabled == false)
+                return ClientAccessDisabled(tokens.ClientId, tokens.ClientName, identity.DeviceId);
             if (tokens.DeviceRegistrationRequired)
             {
                 return new LicenseAuthenticationResult(null, new HonestFlow.Application.Licensing.LicenseObservationSnapshot
                 {
                     ObservedAtUtc = DateTimeOffset.UtcNow,
                     ClientId = tokens.ClientId,
+                    ClientName = tokens.ClientName,
                     DeviceId = identity.DeviceId,
                     Decision = HonestFlow.Application.Licensing.LicenseDecision.DeviceNotRegistered,
                     TechnicalCode = "DEVICE_REGISTRATION_REQUIRED",
@@ -70,6 +73,11 @@ namespace HonestFlow.Infrastructure.Api
             ApiConfigurationResponse configuration;
             try
             {
+                if (_session is IApiSessionRefresher refresher &&
+                    !await refresher.RefreshSessionAsync(cancellationToken))
+                    return new LicenseAuthenticationResult(null, null);
+                if (_session is IApiClientAccessStateProvider access && access.LicensePolicyEnabled == false)
+                    return ClientAccessDisabled(access, identity.DeviceId);
                 configuration = await LoadOnlineConfigurationAsync(cancellationToken);
                 await _configurationCache.SaveAsync(configuration, cancellationToken);
             }
@@ -91,6 +99,19 @@ namespace HonestFlow.Infrastructure.Api
             progress?.Report(new LicenseAuthenticationProgress(LicenseAuthenticationStage.ClientResolved, client.Name));
             return new LicenseAuthenticationResult(client, null);
         }
+
+        private static LicenseAuthenticationResult ClientAccessDisabled(
+            string clientId, string clientName, string deviceId) =>
+            new(new IPData { ClientId = clientId, Name = clientName }, new HonestFlow.Application.Licensing.LicenseObservationSnapshot
+            {
+                ObservedAtUtc = DateTimeOffset.UtcNow, ClientId = clientId, ClientName = clientName,
+                DeviceId = deviceId, Decision = HonestFlow.Application.Licensing.LicenseDecision.ClientDisabled,
+                TechnicalCode = "CLIENT_ACCESS_DISABLED", Message = "Доступ к HonestFlow для этого клиента отключён."
+            });
+
+        private static LicenseAuthenticationResult ClientAccessDisabled(
+            IApiClientAccessStateProvider access, string deviceId) =>
+            ClientAccessDisabled(access.ClientId, access.ClientName, deviceId);
 
         private async Task<ApiConfigurationResponse> LoadOnlineConfigurationAsync(CancellationToken cancellationToken)
         {

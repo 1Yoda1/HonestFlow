@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,6 +13,8 @@ namespace HonestFlow.Application.Licensing
     {
         public string DeviceId { get; set; }
         public string Status { get; set; }
+        public DateTimeOffset RequestedAtUtc { get; set; }
+        public DateTimeOffset? ResolvedAtUtc { get; set; }
         public string Comment { get; set; }
     }
 }

@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Auth;
+using HonestFlow.Infrastructure.Api;
 
 namespace HonestFlow.Application.Licensing
 {
@@ -12,6 +13,8 @@ namespace HonestFlow.Application.Licensing
         private readonly IDeviceRegistrationStatusProvider _statusProvider;
         private readonly IApiSessionRefresher _sessionRefresher;
         private readonly IApiCredentialAuthService _authentication;
+        private readonly IApiSessionPersistenceController _persistenceController;
+        private readonly bool _resumedContinuation;
         private DeviceRegistrationStartupState? _lastState;
         private bool _isResubmission;
 
@@ -19,12 +22,16 @@ namespace HonestFlow.Application.Licensing
             DeviceRegistrationWorkflow registrationWorkflow,
             IDeviceRegistrationStatusProvider statusProvider,
             IApiSessionRefresher sessionRefresher,
-            IApiCredentialAuthService authentication)
+            IApiCredentialAuthService authentication,
+            IApiSessionPersistenceController persistenceController = null,
+            bool resumedContinuation = false)
         {
             _registrationWorkflow = registrationWorkflow ?? throw new ArgumentNullException(nameof(registrationWorkflow));
             _statusProvider = statusProvider ?? throw new ArgumentNullException(nameof(statusProvider));
             _sessionRefresher = sessionRefresher ?? throw new ArgumentNullException(nameof(sessionRefresher));
             _authentication = authentication ?? throw new ArgumentNullException(nameof(authentication));
+            _persistenceController = persistenceController;
+            _resumedContinuation = resumedContinuation;
         }
 
         public async Task<DeviceRegistrationStartupResult> SubmitAsync(
@@ -57,7 +64,14 @@ namespace HonestFlow.Application.Licensing
                     "Не удалось отправить заявку. Проверьте адрес и повторите попытку.")
             };
             if (delivery == DeviceRegistrationDeliveryStatus.Sent)
+            {
                 _isResubmission = false;
+                await PersistContinuationAsync(cancellationToken);
+            }
+            else if (delivery == DeviceRegistrationDeliveryStatus.AlreadySent)
+            {
+                await PersistContinuationAsync(cancellationToken);
+            }
             return Remember(result);
         }
 
@@ -68,6 +82,14 @@ namespace HonestFlow.Application.Licensing
             {
                 status = await _statusProvider.GetCurrentAsync(cancellationToken);
             }
+            catch (ApiRequestException ex) when (!cancellationToken.IsCancellationRequested &&
+                                                (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                                                 ex.StatusCode == System.Net.HttpStatusCode.Forbidden))
+            {
+                await ClearContinuationAsync(CancellationToken.None);
+                return Remember(DeviceRegistrationStartupResult.SessionInvalid(
+                    "Сессия продолжения регистрации больше недействительна. Войдите снова.", ex));
+            }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 return Remember(DeviceRegistrationStartupResult.StatusUnavailable(
@@ -77,6 +99,12 @@ namespace HonestFlow.Application.Licensing
             if (status == null || string.IsNullOrWhiteSpace(status.Status))
             {
                 _isResubmission = false;
+                await ClearContinuationAsync(CancellationToken.None);
+                if (_resumedContinuation)
+                {
+                    return Remember(DeviceRegistrationStartupResult.SessionInvalid(
+                        "Заявка на регистрацию больше не существует. Войдите снова."));
+                }
                 return Remember(DeviceRegistrationStartupResult.AwaitingAddress(
                     "Введите физический адрес торговой точки для регистрации устройства."));
             }
@@ -84,7 +112,8 @@ namespace HonestFlow.Application.Licensing
             if (string.Equals(status.Status, "Pending", StringComparison.OrdinalIgnoreCase))
             {
                 _isResubmission = false;
-                return Remember(DeviceRegistrationStartupResult.Pending("Заявка ожидает обработки."));
+                await PersistContinuationAsync(cancellationToken);
+                return Remember(DeviceRegistrationStartupResult.Pending("Заявка ожидает обработки.", status));
             }
 
             if (string.Equals(status.Status, "Rejected", StringComparison.OrdinalIgnoreCase))
@@ -93,7 +122,8 @@ namespace HonestFlow.Application.Licensing
                 string message = string.IsNullOrWhiteSpace(status.Comment)
                     ? "Заявка на регистрацию отклонена."
                     : "Заявка на регистрацию отклонена: " + status.Comment;
-                return Remember(DeviceRegistrationStartupResult.Rejected(message));
+                await PersistContinuationAsync(cancellationToken);
+                return Remember(DeviceRegistrationStartupResult.Rejected(message, status));
             }
 
             if (!string.Equals(status.Status, "Approved", StringComparison.OrdinalIgnoreCase))
@@ -103,12 +133,14 @@ namespace HonestFlow.Application.Licensing
             bool refreshed;
             try
             {
+                _persistenceController?.PrepareForRegistrationCompletion();
                 refreshed = await _sessionRefresher.RefreshSessionAsync(cancellationToken);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 return Remember(DeviceRegistrationStartupResult.ApprovedNotReady(
-                    "Устройство одобрено, но не удалось обновить сессию. Попробуйте проверить снова.", ex));
+                    "Устройство одобрено, но не удалось обновить сессию. Попробуйте проверить снова.",
+                    exception: ex));
             }
 
             if (!refreshed)
@@ -123,7 +155,8 @@ namespace HonestFlow.Application.Licensing
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 return Remember(DeviceRegistrationStartupResult.ApprovedNotReady(
-                    "Устройство одобрено, но конфигурация или лицензия ещё недоступны. Попробуйте проверить снова.", ex));
+                    "Устройство одобрено, но конфигурация или лицензия ещё недоступны. Попробуйте проверить снова.",
+                    exception: ex));
             }
 
             if (authentication?.Client != null &&
@@ -136,8 +169,15 @@ namespace HonestFlow.Application.Licensing
             return Remember(DeviceRegistrationStartupResult.ApprovedNotReady(
                 string.IsNullOrWhiteSpace(unavailableMessage)
                     ? "Устройство одобрено, но лицензия ещё не готова. Попробуйте проверить снова позже."
-                    : unavailableMessage));
+                    : unavailableMessage,
+                authentication));
         }
+
+        private Task PersistContinuationAsync(CancellationToken cancellationToken) =>
+            _persistenceController?.PersistRegistrationContinuationAsync(cancellationToken) ?? Task.CompletedTask;
+
+        private Task ClearContinuationAsync(CancellationToken cancellationToken) =>
+            _persistenceController?.ClearRegistrationContinuationAsync(cancellationToken) ?? Task.CompletedTask;
 
         private DeviceRegistrationStartupResult Remember(DeviceRegistrationStartupResult result)
         {
@@ -155,6 +195,7 @@ namespace HonestFlow.Application.Licensing
         StatusUnavailable,
         SendFailed,
         ApprovedNotReady,
+        SessionInvalid,
         Allowed
     }
 
@@ -176,6 +217,7 @@ namespace HonestFlow.Application.Licensing
         public string Message { get; }
         public LicenseAuthenticationResult Authentication { get; }
         public Exception Exception { get; }
+        public DeviceRegistrationStatus RegistrationStatus { get; private set; }
         public bool CanSubmitAddress => State == DeviceRegistrationStartupState.AwaitingAddress ||
                                         State == DeviceRegistrationStartupState.InvalidAddress ||
                                         State == DeviceRegistrationStartupState.Rejected ||
@@ -185,16 +227,19 @@ namespace HonestFlow.Application.Licensing
             new(DeviceRegistrationStartupState.AwaitingAddress, message);
         public static DeviceRegistrationStartupResult InvalidAddress(string message) =>
             new(DeviceRegistrationStartupState.InvalidAddress, message);
-        public static DeviceRegistrationStartupResult Pending(string message) =>
-            new(DeviceRegistrationStartupState.Pending, message);
-        public static DeviceRegistrationStartupResult Rejected(string message) =>
-            new(DeviceRegistrationStartupState.Rejected, message);
+        public static DeviceRegistrationStartupResult Pending(string message, DeviceRegistrationStatus status = null) =>
+            new(DeviceRegistrationStartupState.Pending, message) { RegistrationStatus = status };
+        public static DeviceRegistrationStartupResult Rejected(string message, DeviceRegistrationStatus status = null) =>
+            new(DeviceRegistrationStartupState.Rejected, message) { RegistrationStatus = status };
         public static DeviceRegistrationStartupResult StatusUnavailable(string message, Exception exception = null) =>
             new(DeviceRegistrationStartupState.StatusUnavailable, message, null, exception);
         public static DeviceRegistrationStartupResult SendFailed(string message) =>
             new(DeviceRegistrationStartupState.SendFailed, message);
-        public static DeviceRegistrationStartupResult ApprovedNotReady(string message, Exception exception = null) =>
-            new(DeviceRegistrationStartupState.ApprovedNotReady, message, null, exception);
+        public static DeviceRegistrationStartupResult ApprovedNotReady(
+            string message, LicenseAuthenticationResult authentication = null, Exception exception = null) =>
+            new(DeviceRegistrationStartupState.ApprovedNotReady, message, authentication, exception);
+        public static DeviceRegistrationStartupResult SessionInvalid(string message, Exception exception = null) =>
+            new(DeviceRegistrationStartupState.SessionInvalid, message, null, exception);
         public static DeviceRegistrationStartupResult Allowed(LicenseAuthenticationResult authentication) =>
             new(DeviceRegistrationStartupState.Allowed, null, authentication);
     }

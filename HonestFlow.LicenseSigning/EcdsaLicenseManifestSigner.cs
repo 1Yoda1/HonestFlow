@@ -6,7 +6,7 @@ using Newtonsoft.Json;
 
 namespace HonestFlow.LicenseSigning
 {
-    public sealed class EcdsaLicenseManifestSigner
+    public sealed class EcdsaLicenseManifestSigner : ILicenseSignatureFileCreator
     {
         public byte[] CreateSignatureFile(
             ReadOnlyMemory<byte> manifestBytes,

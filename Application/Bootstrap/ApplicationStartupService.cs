@@ -102,7 +102,11 @@ namespace HonestFlow.Application.Bootstrap
                     : configuredBaseUrl.TrimEnd('/') + "/"),
                 Timeout = System.Threading.Timeout.InfiniteTimeSpan
             };
-            var session = new ApiSessionService(httpClient, new FileApiSessionStore());
+            var session = new ApiSessionService(
+                httpClient,
+                new FileApiSessionStore(),
+                new FileApiSessionStore(Path.Combine(AppPaths.ProgramDataFolder,
+                    "registration-continuation.dpapi")));
             var auth = new ApiAuthService(
                 session,
                 new FileDeviceIdentityService(new DpapiDeviceIdentityStateProtector()),

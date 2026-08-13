@@ -189,12 +189,154 @@ namespace HonestFlow.Tests
             Assert.Null(store.Session);
         }
 
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task RestrictedLogin_DoesNotPersistBeforeRegistrationRequest(bool remember)
+        {
+            var remembered = new MemoryStore(null);
+            var continuation = new MemoryStore(null);
+            using var http = new HttpClient(new QueueHandler(RestrictedTokenResponse("access", "refresh")))
+            {
+                BaseAddress = new Uri("https://example.test/")
+            };
+            var service = new ApiSessionService(http, remembered, continuation);
+            service.SetPersistSession(remember);
+
+            await service.LoginAsync("", "secret-password", "device-1", "PC", CancellationToken.None);
+
+            Assert.Null(remembered.Session);
+            Assert.Null(continuation.Session);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task PendingRegistration_PersistsDedicatedContinuationAndCanBeRestored(bool remember)
+        {
+            var remembered = new MemoryStore(null);
+            var continuation = new MemoryStore(null);
+            using (var http = new HttpClient(new QueueHandler(RestrictedTokenResponse("access", "refresh")))
+            {
+                BaseAddress = new Uri("https://example.test/")
+            })
+            {
+                var service = new ApiSessionService(http, remembered, continuation);
+                service.SetPersistSession(remember);
+                await service.LoginAsync("", "secret-password", "device-1", "PC", CancellationToken.None);
+                await service.PersistRegistrationContinuationAsync(CancellationToken.None);
+            }
+
+            using var resumedHttp = new HttpClient(new QueueHandler()) { BaseAddress = new Uri("https://example.test/") };
+            var resumed = new ApiSessionService(resumedHttp, remembered, continuation);
+            ApiSession restored = await resumed.RestoreRegistrationContinuationAsync(CancellationToken.None);
+
+            Assert.NotNull(restored);
+            Assert.Equal("device-1", restored.ExternalDeviceId);
+            Assert.Equal(remember, restored.RememberActiveSession);
+            Assert.Null(remembered.Session);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task ApprovedRegistration_ConvertsContinuationAccordingToRememberPreference(bool remember)
+        {
+            var remembered = new MemoryStore(null);
+            var continuation = new MemoryStore(new ApiSession
+            {
+                AccessToken = "restricted-access", RefreshToken = "restricted-refresh",
+                AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(10),
+                ClientId = "client-1", ClientName = "Client 1", ExternalDeviceId = "device-1",
+                RememberActiveSession = remember
+            });
+            var handler = new QueueHandler(
+                TokenResponse("active-access", "active-refresh"),
+                Json(HttpStatusCode.OK, "{}"));
+            using var http = new HttpClient(handler)
+            {
+                BaseAddress = new Uri("https://example.test/")
+            };
+            var service = new ApiSessionService(http, remembered, continuation);
+            Assert.NotNull(await service.RestoreRegistrationContinuationAsync(CancellationToken.None));
+            service.PrepareForRegistrationCompletion();
+
+            Assert.True(await service.RefreshSessionAsync(CancellationToken.None));
+            Assert.Null(continuation.Session);
+            Assert.Equal(remember, remembered.Session != null);
+            using HttpResponseMessage inProcessResponse = await service.SendAuthorizedAsync(
+                new HttpRequestMessage(HttpMethod.Get, "api/configuration/current"), CancellationToken.None);
+            Assert.Equal(HttpStatusCode.OK, inProcessResponse.StatusCode);
+            Assert.Equal("Bearer active-access", handler.Authorizations[1]);
+            if (remember)
+            {
+                Assert.Equal("active-refresh", remembered.Session.RefreshToken);
+                var resumedHandler = new QueueHandler(Json(HttpStatusCode.OK, "{}"));
+                using var resumedHttp = new HttpClient(resumedHandler) { BaseAddress = new Uri("https://example.test/") };
+                var resumed = new ApiSessionService(resumedHttp, remembered, continuation);
+                using HttpResponseMessage resumedResponse = await resumed.SendAuthorizedAsync(
+                    new HttpRequestMessage(HttpMethod.Get, "api/configuration/current"), CancellationToken.None);
+                Assert.Equal(HttpStatusCode.OK, resumedResponse.StatusCode);
+                Assert.Equal("Bearer active-access", resumedHandler.Authorizations[0]);
+            }
+        }
+
+        [Fact]
+        public async Task InvalidRegistrationContinuation_IsCleared()
+        {
+            var remembered = new MemoryStore(null);
+            var continuation = new MemoryStore(new ApiSession
+            {
+                AccessToken = "expired", RefreshToken = "revoked",
+                AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+                ExternalDeviceId = "device-1"
+            });
+            using var http = new HttpClient(new QueueHandler(Json(HttpStatusCode.Unauthorized, "{}")))
+            {
+                BaseAddress = new Uri("https://example.test/")
+            };
+            var service = new ApiSessionService(http, remembered, continuation);
+            Assert.NotNull(await service.RestoreRegistrationContinuationAsync(CancellationToken.None));
+
+            Assert.False(await service.RefreshSessionAsync(CancellationToken.None));
+            Assert.Null(continuation.Session);
+            Assert.Null(remembered.Session);
+        }
+
+        [Fact]
+        public async Task Logout_ClearsRegistrationContinuationAndCurrentRestrictedSession()
+        {
+            var remembered = new MemoryStore(null);
+            var continuation = new MemoryStore(new ApiSession
+            {
+                AccessToken = "restricted-access", RefreshToken = "restricted-refresh",
+                AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(10),
+                ExternalDeviceId = "device-1"
+            });
+            using var http = new HttpClient(new QueueHandler(Json(HttpStatusCode.NoContent, "")))
+            {
+                BaseAddress = new Uri("https://example.test/")
+            };
+            var service = new ApiSessionService(http, remembered, continuation);
+            Assert.NotNull(await service.RestoreRegistrationContinuationAsync(CancellationToken.None));
+
+            await service.LogoutAsync(CancellationToken.None);
+
+            Assert.Null(continuation.Session);
+            Assert.Null(remembered.Session);
+            Assert.False(await service.RefreshSessionAsync(CancellationToken.None));
+        }
+
         private static HttpResponseMessage Json(HttpStatusCode status, string json) => new(status)
         { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
         private static HttpResponseMessage TokenResponse(string accessToken, string refreshToken) =>
             Json(HttpStatusCode.OK,
                 $"{{\"accessToken\":\"{accessToken}\",\"refreshToken\":\"{refreshToken}\",\"expiresInSeconds\":900,\"clientId\":\"client-1\",\"clientName\":\"Client 1\"}}");
+
+        private static HttpResponseMessage RestrictedTokenResponse(string accessToken, string refreshToken) =>
+            Json(HttpStatusCode.OK,
+                $"{{\"accessToken\":\"{accessToken}\",\"refreshToken\":\"{refreshToken}\",\"expiresInSeconds\":900,\"deviceRegistrationRequired\":true,\"clientId\":\"client-1\",\"clientName\":\"Client 1\"}}");
 
         private sealed class MemoryStore : IApiSessionStore
         {

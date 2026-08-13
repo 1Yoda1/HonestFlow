@@ -104,6 +104,54 @@ namespace HonestFlow.Application.Bootstrap
             return result;
         }
 
+        public async Task<LicenseObservationSnapshot> TryResumeRegistrationContinuationAsync(
+            ApplicationStartupSession session,
+            CancellationToken cancellationToken)
+        {
+            IApiSessionService apiSession =
+                (session?.Startup.AuthService as IApiSessionProvider)?.ApiSessionService;
+            if (apiSession is not IApiSessionPersistenceController persistenceController)
+                return null;
+
+            ApiSession continuation = await persistenceController
+                .RestoreRegistrationContinuationAsync(cancellationToken);
+            if (continuation == null)
+                return null;
+
+            if (apiSession is IApiSessionRefresher refresher)
+            {
+                bool refreshed = await refresher.RefreshSessionAsync(cancellationToken);
+                if (!refreshed)
+                    return null;
+                if (apiSession is IApiClientAccessStateProvider access &&
+                    access.LicensePolicyEnabled == false)
+                {
+                    await persistenceController.ClearRegistrationContinuationAsync(cancellationToken);
+                    return new LicenseObservationSnapshot
+                    {
+                        ObservedAtUtc = DateTimeOffset.UtcNow,
+                        ClientId = continuation.ClientId,
+                        ClientName = continuation.ClientName,
+                        DeviceId = continuation.ExternalDeviceId,
+                        Decision = LicenseDecision.ClientDisabled,
+                        TechnicalCode = "CLIENT_ACCESS_DISABLED",
+                        Message = "Доступ к HonestFlow для этого клиента отключён."
+                    };
+                }
+            }
+
+            return new LicenseObservationSnapshot
+            {
+                ObservedAtUtc = DateTimeOffset.UtcNow,
+                ClientId = continuation.ClientId,
+                ClientName = continuation.ClientName,
+                DeviceId = continuation.ExternalDeviceId,
+                Decision = LicenseDecision.DeviceNotRegistered,
+                TechnicalCode = "REGISTRATION_CONTINUATION",
+                Message = "Продолжаем регистрацию устройства."
+            };
+        }
+
         public async Task LogoutAsync(ApplicationStartupSession session, CancellationToken cancellationToken)
         {
             if (session?.Startup.AuthService is IApiSessionProvider provider && provider.ApiSessionService != null)

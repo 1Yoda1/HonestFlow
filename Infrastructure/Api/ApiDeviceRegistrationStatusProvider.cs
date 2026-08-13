@@ -34,6 +34,8 @@ namespace HonestFlow.Infrastructure.Api
                 {
                     DeviceId = status.DeviceId,
                     Status = status.Status,
+                    RequestedAtUtc = status.RequestedAtUtc,
+                    ResolvedAtUtc = status.ResolvedAtUtc,
                     Comment = status.Comment
                 };
         }

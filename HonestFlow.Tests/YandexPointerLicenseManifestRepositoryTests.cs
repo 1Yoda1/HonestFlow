@@ -46,9 +46,9 @@ namespace HonestFlow.Tests
 
         private sealed class Fixture : IDisposable
         {
-            private readonly ECDsa _key;
+            private readonly TestEcdsaKey _key;
 
-            private Fixture(ECDsa key, QueueHandler handler, ILicenseManifestRepository repository)
+            private Fixture(TestEcdsaKey key, QueueHandler handler, ILicenseManifestRepository repository)
             {
                 _key = key;
                 Handler = handler;
@@ -60,7 +60,7 @@ namespace HonestFlow.Tests
 
             public static Fixture Create(bool invalidManifestHash = false)
             {
-                ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+                var key = new TestEcdsaKey("test-key");
                 const string keyId = "test-key";
                 var grant = new LicenseGrant
                 {
@@ -76,15 +76,10 @@ namespace HonestFlow.Tests
                     OfflineGraceHours = 24
                 };
                 byte[] manifestBytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(grant));
-                string privatePem = "-----BEGIN PRIVATE KEY-----\n" +
-                    Convert.ToBase64String(
-                        key.ExportPkcs8PrivateKey(),
-                        Base64FormattingOptions.InsertLineBreaks) +
-                    "\n-----END PRIVATE KEY-----";
-                byte[] signatureBytes = new EcdsaLicenseManifestSigner().CreateSignatureFile(
+                byte[] signatureBytes = key.CreateSignatureFile(
                     manifestBytes,
                     keyId,
-                    privatePem);
+                    string.Empty);
                 string manifestHash = invalidManifestHash
                     ? Convert.ToBase64String(new byte[32])
                     : Hash(manifestBytes);
@@ -108,11 +103,7 @@ namespace HonestFlow.Tests
                     BytesResponse(manifestBytes),
                     BytesResponse(signatureBytes));
                 var client = new HttpClient(handler);
-                var verifier = new EcdsaLicenseSignatureVerifier(
-                    new LicensePublicKeyRegistry(new Dictionary<string, string>
-                    {
-                        [keyId] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo())
-                    }));
+                var verifier = key.CreateVerifier();
                 var repository = new YandexPointerLicenseManifestRepository(
                     client,
                     "https://disk.test/public",

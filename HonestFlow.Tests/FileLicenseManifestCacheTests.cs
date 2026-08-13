@@ -50,19 +50,14 @@ namespace HonestFlow.Tests
 
         private sealed class Fixture : IDisposable
         {
-            private readonly ECDsa _key;
-            private readonly string _privatePem;
-            private readonly EcdsaLicenseManifestSigner _signer = new();
+            private readonly TestEcdsaKey _key;
             private const string KeyId = "test";
 
-            private Fixture(string root, ECDsa key)
+            private Fixture(string root, TestEcdsaKey key)
             {
                 Root = root;
                 _key = key;
-                _privatePem = "-----BEGIN PRIVATE KEY-----\n" + Convert.ToBase64String(key.ExportPkcs8PrivateKey(), Base64FormattingOptions.InsertLineBreaks) + "\n-----END PRIVATE KEY-----";
-                var verifier = new EcdsaLicenseSignatureVerifier(new LicensePublicKeyRegistry(
-                    new Dictionary<string, string> { [KeyId] = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }));
-                Cache = new FileLicenseManifestCache(root, verifier, new PassThroughProtector());
+                Cache = new FileLicenseManifestCache(root, key.CreateVerifier(), new PassThroughProtector());
             }
 
             public string Root { get; }
@@ -71,7 +66,7 @@ namespace HonestFlow.Tests
 
             public static Fixture Create() => new(
                 Path.Combine(Path.GetTempPath(), "HonestFlow.Tests", Guid.NewGuid().ToString("N")),
-                ECDsa.Create(ECCurve.NamedCurves.nistP256));
+                new TestEcdsaKey(KeyId));
 
             public Task<LicenseCacheWriteResult> Save(long revision)
             {
@@ -82,7 +77,7 @@ namespace HonestFlow.Tests
                     IssuedAtUtc = DateTimeOffset.UtcNow.AddDays(-1), ValidUntilUtc = DateTimeOffset.UtcNow.AddDays(7)
                 };
                 byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(grant));
-                byte[] signature = _signer.CreateSignatureFile(bytes, KeyId, _privatePem);
+                byte[] signature = _key.CreateSignatureFile(bytes, KeyId, string.Empty);
                 return Cache.SaveAsync(Request, LicenseManifestReadResult.Success(grant, bytes, signature), DateTimeOffset.UtcNow, CancellationToken.None);
             }
 

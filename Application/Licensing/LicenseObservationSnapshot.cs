@@ -8,6 +8,7 @@ namespace HonestFlow.Application.Licensing
     {
         public DateTimeOffset ObservedAtUtc { get; set; }
         public string ClientId { get; set; }
+        public string ClientName { get; set; }
         public string DeviceId { get; set; }
         public string PointAddress { get; set; }
         public DateTimeOffset? LastSuccessfulOnlineCheckUtc { get; set; }

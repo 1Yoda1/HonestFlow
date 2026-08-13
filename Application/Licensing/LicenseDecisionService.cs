@@ -33,7 +33,11 @@ namespace HonestFlow.Application.Licensing
             if (!string.Equals(grant.DeviceId, context.DeviceId, StringComparison.Ordinal))
                 return Denied(LicenseDecision.DeviceNotRegistered, "Лицензия выдана другому устройству.", "LICENSE_GRANT_DEVICE_MISMATCH");
 
-            if (!grant.ClientEnabled)
+            bool clientEnabled = context.ManifestSource == LicenseManifestSource.Remote &&
+                                 context.OnlineClientPolicyEnabled.HasValue
+                ? context.OnlineClientPolicyEnabled.Value
+                : grant.ClientEnabled;
+            if (!clientEnabled)
                 return Denied(LicenseDecision.ClientDisabled, "Лицензия клиента отключена.", "LICENSE_CLIENT_DISABLED");
 
             if (!grant.DeviceEnabled)

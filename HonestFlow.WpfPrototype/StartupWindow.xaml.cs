@@ -49,8 +49,14 @@ public partial class StartupWindow : Window
             _session = await _controller.InitializeAsync(new WpfProgress(this), new WpfDialogs(this), _lifetime.Token);
             StartupProgress.Value = 100;
             LoadingPercent.Text = "100%";
-            LoadingStatus.Text = "Готово";
-            await Task.Delay(250, _lifetime.Token);
+            LoadingStatus.Text = "Проверяем состояние устройства…";
+            LicenseObservationSnapshot? continuation = await _controller
+                .TryResumeRegistrationContinuationAsync(_session, _lifetime.Token);
+            if (continuation != null)
+            {
+                await ShowRestrictedAccessAsync(continuation);
+                return;
+            }
             var resumeProgress = new Progress<LicenseAuthenticationProgress>(ReportAuthenticationProgress);
             LicenseAuthenticationResult resumed = await _controller.TryResumeAsync(
                 _session, resumeProgress, _lifetime.Token);
@@ -87,10 +93,9 @@ public partial class StartupWindow : Window
 
     private void ShowLogin()
     {
-        LoadingPanel.Visibility = Visibility.Collapsed;
-        LicenseMissingPanel.Visibility = Visibility.Collapsed;
-        DeviceRegistrationPanel.Visibility = Visibility.Collapsed;
-        LoginPanel.Visibility = Visibility.Visible;
+        ShowOnly(LoginPanel);
+        LoginButton.Content = "Войти и продолжить";
+        LoginButton.IsEnabled = true;
         SetStep(LoginStepBadge, LoginStepText, LoginStepLabel, StepState.Active);
         PasswordInput.Focus();
     }
@@ -100,7 +105,7 @@ public partial class StartupWindow : Window
         if (_session == null) return;
         if (string.IsNullOrWhiteSpace(PasswordInput.Password))
         {
-            LoginError.Text = "Введите пароль точки.";
+            LoginError.Text = "Введите код клиента.";
             LoginError.Visibility = Visibility.Visible;
             PasswordInput.Focus();
             return;
@@ -121,7 +126,7 @@ public partial class StartupWindow : Window
             }
             if (result.Client == null)
             {
-                LoginError.Text = "Неверный пароль точки. Попробуйте ещё раз.";
+                LoginError.Text = "Неверный код клиента.";
                 LoginError.Visibility = Visibility.Visible;
                 PasswordInput.SelectAll();
                 PasswordInput.Focus();
@@ -152,7 +157,7 @@ public partial class StartupWindow : Window
         catch (Exception ex)
         {
             Logger.LogException(ex, "WPF authentication failed", nameof(StartupWindow));
-            LoginError.Text = "Не удалось проверить доступ. Повторите попытку.";
+            LoginError.Text = "Не удалось проверить код клиента. Повторите попытку.";
             LoginError.Visibility = Visibility.Visible;
         }
         finally
@@ -166,7 +171,7 @@ public partial class StartupWindow : Window
     {
         LoginButton.Content = progress.Stage switch
         {
-            LicenseAuthenticationStage.CheckingPassword => "Проверяем пароль…",
+            LicenseAuthenticationStage.CheckingPassword => "Проверяем код клиента…",
             LicenseAuthenticationStage.ClientResolved => "Точка найдена…",
             LicenseAuthenticationStage.CheckingDeviceAndLicense => "Проверяем лицензию…",
             _ => "Завершаем проверку…"
@@ -179,15 +184,28 @@ public partial class StartupWindow : Window
 
     private async Task ShowRestrictedAccessAsync(LicenseObservationSnapshot? snapshot)
     {
-        LoadingPanel.Visibility = Visibility.Collapsed;
-        LoginPanel.Visibility = Visibility.Collapsed;
-        LicenseMissingPanel.Visibility = Visibility.Visible;
         _restrictedSnapshot = snapshot;
         _deviceRegistrationWorkflow = null;
         _licenseNotIssuedWorkflow = null;
         if (snapshot?.Decision == LicenseDecision.DeviceNotRegistered)
         {
             await ShowDeviceRegistrationAsync(snapshot);
+            return;
+        }
+
+        ShowOnly(LicenseMissingPanel);
+        SwitchBlockedClientButton.Visibility = Visibility.Collapsed;
+        RequestHelpButton.Visibility = Visibility.Visible;
+
+        if (snapshot?.TechnicalCode == "CLIENT_ACCESS_DISABLED")
+        {
+            LicenseMissingTitle.Text = "Доступ к HonestFlow отключён";
+            LicenseMissingDescription.Text = "Доступ к HonestFlow для этого клиента отключён.";
+            RegistrationStatus.Text = string.Empty;
+            RetryLicenseButton.Visibility = Visibility.Collapsed;
+            RequestHelpButton.Visibility = Visibility.Collapsed;
+            SwitchBlockedClientButton.Visibility = Visibility.Visible;
+            SetLicenseClientContext(snapshot.ClientName);
             return;
         }
 
@@ -199,6 +217,7 @@ public partial class StartupWindow : Window
             LicenseMissingDescription.Text =
                 "Устройство уже зарегистрировано. После выдачи лицензии запуск продолжится без повторного входа.";
             RegistrationStatus.Text = LicenseNotIssuedStartupWorkflow.WaitingMessage;
+            SetLicenseClientContext(_session.Startup.AuthorizedClient?.Name ?? snapshot.ClientName);
             RetryLicenseButton.Visibility = Visibility.Visible;
             _licenseNotIssuedWorkflow = new LicenseNotIssuedStartupWorkflow(
                 licenseRefresher,
@@ -210,6 +229,7 @@ public partial class StartupWindow : Window
         LicenseMissingDescription.Text =
             "HonestFlow не может продолжить запуск при текущем состоянии лицензии.";
         RetryLicenseButton.Visibility = Visibility.Collapsed;
+        SetLicenseClientContext(_session?.Startup.AuthorizedClient?.Name ?? snapshot?.ClientName);
         RegistrationStatus.Text = string.IsNullOrWhiteSpace(snapshot?.Message)
             ? "Лицензия не разрешает вход. Запросите помощь, чтобы специалист проверил доступ."
             : snapshot.Message;
@@ -217,16 +237,15 @@ public partial class StartupWindow : Window
 
     private async Task ShowDeviceRegistrationAsync(LicenseObservationSnapshot snapshot)
     {
-        LoadingPanel.Visibility = Visibility.Collapsed;
-        LoginPanel.Visibility = Visibility.Collapsed;
-        LicenseMissingPanel.Visibility = Visibility.Collapsed;
-        DeviceRegistrationPanel.Visibility = Visibility.Visible;
         _restrictedSnapshot = snapshot;
-        _deviceRegistrationWorkflow = CreateDeviceRegistrationWorkflow();
-        await ApplyDeviceRegistrationStateAsync(await _deviceRegistrationWorkflow.CheckAsync(_lifetime.Token));
+        _deviceRegistrationWorkflow = CreateDeviceRegistrationWorkflow(
+            string.Equals(snapshot.TechnicalCode, "REGISTRATION_CONTINUATION", StringComparison.Ordinal));
+        DeviceRegistrationStartupResult state = await _deviceRegistrationWorkflow.CheckAsync(_lifetime.Token);
+        ShowOnly(DeviceRegistrationPanel);
+        await ApplyDeviceRegistrationStateAsync(state);
     }
 
-    private DeviceRegistrationStartupWorkflow CreateDeviceRegistrationWorkflow()
+    private DeviceRegistrationStartupWorkflow CreateDeviceRegistrationWorkflow(bool resumedContinuation)
     {
         if (_session?.Startup.AuthService is not IApiCredentialAuthService authentication ||
             _session.Startup.AuthService is not IApiSessionProvider provider ||
@@ -243,11 +262,21 @@ public partial class StartupWindow : Window
                 new DpapiDeviceRegistrationDeliveryStateStore())),
             new ApiDeviceRegistrationStatusProvider(session),
             sessionRefresher,
-            authentication);
+            authentication,
+            session as IApiSessionPersistenceController,
+            resumedContinuation);
     }
 
     private async Task ApplyDeviceRegistrationStateAsync(DeviceRegistrationStartupResult state)
     {
+        if (state.State == DeviceRegistrationStartupState.SessionInvalid)
+        {
+            ShowLogin();
+            LoginError.Text = state.Message;
+            LoginError.Visibility = Visibility.Visible;
+            return;
+        }
+
         if (state.State == DeviceRegistrationStartupState.Allowed && state.Authentication?.Client != null)
         {
             _session!.Startup.AuthorizedClient = state.Authentication.Client;
@@ -260,25 +289,62 @@ public partial class StartupWindow : Window
             return;
         }
 
-        bool canSubmitAddress = state.CanSubmitAddress;
-        RegistrationAddressLabel.Visibility = canSubmitAddress ? Visibility.Visible : Visibility.Collapsed;
-        RegistrationAddressInput.Visibility = canSubmitAddress ? Visibility.Visible : Visibility.Collapsed;
-        SubmitRegistrationButton.Visibility = canSubmitAddress ? Visibility.Visible : Visibility.Collapsed;
-        SubmitRegistrationButton.Content = state.State == DeviceRegistrationStartupState.Rejected
-            ? "Отправить повторно"
-            : "Отправить заявку";
+        if (state.State == DeviceRegistrationStartupState.ApprovedNotReady &&
+            state.Authentication?.Client != null)
+        {
+            _session!.Startup.AuthorizedClient = state.Authentication.Client;
+            _session.Startup.SellerAuthenticationHandled = true;
+            await ShowRestrictedAccessAsync(state.Authentication.LicenseSnapshot);
+            return;
+        }
+
+        DeviceRegistrationPresentation presentation = DeviceRegistrationPresentationMapper.Create(
+            state, _restrictedSnapshot?.ClientName);
+        RegistrationTitle.Text = presentation.Title;
+        RegistrationDescription.Text = presentation.Description;
+        RegistrationAddressLabel.Visibility = presentation.ShowAddressEntry ? Visibility.Visible : Visibility.Collapsed;
+        RegistrationAddressInput.Visibility = presentation.ShowAddressEntry ? Visibility.Visible : Visibility.Collapsed;
+        SubmitRegistrationButton.Visibility = presentation.ShowSubmit ? Visibility.Visible : Visibility.Collapsed;
+        SubmitRegistrationButton.Content = presentation.SubmitText ?? string.Empty;
+        CheckRegistrationButton.Visibility = presentation.ShowCheckStatus ? Visibility.Visible : Visibility.Collapsed;
+        SwitchClientButton.Visibility = presentation.ShowSwitchClient ? Visibility.Visible : Visibility.Collapsed;
         RegistrationError.Visibility = state.State == DeviceRegistrationStartupState.InvalidAddress
             ? Visibility.Visible
             : Visibility.Collapsed;
         RegistrationError.Text = state.State == DeviceRegistrationStartupState.InvalidAddress
             ? state.Message
             : string.Empty;
-        DeviceRegistrationStatus.Text = state.Message;
-        CheckRegistrationButton.Visibility = Visibility.Visible;
-        if (canSubmitAddress)
+        DeviceRegistrationStatus.Text = !string.IsNullOrWhiteSpace(presentation.GuidanceText)
+            ? presentation.GuidanceText
+            : state.State is DeviceRegistrationStartupState.Pending or DeviceRegistrationStartupState.Rejected
+                ? string.Empty
+                : state.Message;
+        ApplyRegistrationContext(presentation);
+        if (presentation.ShowAddressEntry)
             RegistrationAddressInput.Focus();
 
         await Task.CompletedTask;
+    }
+
+    private void ApplyRegistrationContext(DeviceRegistrationPresentation presentation)
+    {
+        RegistrationContextPanel.Visibility = presentation.HasContext ? Visibility.Visible : Visibility.Collapsed;
+        SetContextRow(RegistrationClientRow, RegistrationClientName, presentation.ClientName);
+        SetContextRow(RegistrationRequestedAtRow, RegistrationRequestedAt, presentation.RequestedAtText);
+        SetContextRow(RegistrationStatusRow, RegistrationStatusValue, presentation.StatusText);
+        SetContextRow(RegistrationReasonRow, RegistrationReason, presentation.RejectionReason);
+    }
+
+    private void SetLicenseClientContext(string? clientName)
+    {
+        LicenseContextPanel.Visibility = string.IsNullOrWhiteSpace(clientName) ? Visibility.Collapsed : Visibility.Visible;
+        LicenseClientName.Text = clientName ?? string.Empty;
+    }
+
+    private static void SetContextRow(StackPanel row, TextBlock value, string? text)
+    {
+        row.Visibility = string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
+        value.Text = text ?? string.Empty;
     }
 
     private async void SubmitRegistration_Click(object sender, RoutedEventArgs e)
@@ -310,6 +376,65 @@ public partial class StartupWindow : Window
 
     private async void CheckRegistration_Click(object sender, RoutedEventArgs e) =>
         await RunDeviceRegistrationActionAsync(workflow => workflow.CheckAsync(_lifetime.Token));
+
+    private async void SwitchClient_Click(object sender, RoutedEventArgs e)
+    {
+        if (_session == null) return;
+
+        SwitchClientButton.IsEnabled = false;
+        try
+        {
+            await _controller.LogoutAsync(_session, _lifetime.Token);
+            _restrictedSnapshot = null;
+            _deviceRegistrationWorkflow = null;
+            RegistrationAddressInput.Text = string.Empty;
+            ShowLogin();
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogException(ex, "WPF registration switch-client failed", nameof(StartupWindow));
+            DeviceRegistrationStatus.Text = "Не удалось очистить текущую сессию. Попробуйте снова.";
+        }
+        finally
+        {
+            SwitchClientButton.IsEnabled = true;
+        }
+    }
+
+    private async void SwitchBlockedClient_Click(object sender, RoutedEventArgs e)
+    {
+        if (_session == null) return;
+
+        SwitchBlockedClientButton.IsEnabled = false;
+        try
+        {
+            await _controller.LogoutAsync(_session, _lifetime.Token);
+            _restrictedSnapshot = null;
+            _deviceRegistrationWorkflow = null;
+            RegistrationAddressInput.Text = string.Empty;
+            ShowLogin();
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogException(ex, "WPF blocked-client switch failed", nameof(StartupWindow));
+            RegistrationStatus.Text = "Не удалось очистить текущую сессию. Попробуйте снова.";
+        }
+        finally
+        {
+            SwitchBlockedClientButton.IsEnabled = true;
+        }
+    }
+
+    private void ShowOnly(UIElement panel)
+    {
+        LoadingPanel.Visibility = Visibility.Collapsed;
+        LoginPanel.Visibility = Visibility.Collapsed;
+        DeviceRegistrationPanel.Visibility = Visibility.Collapsed;
+        LicenseMissingPanel.Visibility = Visibility.Collapsed;
+        panel.Visibility = Visibility.Visible;
+    }
 
     private async void RetryLicense_Click(object sender, RoutedEventArgs e)
     {

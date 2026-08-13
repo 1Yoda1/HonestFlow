@@ -60,6 +60,22 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task Submit_ServerConfirmedRequestPersistsContinuation()
+        {
+            var persistence = new FakePersistenceController();
+            var workflow = CreateWorkflow(
+                new FakeSender(),
+                new FakeStatusProvider(),
+                persistenceController: persistence);
+
+            DeviceRegistrationStartupResult result = await workflow.SubmitAsync(
+                Snapshot(), "ул. Ленина, 10", CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.Pending, result.State);
+            Assert.Equal(1, persistence.PersistCalls);
+        }
+
+        [Fact]
         public async Task Check_NoServerRequest_AllowsSubmissionAndPerformsOneStatusRead()
         {
             var status = new FakeStatusProvider();
@@ -70,6 +86,22 @@ namespace HonestFlow.Tests
             Assert.Equal(DeviceRegistrationStartupState.AwaitingAddress, result.State);
             Assert.True(result.CanSubmitAddress);
             Assert.Equal(1, status.Calls);
+        }
+
+        [Fact]
+        public async Task ResumedContinuation_WithoutServerRequestIsClearedAndRequiresLogin()
+        {
+            var persistence = new FakePersistenceController();
+            var workflow = CreateWorkflow(
+                new FakeSender(),
+                new FakeStatusProvider(),
+                persistenceController: persistence,
+                resumedContinuation: true);
+
+            DeviceRegistrationStartupResult result = await workflow.CheckAsync(CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.SessionInvalid, result.State);
+            Assert.Equal(1, persistence.ClearCalls);
         }
 
         [Fact]
@@ -88,6 +120,21 @@ namespace HonestFlow.Tests
             Assert.False(result.CanSubmitAddress);
             Assert.Equal(0, sender.SendCalls);
             Assert.Equal(1, status.Calls);
+        }
+
+        [Fact]
+        public async Task Check_PendingPersistsServerConfirmedContinuation()
+        {
+            var persistence = new FakePersistenceController();
+            var workflow = CreateWorkflow(
+                new FakeSender(),
+                new FakeStatusProvider { Current = new DeviceRegistrationStatus { Status = "Pending" } },
+                persistenceController: persistence);
+
+            DeviceRegistrationStartupResult result = await workflow.CheckAsync(CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.Pending, result.State);
+            Assert.Equal(1, persistence.PersistCalls);
         }
 
         [Fact]
@@ -161,6 +208,7 @@ namespace HonestFlow.Tests
         public async Task Check_ApprovedRefreshesAndContinuesWhenLicenseAllows()
         {
             var refresher = new FakeSessionRefresher { RefreshResult = true };
+            var persistence = new FakePersistenceController();
             var authentication = new FakeAuthentication
             {
                 ResumeResult = new LicenseAuthenticationResult(
@@ -171,7 +219,8 @@ namespace HonestFlow.Tests
                 new FakeSender(),
                 new FakeStatusProvider { Current = new DeviceRegistrationStatus { Status = "Approved" } },
                 refresher,
-                authentication);
+                authentication,
+                persistenceController: persistence);
 
             DeviceRegistrationStartupResult result = await workflow.CheckAsync(CancellationToken.None);
 
@@ -179,6 +228,7 @@ namespace HonestFlow.Tests
             Assert.Equal("client-1", result.Authentication.Client.ClientId);
             Assert.Equal(1, refresher.RefreshCalls);
             Assert.Equal(1, authentication.ResumeCalls);
+            Assert.Equal(1, persistence.PrepareCalls);
         }
 
         [Fact]
@@ -205,6 +255,8 @@ namespace HonestFlow.Tests
 
             Assert.Equal(DeviceRegistrationStartupState.ApprovedNotReady, result.State);
             Assert.Equal("Лицензия ещё не опубликована.", result.Message);
+            Assert.NotNull(result.Authentication?.Client);
+            Assert.Equal(LicenseDecision.LicenseNotIssued, result.Authentication.LicenseSnapshot.Decision);
             Assert.Equal(1, refresher.RefreshCalls);
             Assert.Equal(1, authentication.ResumeCalls);
         }
@@ -231,12 +283,64 @@ namespace HonestFlow.Tests
             Assert.Equal(0, authentication.ResumeCalls);
         }
 
+        [Fact]
+        public async Task Check_RejectedPersistsContinuationForResubmit()
+        {
+            var persistence = new FakePersistenceController();
+            var workflow = CreateWorkflow(
+                new FakeSender(),
+                new FakeStatusProvider { Current = new DeviceRegistrationStatus { Status = "Rejected" } },
+                persistenceController: persistence);
+
+            DeviceRegistrationStartupResult result = await workflow.CheckAsync(CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.Rejected, result.State);
+            Assert.Equal(1, persistence.PersistCalls);
+        }
+
+        [Fact]
+        public async Task Check_TransientStatusFailureKeepsContinuation()
+        {
+            var persistence = new FakePersistenceController();
+            var workflow = CreateWorkflow(
+                new FakeSender(),
+                new ThrowingStatusProvider(new System.Net.Http.HttpRequestException("offline")),
+                persistenceController: persistence,
+                resumedContinuation: true);
+
+            DeviceRegistrationStartupResult result = await workflow.CheckAsync(CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.StatusUnavailable, result.State);
+            Assert.Equal(0, persistence.ClearCalls);
+        }
+
+        [Theory]
+        [InlineData(System.Net.HttpStatusCode.Forbidden)]
+        [InlineData(System.Net.HttpStatusCode.Unauthorized)]
+        public async Task Check_InvalidOrDisabledContinuationIsNotTreatedAsPending(
+            System.Net.HttpStatusCode statusCode)
+        {
+            var persistence = new FakePersistenceController();
+            var workflow = CreateWorkflow(
+                new FakeSender(),
+                new ThrowingStatusProvider(new ApiRequestException(statusCode, "device_disabled")),
+                persistenceController: persistence,
+                resumedContinuation: true);
+
+            DeviceRegistrationStartupResult result = await workflow.CheckAsync(CancellationToken.None);
+
+            Assert.Equal(DeviceRegistrationStartupState.SessionInvalid, result.State);
+            Assert.Equal(1, persistence.ClearCalls);
+        }
+
         private static DeviceRegistrationStartupWorkflow CreateWorkflow(
             FakeSender sender,
             IDeviceRegistrationStatusProvider statusProvider,
             IApiSessionRefresher refresher = null,
             IApiCredentialAuthService authentication = null,
-            IDeviceRegistrationDeliveryStateStore stateStore = null)
+            IDeviceRegistrationDeliveryStateStore stateStore = null,
+            IApiSessionPersistenceController persistenceController = null,
+            bool resumedContinuation = false)
         {
             var registration = new DeviceRegistrationWorkflow(new DeviceRegistrationCoordinator(
                 new DeviceRegistrationRequestService(), sender, stateStore ?? new FakeStateStore()));
@@ -244,7 +348,9 @@ namespace HonestFlow.Tests
                 registration,
                 statusProvider,
                 refresher ?? new FakeSessionRefresher(),
-                authentication ?? new FakeAuthentication());
+                authentication ?? new FakeAuthentication(),
+                persistenceController,
+                resumedContinuation);
         }
 
         private static LicenseObservationSnapshot Snapshot() => new()
@@ -292,6 +398,14 @@ namespace HonestFlow.Tests
             }
         }
 
+        private sealed class ThrowingStatusProvider : IDeviceRegistrationStatusProvider
+        {
+            private readonly Exception _exception;
+            public ThrowingStatusProvider(Exception exception) => _exception = exception;
+            public Task<DeviceRegistrationStatus> GetCurrentAsync(CancellationToken cancellationToken) =>
+                Task.FromException<DeviceRegistrationStatus>(_exception);
+        }
+
         private sealed class FakeSessionRefresher : IApiSessionRefresher
         {
             public bool RefreshResult { get; set; }
@@ -302,6 +416,27 @@ namespace HonestFlow.Tests
                 RefreshCalls++;
                 return Task.FromResult(RefreshResult);
             }
+        }
+
+        private sealed class FakePersistenceController : IApiSessionPersistenceController
+        {
+            public int PersistCalls { get; private set; }
+            public int ClearCalls { get; private set; }
+            public int PrepareCalls { get; private set; }
+            public void SetPersistSession(bool persistSession) { }
+            public Task<ApiSession> RestoreRegistrationContinuationAsync(CancellationToken cancellationToken) =>
+                Task.FromResult<ApiSession>(null);
+            public Task PersistRegistrationContinuationAsync(CancellationToken cancellationToken)
+            {
+                PersistCalls++;
+                return Task.CompletedTask;
+            }
+            public Task ClearRegistrationContinuationAsync(CancellationToken cancellationToken)
+            {
+                ClearCalls++;
+                return Task.CompletedTask;
+            }
+            public void PrepareForRegistrationCompletion() => PrepareCalls++;
         }
 
         private sealed class FakeAuthentication : IApiCredentialAuthService

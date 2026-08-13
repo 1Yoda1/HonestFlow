@@ -80,6 +80,8 @@ namespace HonestFlow.Application.Auth
                 login, password, progress, cancellationToken);
             if (authentication.Client == null)
                 return authentication;
+            if (authentication.LicenseSnapshot?.TechnicalCode == "CLIENT_ACCESS_DISABLED")
+                return authentication;
             progress?.Report(new LicenseAuthenticationProgress(
                 LicenseAuthenticationStage.CheckingDeviceAndLicense,
                 authentication.Client.Name));
@@ -98,6 +100,8 @@ namespace HonestFlow.Application.Auth
                 return new LicenseAuthenticationResult(null, null);
             LicenseAuthenticationResult authentication = await apiAuth.TryResumeAsync(progress, cancellationToken);
             if (authentication.Client == null) return authentication;
+            if (authentication.LicenseSnapshot?.TechnicalCode == "CLIENT_ACCESS_DISABLED")
+                return authentication;
             progress?.Report(new LicenseAuthenticationProgress(
                 LicenseAuthenticationStage.CheckingDeviceAndLicense,
                 authentication.Client.Name));

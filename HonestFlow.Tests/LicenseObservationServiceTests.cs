@@ -136,6 +136,57 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task Observe_RemotePolicyTrue_OverridesStaleDisabledGrant()
+        {
+            LicenseGrant grant = CreateGrant();
+            grant.ClientEnabled = false;
+            var fixture = CreateFixture(
+                SuccessfulRemote(grant),
+                onlineClientPolicyEnabled: true);
+
+            LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(
+                Client(), CancellationToken.None);
+
+            Assert.Equal(LicenseDecision.Allowed, result.Decision);
+        }
+
+        [Fact]
+        public async Task Observe_RemotePolicyFalse_OverridesStaleEnabledGrant()
+        {
+            var fixture = CreateFixture(
+                SuccessfulRemote(CreateGrant()),
+                onlineClientPolicyEnabled: false);
+
+            LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(
+                Client(), CancellationToken.None);
+
+            Assert.Equal(LicenseDecision.ClientDisabled, result.Decision);
+        }
+
+        [Fact]
+        public async Task Observe_CachedGrantKeepsSignedClientEnabledSemantics()
+        {
+            LicenseGrant grant = CreateGrant();
+            grant.ClientEnabled = false;
+            var cache = new FakeCache
+            {
+                ReadResult = LicenseCacheReadResult.Success(grant, NowUtc.AddHours(-1))
+            };
+            var fixture = CreateFixture(
+                LicenseManifestReadResult.Failure(
+                    LicenseManifestReadStatus.NetworkUnavailable,
+                    "network"),
+                cache,
+                onlineClientPolicyEnabled: true);
+
+            LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(
+                Client(), CancellationToken.None);
+
+            Assert.Equal(LicenseDecision.ClientDisabled, result.Decision);
+            Assert.Equal(LicenseManifestSource.Cache, result.ManifestSource);
+        }
+
+        [Fact]
         public async Task Observe_OldApplicationVersion_ReturnsVersionTooOld()
         {
             var fixture = CreateFixture(
@@ -195,7 +246,8 @@ namespace HonestFlow.Tests
             LicenseManifestReadResult remoteResult,
             FakeCache cache = null,
             string deviceId = "device-1",
-            Version version = null)
+            Version version = null,
+            bool? onlineClientPolicyEnabled = null)
         {
             cache ??= new FakeCache
             {
@@ -216,7 +268,8 @@ namespace HonestFlow.Tests
                 store,
                 LicenseEnforcementMode.ObserveOnly,
                 () => NowUtc,
-                () => version ?? new Version(2, 4, 2, 0));
+                () => version ?? new Version(2, 4, 2, 0),
+                onlineClientPolicyEnabledProvider: () => onlineClientPolicyEnabled);
             return new ObservationFixture(observer, cache);
         }
 

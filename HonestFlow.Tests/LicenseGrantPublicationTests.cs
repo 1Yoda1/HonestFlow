@@ -13,10 +13,7 @@ namespace HonestFlow.Tests
         [Fact]
         public void BuildClientGrants_DoesNotLeakOtherClientsOrDevices()
         {
-            using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            string privatePem = "-----BEGIN PRIVATE KEY-----\n" +
-                Convert.ToBase64String(key.ExportPkcs8PrivateKey(), Base64FormattingOptions.InsertLineBreaks) +
-                "\n-----END PRIVATE KEY-----";
+            using var key = new TestEcdsaKey("test");
             var manifest = new LicenseManifest
             {
                 SchemaVersion = 1,
@@ -31,7 +28,9 @@ namespace HonestFlow.Tests
             };
 
             IReadOnlyList<LicenseGrantPublication> publications =
-                new LicenseGrantPublicationBuilder().BuildClientGrants(manifest, "test", privatePem);
+                new LicenseGrantPublicationBuilder(key).BuildClientGrants(
+                    manifest, "test", string.Empty,
+                    new Dictionary<string, bool?> { ["client-a"] = true, ["client-b"] = true });
 
             Assert.Equal(2, publications.Count);
             string firstJson = Encoding.UTF8.GetString(publications[0].GrantBytes);
@@ -45,10 +44,7 @@ namespace HonestFlow.Tests
         [Fact]
         public void BuildOperatorGrants_CreatesSubjectBoundOperatorGrant()
         {
-            using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            string privatePem = "-----BEGIN PRIVATE KEY-----\n" +
-                Convert.ToBase64String(key.ExportPkcs8PrivateKey(), Base64FormattingOptions.InsertLineBreaks) +
-                "\n-----END PRIVATE KEY-----";
+            using var key = new TestEcdsaKey("test");
             var manifest = new LicenseManifest
             {
                 SchemaVersion = 1,
@@ -63,10 +59,41 @@ namespace HonestFlow.Tests
             };
 
             LicenseGrantPublication publication = Assert.Single(
-                new LicenseGrantPublicationBuilder().BuildOperatorGrants(manifest, "test", privatePem));
+                new LicenseGrantPublicationBuilder(key).BuildOperatorGrants(
+                    manifest, "test", string.Empty,
+                    new Dictionary<string, bool?> { ["client-a"] = true }));
             string json = Encoding.UTF8.GetString(publication.GrantBytes);
             Assert.Contains("operator-device", json);
             Assert.Contains("\"OperatorDevice\": true", json);
+        }
+
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(false, false)]
+        [InlineData(null, true)]
+        public void BuildClientGrants_DerivesClientEnabledFromPolicy(
+            bool? policyEnabled,
+            bool expectedClientEnabled)
+        {
+            using var key = new TestEcdsaKey("test");
+            ClientLicense client = Client("client-a", "device-a", null);
+            client.Enabled = !expectedClientEnabled;
+            var manifest = new LicenseManifest
+            {
+                SchemaVersion = 1,
+                Revision = 14,
+                IssuedAtUtc = DateTimeOffset.UtcNow.AddHours(-1),
+                ValidUntilUtc = DateTimeOffset.UtcNow.AddDays(2),
+                Clients = new List<ClientLicense> { client }
+            };
+
+            LicenseGrantPublication publication = Assert.Single(
+                new LicenseGrantPublicationBuilder(key).BuildClientGrants(
+                    manifest, "test", string.Empty,
+                    new Dictionary<string, bool?> { ["client-a"] = policyEnabled }));
+            string json = Encoding.UTF8.GetString(publication.GrantBytes);
+
+            Assert.Contains($"\"ClientEnabled\": {expectedClientEnabled.ToString().ToLowerInvariant()}", json);
         }
 
         private static ClientLicense Client(string clientId, string deviceId, string address) => new()

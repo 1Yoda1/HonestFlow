@@ -11,6 +11,7 @@ namespace HonestFlow.Infrastructure.Api
         public bool DeviceRegistrationRequired { get; set; }
         public string ClientId { get; set; }
         public string ClientName { get; set; }
+        public bool? LicensePolicyEnabled { get; set; }
     }
 
     public sealed class ApiLicenseResponse
@@ -30,6 +31,9 @@ namespace HonestFlow.Infrastructure.Api
         public DateTimeOffset AccessTokenExpiresAtUtc { get; set; }
         public string ClientId { get; set; }
         public string ClientName { get; set; }
+        public string ExternalDeviceId { get; set; }
+        public bool RememberActiveSession { get; set; }
+        public bool? LicensePolicyEnabled { get; set; }
     }
 
     public sealed class ApiConfigurationResponse

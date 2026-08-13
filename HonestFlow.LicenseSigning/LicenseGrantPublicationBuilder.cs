@@ -16,12 +16,18 @@ namespace HonestFlow.LicenseSigning
     /// </summary>
     public sealed class LicenseGrantPublicationBuilder
     {
-        private readonly EcdsaLicenseManifestSigner _signer = new();
+        private readonly ILicenseSignatureFileCreator _signer;
+
+        public LicenseGrantPublicationBuilder(ILicenseSignatureFileCreator signer = null)
+        {
+            _signer = signer ?? new EcdsaLicenseManifestSigner();
+        }
 
         public IReadOnlyList<LicenseGrantPublication> BuildClientGrants(
             LicenseManifest privateManifest,
             string keyId,
-            string privateKeyPkcs8Pem)
+            string privateKeyPkcs8Pem,
+            IReadOnlyDictionary<string, bool?> clientPolicies)
         {
             IReadOnlyList<LicenseValidationError> errors = LicenseManifestValidator.Validate(privateManifest);
             if (errors.Count > 0)
@@ -30,6 +36,7 @@ namespace HonestFlow.LicenseSigning
             var publications = new List<LicenseGrantPublication>();
             foreach (ClientLicense client in privateManifest.Clients ?? new List<ClientLicense>())
             {
+                bool clientEnabled = ResolveClientEnabled(clientPolicies, client.ClientId);
                 foreach (LicensedDevice device in client.Devices ?? new List<LicensedDevice>())
                 {
                     if (device == null || string.IsNullOrWhiteSpace(device.DeviceId))
@@ -44,7 +51,7 @@ namespace HonestFlow.LicenseSigning
                             ValidUntilUtc = privateManifest.ValidUntilUtc,
                             ClientId = client.ClientId,
                             DeviceId = device.DeviceId,
-                            ClientEnabled = client.Enabled,
+                            ClientEnabled = clientEnabled,
                             DeviceEnabled = device.Enabled,
                             MinHonestFlowVersion = client.MinHonestFlowVersion,
                             OfflineGraceHours = client.OfflineGraceHours,
@@ -62,7 +69,8 @@ namespace HonestFlow.LicenseSigning
         public IReadOnlyList<LicenseGrantPublication> BuildOperatorGrants(
             LicenseManifest privateManifest,
             string keyId,
-            string privateKeyPkcs8Pem)
+            string privateKeyPkcs8Pem,
+            IReadOnlyDictionary<string, bool?> clientPolicies)
         {
             IReadOnlyList<LicenseValidationError> errors = LicenseManifestValidator.Validate(privateManifest);
             if (errors.Count > 0)
@@ -71,6 +79,7 @@ namespace HonestFlow.LicenseSigning
             var publications = new List<LicenseGrantPublication>();
             foreach (ClientLicense client in privateManifest.Clients ?? new List<ClientLicense>())
             {
+                bool clientEnabled = ResolveClientEnabled(clientPolicies, client.ClientId);
                 foreach (OperatorDevice device in privateManifest.OperatorDevices ?? new List<OperatorDevice>())
                 {
                     if (device == null || string.IsNullOrWhiteSpace(device.DeviceId))
@@ -85,7 +94,7 @@ namespace HonestFlow.LicenseSigning
                             ValidUntilUtc = privateManifest.ValidUntilUtc,
                             ClientId = client.ClientId,
                             DeviceId = device.DeviceId,
-                            ClientEnabled = true,
+                            ClientEnabled = clientEnabled,
                             DeviceEnabled = device.Enabled,
                             OperatorDevice = true,
                             MinHonestFlowVersion = "0.0.0",
@@ -136,6 +145,15 @@ namespace HonestFlow.LicenseSigning
 
         private static string Hash(byte[] bytes) =>
             Convert.ToBase64String(SHA256.HashData(bytes));
+
+        private static bool ResolveClientEnabled(
+            IReadOnlyDictionary<string, bool?> policies,
+            string clientId)
+        {
+            if (policies == null)
+                throw new ArgumentNullException(nameof(policies));
+            return !policies.TryGetValue(clientId, out bool? enabled) || enabled != false;
+        }
     }
 
     public sealed class LicenseGrantPublication

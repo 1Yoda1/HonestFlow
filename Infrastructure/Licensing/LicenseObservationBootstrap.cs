@@ -25,7 +25,8 @@ namespace HonestFlow.Infrastructure.Licensing
             }
 
             var signatureVerifier = new EcdsaLicenseSignatureVerifier(new LicensePublicKeyRegistry(keys));
-            ILicenseManifestRepository remoteRepository = authService is IApiSessionProvider apiProvider
+            IApiSessionProvider apiProvider = authService as IApiSessionProvider;
+            ILicenseManifestRepository remoteRepository = apiProvider != null
                 ? new ApiLicenseManifestRepository(apiProvider.ApiSessionService, signatureVerifier, configuration.RequestTimeout)
                 : CreateRemoteRepository(configuration, signatureVerifier);
             var trustedClock = new DpapiTrustedLicenseClock();
@@ -42,7 +43,11 @@ namespace HonestFlow.Infrastructure.Licensing
                     () => trustedClock.UtcNow),
                 LicenseObservationSnapshotStore.Instance,
                 configuration.EnforcementMode,
-                trustedClock: trustedClock);
+                trustedClock: trustedClock,
+                onlineClientPolicyEnabledProvider:
+                    apiProvider?.ApiSessionService is IApiClientAccessStateProvider access
+                        ? () => access.LicensePolicyEnabled
+                        : null);
 
             Logger.Info(
                 $"Event=LicenseObservationConfigured Mode={configuration.EnforcementMode} " +

@@ -56,7 +56,7 @@
         <StackPanel Grid.Column="1" Orientation="Horizontal"><Button Style="{StaticResource TopButton}" Content="−" Click="Minimize_Click"/><Button Style="{StaticResource TopButton}" Content="□" Click="Maximize_Click"/><Button Style="{StaticResource TopButton}" Content="×" FontSize="24" Click="Close_Click"/></StackPanel>
       </Grid>
 
-      <Grid Grid.Row="1" Margin="34"><Grid.ColumnDefinitions><ColumnDefinition Width="360"/><ColumnDefinition Width="22"/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <Grid Grid.Row="1" Margin="34"><Grid.ColumnDefinitions><ColumnDefinition Width="360" MinWidth="280"/><ColumnDefinition Width="22"/><ColumnDefinition MinWidth="0"/></Grid.ColumnDefinitions>
         <Border Background="{StaticResource DarkBlue}" CornerRadius="13" Padding="36,38">
           <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <StackPanel><TextBlock Text="Подготовка рабочего места" Foreground="White" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="Загружаем конфигурацию точки, проверяем доступ и готовим HonestFlow к работе." Foreground="#C9D5E7" FontSize="15" LineHeight="24" TextWrapping="Wrap" Margin="0,15,0,0"/></StackPanel>
@@ -70,7 +70,7 @@
           </Grid>
         </Border>
 
-        <Border Grid.Column="2" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="13" Padding="48,42">
+        <Border Grid.Column="2" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="13" Padding="36,30">
           <Grid>
             <StackPanel x:Name="LoadingPanel" VerticalAlignment="Center">
               <Border Width="64" Height="64" CornerRadius="16" Background="#EDF4FD" HorizontalAlignment="Left"><TextBlock Text="&#xE895;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Blue}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
@@ -83,37 +83,63 @@
             <StackPanel x:Name="LoginPanel" VerticalAlignment="Center" Visibility="Collapsed">
               <Border Width="64" Height="64" CornerRadius="16" Background="#EDF4FD" HorizontalAlignment="Left"><TextBlock Text="&#xE8D7;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Blue}" FontSize="30" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
               <TextBlock Text="Вход в HonestFlow" FontSize="27" FontWeight="SemiBold" Margin="0,24,0,0"/>
-              <TextBlock Text="Введите пароль HonestLicenseServer. После входа конфигурация и лицензия этого компьютера будут проверены автоматически." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="23" TextWrapping="Wrap" Margin="0,11,0,18"/>
-              <TextBlock Text="Пароль" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
+              <TextBlock Text="Введите код клиента. После входа HonestFlow проверит регистрацию этого компьютера и доступ к системе." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="23" TextWrapping="Wrap" Margin="0,11,0,18"/>
+              <TextBlock Text="Код клиента" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
               <PasswordBox x:Name="PasswordInput" Height="48" Padding="13,10" FontSize="16" BorderBrush="#CFD6E2" BorderThickness="1"/>
-              <TextBlock x:Name="LoginError" Text="Введите пароль." Foreground="{StaticResource Red}" FontSize="13" Margin="0,8,0,0" Visibility="Collapsed"/>
+              <TextBlock x:Name="LoginError" Text="Введите код клиента." Foreground="{StaticResource Red}" FontSize="13" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed"/>
               <CheckBox x:Name="RememberLoginCheckBox" Content="Запомнить вход на этом компьютере" IsChecked="True" FontSize="14" Margin="0,17,0,18"/>
               <Button x:Name="LoginButton" Style="{StaticResource PrimaryButton}" Content="Войти и продолжить" Click="Login_Click"/>
             </StackPanel>
 
-            <StackPanel x:Name="DeviceRegistrationPanel" VerticalAlignment="Center" Visibility="Collapsed">
-              <Border Width="64" Height="64" CornerRadius="16" Background="#FFF5F6" HorizontalAlignment="Left"><TextBlock Text="&#xEA18;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Red}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-              <TextBlock Text="Регистрация устройства" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,24,0,0"/>
-              <TextBlock Text="Введите физический адрес торговой точки. Имя этого компьютера будет передано автоматически." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="23" TextWrapping="Wrap" Margin="0,11,0,18"/>
-              <TextBlock x:Name="RegistrationAddressLabel" Text="Физический адрес" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
-              <TextBox x:Name="RegistrationAddressInput" Height="44" MaxLength="300" Padding="13,8" FontSize="16" BorderBrush="#CFD6E2" BorderThickness="1" Margin="0,0,0,4"/>
-              <TextBlock x:Name="RegistrationError" Foreground="{StaticResource Red}" FontSize="13" Margin="0,8,0,0" Visibility="Collapsed"/>
-              <Border Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,12,0,18"><TextBlock x:Name="DeviceRegistrationStatus" Foreground="#475467" FontSize="14" LineHeight="21" TextWrapping="Wrap"/></Border>
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                <Button x:Name="SubmitRegistrationButton" Grid.Column="0" Style="{StaticResource PrimaryButton}" Content="Отправить заявку" Click="SubmitRegistration_Click"/>
-                <Button x:Name="CheckRegistrationButton" Grid.Column="2" Style="{StaticResource ActionButton}" Content="Проверить снова" Click="CheckRegistration_Click"/>
+            <Grid x:Name="DeviceRegistrationPanel" VerticalAlignment="Top" Visibility="Collapsed">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <Grid Grid.Row="0" Margin="0,0,0,16">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Width="64" Height="64" CornerRadius="16" Background="#FFF5F6"><TextBlock Text="&#xEA18;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Red}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                  <TextBlock x:Name="RegistrationTitle" Text="Регистрация устройства" FontSize="25" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                  <TextBlock x:Name="RegistrationDescription" Foreground="{StaticResource Muted}" FontSize="14" LineHeight="20" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                </StackPanel>
               </Grid>
-            </StackPanel>
+              <Border x:Name="RegistrationContextPanel" Grid.Row="1" Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12" Visibility="Collapsed">
+                <StackPanel>
+                  <StackPanel x:Name="RegistrationClientRow" Orientation="Horizontal" Margin="0,0,0,5" Visibility="Collapsed"><TextBlock Text="Клиент: " FontSize="13" Foreground="{StaticResource Muted}"/><TextBlock x:Name="RegistrationClientName" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"/></StackPanel>
+                  <StackPanel x:Name="RegistrationRequestedAtRow" Orientation="Horizontal" Margin="0,0,0,5" Visibility="Collapsed"><TextBlock Text="Заявка отправлена: " FontSize="13" Foreground="{StaticResource Muted}"/><TextBlock x:Name="RegistrationRequestedAt" FontSize="13" TextWrapping="Wrap"/></StackPanel>
+                  <StackPanel x:Name="RegistrationStatusRow" Orientation="Horizontal" Margin="0,0,0,5" Visibility="Collapsed"><TextBlock Text="Статус: " FontSize="13" Foreground="{StaticResource Muted}"/><TextBlock x:Name="RegistrationStatusValue" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"/></StackPanel>
+                  <StackPanel x:Name="RegistrationReasonRow" Visibility="Collapsed"><TextBlock Text="Причина" FontSize="13" Foreground="{StaticResource Muted}"/><TextBlock x:Name="RegistrationReason" FontSize="13" TextWrapping="Wrap" LineHeight="19" MaxWidth="480"/></StackPanel>
+                </StackPanel>
+              </Border>
+              <Grid Grid.Row="2" Margin="0,0,0,12">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <TextBlock x:Name="RegistrationAddressLabel" Text="Физический адрес" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,7"/>
+                <TextBox x:Name="RegistrationAddressInput" Grid.Row="1" Height="44" MaxLength="300" Padding="13,8" FontSize="16" BorderBrush="#CFD6E2" BorderThickness="1"/>
+                <TextBlock x:Name="RegistrationError" Grid.Row="2" Foreground="{StaticResource Red}" FontSize="13" TextWrapping="Wrap" Margin="0,7,0,0" Visibility="Collapsed"/>
+              </Grid>
+              <TextBlock x:Name="DeviceRegistrationStatus" Grid.Row="3" Foreground="#475467" FontSize="14" LineHeight="20" TextWrapping="Wrap" Margin="0,0,0,12"/>
+              <StackPanel Grid.Row="4">
+                <Button x:Name="SubmitRegistrationButton" Style="{StaticResource PrimaryButton}" Content="Отправить заявку" Click="SubmitRegistration_Click" Height="46" HorizontalAlignment="Stretch"/>
+                <Button x:Name="CheckRegistrationButton" Style="{StaticResource ActionButton}" Content="Проверить статус" Click="CheckRegistration_Click" Height="46" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>
+                <Button x:Name="SwitchClientButton" Style="{StaticResource ActionButton}" Content="Войти под другим клиентом" Click="SwitchClient_Click" Height="46" HorizontalAlignment="Stretch" Margin="0,8,0,0" Visibility="Collapsed"/>
+              </StackPanel>
+            </Grid>
 
             <StackPanel x:Name="LicenseMissingPanel" VerticalAlignment="Center" Visibility="Collapsed">
               <Border Width="64" Height="64" CornerRadius="16" Background="#FFF5F6" HorizontalAlignment="Left"><TextBlock Text="&#xEA18;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Red}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
               <TextBlock x:Name="LicenseMissingTitle" Text="Доступ ограничен" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,24,0,0"/>
               <TextBlock x:Name="LicenseMissingDescription" Text="HonestFlow пока не может продолжить запуск." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="23" TextWrapping="Wrap" Margin="0,11,0,24"/>
-              <Border Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,0,0,22"><TextBlock x:Name="RegistrationStatus" Text="Заявка на регистрацию отправлена автоматически. Если работа нужна сейчас, запросите удалённую помощь." Foreground="#475467" FontSize="14" LineHeight="21" TextWrapping="Wrap"/></Border>
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                <Button x:Name="RetryLicenseButton" Grid.Column="0" Style="{StaticResource PrimaryButton}" Content="Проверить снова" Click="RetryLicense_Click" Visibility="Collapsed"/>
-                <Button x:Name="RequestHelpButton" Grid.Column="2" Style="{StaticResource ActionButton}" Click="RequestHelp_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE717;" FontFamily="Segoe MDL2 Assets" FontSize="19" Margin="0,0,10,0"/><TextBlock Text="Запросить помощь" VerticalAlignment="Center"/></StackPanel></Button>
-              </Grid>
+              <Border x:Name="LicenseContextPanel" Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,0,0,14" Visibility="Collapsed"><StackPanel><TextBlock Text="Клиент" FontSize="12" Foreground="{StaticResource Muted}"/><TextBlock x:Name="LicenseClientName" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/></StackPanel></Border>
+              <TextBlock x:Name="RegistrationStatus" Foreground="#475467" FontSize="14" LineHeight="21" TextWrapping="Wrap" Margin="0,0,0,22"/>
+              <StackPanel>
+                <Button x:Name="RetryLicenseButton" Style="{StaticResource PrimaryButton}" Content="Проверить снова" Click="RetryLicense_Click" Visibility="Collapsed" HorizontalAlignment="Stretch"/>
+                <Button x:Name="RequestHelpButton" Style="{StaticResource ActionButton}" Click="RequestHelp_Click" HorizontalAlignment="Stretch" Margin="0,10,0,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><TextBlock Text="&#xE717;" FontFamily="Segoe MDL2 Assets" FontSize="19" Margin="0,0,10,0"/><TextBlock Text="Запросить помощь" VerticalAlignment="Center"/></StackPanel></Button>
+                <Button x:Name="SwitchBlockedClientButton" Style="{StaticResource PrimaryButton}" Content="Войти под другим клиентом" Click="SwitchBlockedClient_Click" Visibility="Collapsed" HorizontalAlignment="Stretch"/>
+              </StackPanel>
             </StackPanel>
           </Grid>
         </Border>

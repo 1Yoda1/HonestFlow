@@ -13,18 +13,23 @@ namespace HonestFlow.Infrastructure.Api
     public sealed class ApiSessionService :
         IApiSessionService,
         IApiSessionRefresher,
-        IApiSessionPersistenceController
+        IApiSessionPersistenceController,
+        IApiClientAccessStateProvider
     {
         private readonly HttpClient _httpClient;
         private readonly IApiSessionStore _store;
+        private readonly IApiSessionStore _registrationStore;
         private readonly SemaphoreSlim _refreshLock = new(1, 1);
         private ApiSession _processSession;
         private bool _persistSession = true;
+        private SessionPersistenceMode _persistenceMode = SessionPersistenceMode.Remembered;
 
-        public ApiSessionService(HttpClient httpClient, IApiSessionStore store)
+        public ApiSessionService(HttpClient httpClient, IApiSessionStore store,
+            IApiSessionStore registrationStore = null)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _store = store ?? throw new ArgumentNullException(nameof(store));
+            _registrationStore = registrationStore ?? new NullApiSessionStore();
         }
 
         public void SetPersistSession(bool persistSession)
@@ -32,13 +37,53 @@ namespace HonestFlow.Infrastructure.Api
             _persistSession = persistSession;
         }
 
+        public bool? LicensePolicyEnabled => _processSession?.LicensePolicyEnabled;
+        public string ClientId => _processSession?.ClientId;
+        public string ClientName => _processSession?.ClientName;
+
         public async Task<ApiTokenResponse> LoginAsync(string login, string password, string deviceId, string deviceName, CancellationToken cancellationToken)
         {
             var payload = new { password, deviceId, deviceName };
             ApiTokenResponse tokens = await PostTokensAsync("api/auth/login", payload, cancellationToken);
-            await SaveTokensAsync(tokens, cancellationToken);
+            _persistenceMode = tokens.DeviceRegistrationRequired
+                ? SessionPersistenceMode.ProcessOnly
+                : _persistSession ? SessionPersistenceMode.Remembered : SessionPersistenceMode.ProcessOnly;
+            await SaveTokensAsync(tokens, deviceId, cancellationToken);
             return tokens;
         }
+
+        public async Task<ApiSession> RestoreRegistrationContinuationAsync(CancellationToken cancellationToken)
+        {
+            if (_processSession != null)
+                return null;
+
+            ApiSession continuation = await _registrationStore.LoadAsync(cancellationToken);
+            if (continuation == null || string.IsNullOrWhiteSpace(continuation.ExternalDeviceId))
+                return null;
+
+            _processSession = continuation;
+            _persistSession = continuation.RememberActiveSession;
+            _persistenceMode = SessionPersistenceMode.RegistrationContinuation;
+            return continuation;
+        }
+
+        public async Task PersistRegistrationContinuationAsync(CancellationToken cancellationToken)
+        {
+            ApiSession session = await LoadCurrentSessionAsync(cancellationToken);
+            if (session == null)
+                throw new InvalidOperationException("A restricted API session is required for registration continuation.");
+
+            session.RememberActiveSession = _persistSession;
+            _persistenceMode = SessionPersistenceMode.RegistrationContinuation;
+            await _registrationStore.SaveAsync(session, cancellationToken);
+            await _store.ClearAsync(CancellationToken.None);
+        }
+
+        public Task ClearRegistrationContinuationAsync(CancellationToken cancellationToken) =>
+            _registrationStore.ClearAsync(cancellationToken);
+
+        public void PrepareForRegistrationCompletion() =>
+            _persistenceMode = SessionPersistenceMode.CompletingRegistration;
 
         public async Task<HttpResponseMessage> SendAuthorizedAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -105,7 +150,7 @@ namespace HonestFlow.Infrastructure.Api
                 try
                 {
                     ApiTokenResponse tokens = await PostTokensAsync("api/auth/refresh", new { refreshToken }, cancellationToken);
-                    return await SaveTokensAsync(tokens, cancellationToken);
+                    return await SaveTokensAsync(tokens, current?.ExternalDeviceId, cancellationToken);
                 }
                 catch (ApiRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized || ex.StatusCode == HttpStatusCode.Forbidden)
                 {
@@ -147,7 +192,8 @@ namespace HonestFlow.Infrastructure.Api
             return tokens;
         }
 
-        private async Task<ApiSession> SaveTokensAsync(ApiTokenResponse tokens, CancellationToken cancellationToken)
+        private async Task<ApiSession> SaveTokensAsync(
+            ApiTokenResponse tokens, string externalDeviceId, CancellationToken cancellationToken)
         {
             var session = new ApiSession
             {
@@ -155,19 +201,52 @@ namespace HonestFlow.Infrastructure.Api
                 RefreshToken = tokens.RefreshToken,
                 AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Max(1, tokens.ExpiresInSeconds)),
                 ClientId = tokens.ClientId,
-                ClientName = tokens.ClientName
+                ClientName = tokens.ClientName,
+                LicensePolicyEnabled = tokens.LicensePolicyEnabled,
+                ExternalDeviceId = externalDeviceId ?? _processSession?.ExternalDeviceId,
+                RememberActiveSession = _persistSession
             };
-            if (_persistSession)
-            {
-                await _store.SaveAsync(session, cancellationToken);
-            }
-            else
-            {
-                // A previous remembered login must not survive a successful
-                // process-only login. Cleanup is part of completing that login.
-                await _store.ClearAsync(CancellationToken.None);
-            }
             _processSession = session;
+            switch (_persistenceMode)
+            {
+                case SessionPersistenceMode.RegistrationContinuation:
+                    await _registrationStore.SaveAsync(session, cancellationToken);
+                    await _store.ClearAsync(CancellationToken.None);
+                    break;
+
+                case SessionPersistenceMode.CompletingRegistration:
+                    if (tokens.DeviceRegistrationRequired)
+                    {
+                        _persistenceMode = SessionPersistenceMode.RegistrationContinuation;
+                        await _registrationStore.SaveAsync(session, cancellationToken);
+                        await _store.ClearAsync(CancellationToken.None);
+                    }
+                    else if (_persistSession)
+                    {
+                        _persistenceMode = SessionPersistenceMode.Remembered;
+                        await _store.SaveAsync(session, cancellationToken);
+                        await _registrationStore.ClearAsync(CancellationToken.None);
+                    }
+                    else
+                    {
+                        _persistenceMode = SessionPersistenceMode.ProcessOnly;
+                        await _store.ClearAsync(CancellationToken.None);
+                        await _registrationStore.ClearAsync(CancellationToken.None);
+                    }
+                    break;
+
+                case SessionPersistenceMode.Remembered:
+                    await _store.SaveAsync(session, cancellationToken);
+                    await _registrationStore.ClearAsync(CancellationToken.None);
+                    break;
+
+                default:
+                    // A previous remembered login or continuation must not survive
+                    // a successful process-only login.
+                    await _store.ClearAsync(CancellationToken.None);
+                    await _registrationStore.ClearAsync(CancellationToken.None);
+                    break;
+            }
             return session;
         }
 
@@ -181,6 +260,7 @@ namespace HonestFlow.Infrastructure.Api
             {
                 _processSession = persisted;
                 _persistSession = true;
+                _persistenceMode = SessionPersistenceMode.Remembered;
             }
             return persisted;
         }
@@ -189,6 +269,7 @@ namespace HonestFlow.Infrastructure.Api
         {
             _processSession = null;
             await _store.ClearAsync(cancellationToken);
+            await _registrationStore.ClearAsync(cancellationToken);
         }
 
         private async Task<HttpResponseMessage> SendCloneAsync(HttpRequestMessage source, string accessToken, CancellationToken cancellationToken)
@@ -210,6 +291,21 @@ namespace HonestFlow.Infrastructure.Api
         private sealed class ApiErrorResponse
         {
             public string Code { get; set; }
+        }
+
+        private enum SessionPersistenceMode
+        {
+            ProcessOnly,
+            RegistrationContinuation,
+            Remembered,
+            CompletingRegistration
+        }
+
+        private sealed class NullApiSessionStore : IApiSessionStore
+        {
+            public Task<ApiSession> LoadAsync(CancellationToken cancellationToken) => Task.FromResult<ApiSession>(null);
+            public Task SaveAsync(ApiSession session, CancellationToken cancellationToken) => Task.CompletedTask;
+            public Task ClearAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         }
     }
 }

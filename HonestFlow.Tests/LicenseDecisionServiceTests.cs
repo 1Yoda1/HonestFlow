@@ -47,6 +47,48 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public void Decide_OnlinePolicyFalseOverridesStaleEnabledGrant()
+        {
+            LicenseDecisionContext context = Context();
+            context.Grant.ClientEnabled = true;
+            context.OnlineClientPolicyEnabled = false;
+
+            Assert.Equal(LicenseDecision.ClientDisabled, Service().Decide(context).Decision);
+        }
+
+        [Fact]
+        public void Decide_OnlinePolicyTrueOverridesStaleDisabledGrant()
+        {
+            LicenseDecisionContext context = Context();
+            context.Grant.ClientEnabled = false;
+            context.OnlineClientPolicyEnabled = true;
+
+            Assert.Equal(LicenseDecision.Allowed, Service().Decide(context).Decision);
+        }
+
+        [Fact]
+        public void Decide_OfflineCacheStillUsesSignedClientEnabledSnapshot()
+        {
+            LicenseDecisionContext context = Context();
+            context.ManifestSource = LicenseManifestSource.Cache;
+            context.LastSuccessfulOnlineCheckUtc = NowUtc.AddHours(-1);
+            context.Grant.ClientEnabled = false;
+            context.OnlineClientPolicyEnabled = true;
+
+            Assert.Equal(LicenseDecision.ClientDisabled, Service().Decide(context).Decision);
+        }
+
+        [Fact]
+        public void Decide_OnlineMissingPolicyPreservesLegacyGrantSemantics()
+        {
+            LicenseDecisionContext context = Context();
+            context.Grant.ClientEnabled = false;
+            context.OnlineClientPolicyEnabled = null;
+
+            Assert.Equal(LicenseDecision.ClientDisabled, Service().Decide(context).Decision);
+        }
+
+        [Fact]
         public void Decide_RejectsExpiredGrant()
         {
             LicenseDecisionContext context = Context();

@@ -83,6 +83,38 @@ namespace HonestFlow.Tests
             Assert.Equal(0, session.AuthorizedRequestCalls);
         }
 
+        [Fact]
+        public async Task Login_ExplicitPolicyOff_PrecedesUnknownDeviceRegistration()
+        {
+            var session = new PendingDeviceSession { LicensePolicyEnabled = false };
+            var service = new ApiAuthService(session, new FakeIdentity(), new FakeLog(),
+                new MemoryConfigurationCache(null));
+
+            var result = await service.AuthenticateAsync("seller", "password", null, CancellationToken.None);
+
+            Assert.NotNull(result.Client);
+            Assert.Equal(HonestFlow.Application.Licensing.LicenseDecision.ClientDisabled,
+                result.LicenseSnapshot.Decision);
+            Assert.Equal("CLIENT_ACCESS_DISABLED", result.LicenseSnapshot.TechnicalCode);
+            Assert.Equal(0, session.AuthorizedRequestCalls);
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(null)]
+        public async Task Login_EnabledOrLegacyPolicy_AllowsUnknownDeviceRegistration(bool? policyEnabled)
+        {
+            var session = new PendingDeviceSession { LicensePolicyEnabled = policyEnabled };
+            var service = new ApiAuthService(session, new FakeIdentity(), new FakeLog(),
+                new MemoryConfigurationCache(null));
+
+            var result = await service.AuthenticateAsync("seller", "password", null, CancellationToken.None);
+
+            Assert.Null(result.Client);
+            Assert.Equal(HonestFlow.Application.Licensing.LicenseDecision.DeviceNotRegistered,
+                result.LicenseSnapshot.Decision);
+        }
+
         private sealed class FakeSession : IApiSessionService
         {
             private readonly string _json;
@@ -111,10 +143,12 @@ namespace HonestFlow.Tests
         private sealed class PendingDeviceSession : IApiSessionService
         {
             public int AuthorizedRequestCalls { get; private set; }
+            public bool? LicensePolicyEnabled { get; set; }
             public Task<ApiTokenResponse> LoginAsync(string login, string password, string deviceId, string deviceName, CancellationToken cancellationToken) =>
                 Task.FromResult(new ApiTokenResponse
                 {
                     DeviceRegistrationRequired = true,
+                    LicensePolicyEnabled = LicensePolicyEnabled,
                     ClientId = "pending-client",
                     ClientName = "Pending client"
                 });

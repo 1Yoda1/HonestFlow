@@ -22,6 +22,7 @@ namespace HonestFlow.Application.Licensing
         private readonly Func<DateTimeOffset> _utcNowProvider;
         private readonly Func<Version> _versionProvider;
         private readonly ITrustedLicenseClock _trustedClock;
+        private readonly Func<bool?> _onlineClientPolicyEnabledProvider;
 
         public LicenseObservationService(
             ILicenseManifestRepository remoteRepository,
@@ -32,7 +33,8 @@ namespace HonestFlow.Application.Licensing
             LicenseEnforcementMode mode,
             Func<DateTimeOffset> utcNowProvider = null,
             Func<Version> versionProvider = null,
-            ITrustedLicenseClock trustedClock = null)
+            ITrustedLicenseClock trustedClock = null,
+            Func<bool?> onlineClientPolicyEnabledProvider = null)
         {
             _remoteRepository = remoteRepository ?? throw new ArgumentNullException(nameof(remoteRepository));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
@@ -44,6 +46,7 @@ namespace HonestFlow.Application.Licensing
             _utcNowProvider = utcNowProvider ?? (() => _trustedClock?.UtcNow ?? DateTimeOffset.UtcNow);
             _versionProvider = versionProvider ?? (() =>
                 Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0, 0));
+            _onlineClientPolicyEnabledProvider = onlineClientPolicyEnabledProvider;
         }
 
         public async Task<LicenseObservationSnapshot> ObserveAsync(
@@ -243,7 +246,10 @@ namespace HonestFlow.Application.Licensing
                 CurrentHonestFlowVersion = _versionProvider(),
                 Grant = grant,
                 ManifestSource = source,
-                LastSuccessfulOnlineCheckUtc = lastOnlineCheckUtc
+                LastSuccessfulOnlineCheckUtc = lastOnlineCheckUtc,
+                OnlineClientPolicyEnabled = source == LicenseManifestSource.Remote
+                    ? _onlineClientPolicyEnabledProvider?.Invoke()
+                    : null
             });
 
             return new LicenseObservationSnapshot
