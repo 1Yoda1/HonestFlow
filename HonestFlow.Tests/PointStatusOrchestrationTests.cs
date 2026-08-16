@@ -14,7 +14,7 @@ namespace HonestFlow.Tests
         [Fact]
         public async Task CheckAsync_StartsIndependentStatusChecksInParallel()
         {
-            var gate = new ParallelGate(expectedEntrants: 6);
+            var gate = new ParallelGate(expectedEntrants: 7);
             var esmClient = new StubEsmClient(gate);
             var service = new PointStatusService(
                 remoteConfigLoaded: true,
@@ -24,7 +24,8 @@ namespace HonestFlow.Tests
                 lmStatusClient: new StubLmClient(gate),
                 cloudConnectivityProbe: new StubCloudProbe(gate),
                 ruDesktopService: new StubRuDesktopProvider(gate),
-                kktPnpProbe: new StubKktPnpProbe(gate));
+                kktPnpProbe: new StubKktPnpProbe(gate),
+                controllerServiceInfoProbe: new StubControllerServiceInfoProbe(gate));
 
             Task<PointStatusResult> check = service.CheckAsync(CancellationToken.None);
             await gate.WaitUntilAllEnteredAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -34,7 +35,7 @@ namespace HonestFlow.Tests
             PointStatusResult result = await check.WaitAsync(TimeSpan.FromSeconds(2));
 
             Assert.NotNull(result);
-            Assert.Equal(6, gate.Entrants);
+            Assert.Equal(7, gate.Entrants);
             Assert.Equal(0, esmClient.RegistrationRequests);
             Assert.Equal("Доступно", result.Cloud.ShortText);
             Assert.DoesNotContain("1", result.Cloud.ShortText);
@@ -62,7 +63,6 @@ namespace HonestFlow.Tests
                 cancellationToken.ThrowIfCancellationRequested();
                 return Task.FromResult(new[]
                 {
-                    Running("esm-lm-controller"),
                     Running("uem-agent"),
                     Running("uem-updater"),
                     Running("atol-grpc-service"),
@@ -115,6 +115,17 @@ namespace HonestFlow.Tests
                     HttpStatusCode.OK,
                     "{}",
                     1);
+            }
+        }
+
+        private sealed class StubControllerServiceInfoProbe : IControllerServiceInfoProbe
+        {
+            private readonly ParallelGate _gate;
+            public StubControllerServiceInfoProbe(ParallelGate gate) => _gate = gate;
+            public async Task<ControllerServiceInfoResult> CheckAsync(CancellationToken cancellationToken)
+            {
+                await _gate.EnterAsync(cancellationToken);
+                return ControllerServiceInfoResult.Available(200);
             }
         }
 

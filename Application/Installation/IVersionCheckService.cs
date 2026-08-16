@@ -9,6 +9,7 @@ namespace HonestFlow.Application.Installation
         bool NeedControllerInstall(string expectedVersion);
 
         string GetAtolDriverInfo();
+        string GetAtolDriverInfo(string requiredArchitecture);
         string GetEsmVersion();
         string GetControllerVersion();
     }

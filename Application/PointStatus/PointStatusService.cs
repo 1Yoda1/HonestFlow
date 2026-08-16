@@ -19,13 +19,15 @@ namespace HonestFlow.Application.PointStatus
     {
         private readonly bool _remoteConfigLoaded;
         private readonly int _ipCount;
-        private readonly IReadOnlyList<IPData> _clients;
         private readonly IRuDesktopStatusProvider _ruDesktopService;
         private readonly IEsmStatusClient _esmStatusClient;
         private readonly IWindowsServiceSnapshotProvider _serviceSnapshotProvider;
         private readonly ILmStatusClient _lmApiClient;
+        private readonly IControllerServiceInfoProbe _controllerServiceInfoProbe;
         private readonly ICloudConnectivityProbe _cloudConnectivityProbe;
         private readonly IKktPnpProbe _kktPnpProbe;
+        private readonly IKktDriverProbe _kktDriverProbe;
+        private readonly IKktPortProbe _kktPortProbe;
         public PointStatusService(
             bool remoteConfigLoaded,
             int ipCount,
@@ -35,20 +37,28 @@ namespace HonestFlow.Application.PointStatus
             IWindowsServiceSnapshotProvider serviceSnapshotProvider = null,
             ILmStatusClient lmStatusClient = null,
             ICloudConnectivityProbe cloudConnectivityProbe = null,
-            IKktPnpProbe kktPnpProbe = null)
+            IKktPnpProbe kktPnpProbe = null,
+            IControllerServiceInfoProbe controllerServiceInfoProbe = null,
+            IKktDriverProbe kktDriverProbe = null,
+            IKktPortProbe kktPortProbe = null)
         {
             _remoteConfigLoaded = remoteConfigLoaded;
             _ipCount = ipCount;
-            _clients = clients ?? Array.Empty<IPData>();
             _ruDesktopService = ruDesktopService;
             _esmStatusClient = esmStatusClient ?? new EsmRestStatusClient();
             _serviceSnapshotProvider = serviceSnapshotProvider ?? new WindowsServiceSnapshotProvider();
             _lmApiClient = lmStatusClient ?? new LmApiClient(enableDetailedLogging: false);
+            _controllerServiceInfoProbe = controllerServiceInfoProbe ?? new ControllerServiceInfoProbe();
             _cloudConnectivityProbe = cloudConnectivityProbe ?? new CloudConnectivityProbe();
             _kktPnpProbe = kktPnpProbe ?? new WindowsKktPnpProbe();
+            _kktDriverProbe = kktDriverProbe ?? new KktDriverProbe();
+            _kktPortProbe = kktPortProbe ?? new KktPortProbe();
         }
 
-        public async Task<PointStatusResult> CheckAsync(CancellationToken cancellationToken)
+        public Task<PointStatusResult> CheckAsync(CancellationToken cancellationToken) =>
+            CheckAsync(null, cancellationToken);
+
+        public async Task<PointStatusResult> CheckAsync(IPData currentClient, CancellationToken cancellationToken)
         {
             var services = await _serviceSnapshotProvider
                 .GetSnapshotsAsync(cancellationToken)
@@ -56,49 +66,53 @@ namespace HonestFlow.Application.PointStatus
             var controllerService = CheckExactServices(services, "esm-lm-controller");
             var kktService = CheckExactServices(services, "uem-agent", "uem-updater", "atol-grpc-service");
             var esmService = CheckEsmServices(services);
-            Task<EsmStatusResult> controllerTask = controllerService.Services.Any(x => x.IsRunning)
-                ? _esmStatusClient.GetStatusAsync(cancellationToken)
-                : Task.FromResult<EsmStatusResult>(null);
-            Task<EsmCashRegisterResult> kktTask = AreAllKktServicesRunning(kktService)
-                ? _esmStatusClient.GetCashRegisterStatusAsync(cancellationToken)
-                : Task.FromResult<EsmCashRegisterResult>(null);
+            Task<EsmStatusResult> controllerTask = _esmStatusClient.GetStatusAsync(cancellationToken);
+            Task<ControllerServiceInfoResult> controllerServiceInfoTask = _controllerServiceInfoProbe.CheckAsync(cancellationToken);
+            Task<EsmCashRegisterResult> kktTask = _esmStatusClient.GetCashRegisterStatusAsync(cancellationToken);
             Task<EsmRegistrationResult> esmTask;
             if (!IsEsmOrchestratorRunning(esmService))
             {
                 esmTask = Task.FromResult<EsmRegistrationResult>(null);
             }
-            else if (controllerService.Services.Any(x => x.IsRunning))
+            else
             {
                 // GetStatusAsync already reads /instances/info; reuse that result instead
                 // of issuing the same ESM request again for registration status.
                 esmTask = GetRegistrationFromControllerStatusAsync(controllerTask);
             }
-            else
-            {
-                esmTask = _esmStatusClient.GetRegistrationStatusAsync(cancellationToken);
-            }
-            Task<LmDiagnosticProbeResult> lmTask = CheckLmStatusAsync(services);
+            Task<LmDiagnosticProbeResult> lmTask = CheckLmStatusAsync(services, currentClient);
             Task<NodeStatus> cloudTask = CheckCloudStatusAsync(cancellationToken);
             Task<NodeStatus> ruDesktopTask = CheckRuDesktopStatusAsync();
             Task<KktPnpResult> kktPnpTask = DetectKktPnpAsync(cancellationToken);
-            await Task.WhenAll(controllerTask, kktTask, esmTask, lmTask, cloudTask, ruDesktopTask, kktPnpTask).ConfigureAwait(false);
+            Task<KktDriverProbeResult> kktDriverTask = _kktDriverProbe.CheckAsync(currentClient?.Architecture, cancellationToken);
+            Task<KktPortProbeResult> kktPortTask = _kktPortProbe.CheckAsync(cancellationToken);
+            await Task.WhenAll(controllerTask, controllerServiceInfoTask, kktTask, esmTask, lmTask, cloudTask, ruDesktopTask, kktPnpTask, kktDriverTask, kktPortTask).ConfigureAwait(false);
             LmDiagnosticProbeResult lmProbe = await lmTask.ConfigureAwait(false);
             NodeStatus lmStatus = lmProbe.Status;
-            bool lmReady = lmProbe.HealthAvailable;
             lmStatus = ApplyLmSystemRequirements(lmStatus, LmSystemRequirements.Check());
 
             return new PointStatusResult
             {
                 Lm = lmStatus,
-                Controller = BuildControllerStatus(controllerService, controllerTask.Result, lmReady, DateTime.Now),
-                Esm = BuildEsmStatus(esmService, esmTask.Result, kktTask.Result),
-                Kkt = BuildKktStatus(kktService, kktTask.Result),
+                Controller = BuildControllerStatus(controllerService, await controllerServiceInfoTask.ConfigureAwait(false), null),
+                ControllerServiceStatus = controllerService,
+                ControllerServiceInfo = await controllerServiceInfoTask.ConfigureAwait(false),
+                Esm = BuildEsmStatus(esmService, esmTask.Result),
+                Kkt = BuildKktStatus(
+                    await kktPnpTask.ConfigureAwait(false),
+                    await kktDriverTask.ConfigureAwait(false),
+                    kktService,
+                    await kktPortTask.ConfigureAwait(false),
+                    null),
                 Cloud = await cloudTask.ConfigureAwait(false),
                 RuDesktop = await ruDesktopTask.ConfigureAwait(false),
                 EsmApiStatus = controllerTask.Result,
                 EsmRegistration = esmTask.Result,
                 CashRegister = kktTask.Result,
-                AtolDriverVersion = new VersionCheckService(new LogService()).GetAtolDriverInfo(),
+                KktServiceStatus = kktService,
+                KktDriver = await kktDriverTask.ConfigureAwait(false),
+                KktPort4041 = await kktPortTask.ConfigureAwait(false),
+                AtolDriverVersion = (await kktDriverTask.ConfigureAwait(false))?.ToLegacyDisplay(),
                 KktPnP = await kktPnpTask.ConfigureAwait(false),
                 LmProbe = lmProbe,
                 ServiceSnapshots = services
@@ -121,9 +135,6 @@ namespace HonestFlow.Application.PointStatus
                 return KktPnpResult.Unavailable("PnP probe failed: " + ex.Message);
             }
         }
-
-        private static bool AreAllKktServicesRunning(NodeStatus serviceStatus) =>
-            serviceStatus.Services.Count == 3 && serviceStatus.Services.All(x => x.IsRunning);
 
         private static bool AreAllEsmServicesRunning(NodeStatus serviceStatus) =>
             serviceStatus.Services.Count == 2 && serviceStatus.Services.All(x => x.IsRunning);
@@ -176,8 +187,7 @@ namespace HonestFlow.Application.PointStatus
 
         public static NodeStatus BuildEsmStatus(
             NodeStatus serviceStatus,
-            EsmRegistrationResult registration,
-            EsmCashRegisterResult cashRegister)
+            EsmRegistrationResult registration)
         {
             if (serviceStatus.Services.Count == 0)
             {
@@ -209,23 +219,11 @@ namespace HonestFlow.Application.PointStatus
 
             if (registration.Kind == EsmRegistrationResultKind.NotConfigured)
             {
-                bool cashRegisterConnected = cashRegister?.Kind == EsmCashRegisterResultKind.Connected;
-                string details = cashRegisterConnected
-                    ? "Службы ЕСМ работают.\n" +
-                      "GET /api/v1/instances/info: экземпляр не зарегистрирован.\n" +
-                      "CashRegister.Data: получены — связь с кассой есть.\n\n" +
-                      "Откройте ЕСМ и нажмите «Зарегистрировать»."
-                    : "Службы ЕСМ работают, но экземпляр ЕСМ не зарегистрирован.\n\n" +
-                      "Обратите внимание на строку «ККТ».\n" +
-                      "После восстановления связи с кассой откройте ЕСМ и проверьте регистрацию.";
-
                 return new NodeStatus(
-                    cashRegisterConnected ? NodeLevel.Error : NodeLevel.Warning,
+                    NodeLevel.Warning,
                     "Не зарегистрирован",
-                    details,
-                    statusText: cashRegisterConnected
-                        ? "ЕСМ не зарегистрирован\nОткройте ЕСМ и нажмите «Зарегистрировать»"
-                        : "ЕСМ не зарегистрирован\nПроверьте строку «ККТ»");
+                    "Службы ЕСМ работают, но экземпляр ЕСМ не зарегистрирован.",
+                    statusText: "ЕСМ не зарегистрирован\nОткройте ЕСМ и нажмите «Зарегистрировать»");
             }
 
             if (!AreAllEsmServicesRunning(serviceStatus))
@@ -245,158 +243,121 @@ namespace HonestFlow.Application.PointStatus
                 "ЕСМ зарегистрирован");
         }
 
-        public static NodeStatus BuildKktStatus(NodeStatus serviceStatus, EsmCashRegisterResult apiResult)
+        public static NodeStatus BuildKktStatus(
+            KktPnpResult pnp,
+            KktDriverProbeResult driver,
+            NodeStatus serviceStatus,
+            KktPortProbeResult port,
+            ComponentVersionStatus driverVersion)
         {
-            if (serviceStatus.Services.Count < 3)
-            {
-                return new NodeStatus(
-                    NodeLevel.Error,
-                    "Не установлен",
-                    "Не найден полный набор служб uem-agent, uem-updater и atol-grpc-service.\n\n" +
-                    "Драйвер ККТ для работы с ЕСМ не установлен.",
-                    statusText: "Драйвер ККТ для работы с ЕСМ не установлен");
-            }
+            IReadOnlyList<ServiceSnapshot> services = serviceStatus?.Services ?? Array.Empty<ServiceSnapshot>();
+            if (pnp?.Kind == KktPnpResultKind.NotDetected)
+                return KktNode(NodeLevel.Error, "ККТ физически\nне подключена", pnp, driver, services, port, driverVersion);
+            if (pnp?.Kind != KktPnpResultKind.Detected)
+                return KktNode(NodeLevel.Warning, "Не удалось определить\nподключение ККТ", pnp, driver, services, port, driverVersion);
+            if (driver?.IsAvailable != true || !driver.DriverFound || !driver.HasKnownVersion ||
+                !driver.IsAtLeast(ComponentVersionRequirements.MinimumSupportedAtolDriver))
+                return KktNode(NodeLevel.Error, "Драйвер для ЕСМ\nне установлен", pnp, driver, services, port, driverVersion);
 
-            if (serviceStatus.Services.Any(x => !x.IsRunning))
-            {
-                return new NodeStatus(
-                    NodeLevel.Error,
-                    "Службы не запущены",
-                    $"Проверка связи с ККТ не выполнялась.\n{serviceStatus.Details}",
-                    serviceStatus.Services,
-                    "Службы ККТ не запущены");
-            }
+            string missingService = RequiredKktServices.FirstOrDefault(name => services.All(service =>
+                !string.Equals(service.ServiceName, name, StringComparison.OrdinalIgnoreCase)));
+            if (missingService != null)
+                return KktNode(NodeLevel.Error, "Служба не найдена", pnp, driver, services, port, driverVersion);
+            ServiceSnapshot stoppedService = services.FirstOrDefault(service =>
+                RequiredKktServices.Contains(service.ServiceName, StringComparer.OrdinalIgnoreCase) && !service.IsRunning);
+            if (stoppedService != null)
+                return KktNode(NodeLevel.Error, "Служба остановлена", pnp, driver, services, port, driverVersion);
+            if (port?.IsAvailable != true)
+                return KktNode(NodeLevel.Error, "Порт 4041\nне найден", pnp, driver, services, port, driverVersion);
+            if (!string.IsNullOrWhiteSpace(driverVersion?.TargetVersion) && driver.IsBelow(driverVersion.TargetVersion))
+                return KktNode(NodeLevel.Warning, "Обновите драйвер\nККТ", pnp, driver, services, port, driverVersion);
 
-            if (apiResult == null || apiResult.Kind == EsmCashRegisterResultKind.Unavailable)
-            {
-                return new NodeStatus(
-                    NodeLevel.Warning,
-                    "Нет статуса",
-                    "Службы ККТ работают, но GET /api/v1/dkktList не ответил.",
-                    statusText: "Состояние связи с ККТ не получено");
-            }
-
-            if (apiResult.Kind == EsmCashRegisterResultKind.NotConfigured)
-            {
-                return new NodeStatus(
-                    NodeLevel.Warning,
-                    "ЕСМ не настроен",
-                    "Не найден gui_settings.json с портом локального API ЕСМ.",
-                    statusText: "ЕСМ не настроен");
-            }
-
-            if (apiResult.Kind == EsmCashRegisterResultKind.Disconnected)
-            {
-                return new NodeStatus(
-                    NodeLevel.Error,
-                    "Нет связи с ККТ",
-                    "ККТ не обнаружена\n\n" +
-                    "Что удалось проверить:\n" +
-                    "  ✓ Службы ККТ запущены\n" +
-                    "  ✓ Локальный API ЕСМ отвечает\n" +
-                    "  ✕ Данные подключённой кассы не получены\n\n" +
-                    "Что нужно проверить:\n" +
-                    "  1. ККТ включена и физически подключена к компьютеру.\n" +
-                    "  2. Кабель USB/COM и порт подключения исправны.\n" +
-                    "  3. ККТ выбрана и доступна в товароучётной системе.\n" +
-                    "  4. После проверки перезапустите товароучётную систему.\n\n" +
-                    "Затем нажмите «Обновить статусы» в HonestFlow.",
-                    statusText: "Нет связи с ККТ\nПроверьте подключение и товароучётную систему");
-            }
-
-            return new NodeStatus(
-                NodeLevel.Ok,
-                "Работает",
-                "Службы ККТ работают. Локальный API ЕСМ вернул CashRegister.Data.",
-                serviceStatus.Services,
-                "ККТ подключена");
+            return KktNode(NodeLevel.Ok, "Доступно", pnp, driver, services, port, driverVersion);
         }
 
-        public static NodeStatus BuildControllerStatus(NodeStatus serviceStatus, EsmStatusResult apiResult, bool lmReady, DateTime now)
+        private static readonly string[] RequiredKktServices = { "uem-agent", "uem-updater", "atol-grpc-service" };
+
+        private static NodeStatus KktNode(
+            NodeLevel level,
+            string statusText,
+            KktPnpResult pnp,
+            KktDriverProbeResult driver,
+            IReadOnlyList<ServiceSnapshot> services,
+            KktPortProbeResult port,
+            ComponentVersionStatus driverVersion) =>
+            new(level, statusText, BuildKktDetails(pnp, driver, services, port, driverVersion), services, statusText);
+
+        private static string BuildKktDetails(
+            KktPnpResult pnp,
+            KktDriverProbeResult driver,
+            IReadOnlyList<ServiceSnapshot> services,
+            KktPortProbeResult port,
+            ComponentVersionStatus driverVersion)
         {
-            var service = serviceStatus.Services.FirstOrDefault();
-            if (service == null || !service.IsRunning)
-                return new NodeStatus(NodeLevel.Error, "Служба остановлена", BuildControllerDetails(service, "API не запрашивался", null, "Служба остановлена или не найдена"), serviceStatus.Services, "Служба остановлена");
-
-            if (apiResult == null || apiResult.Kind == EsmStatusResultKind.Unavailable)
-                return new NodeStatus(NodeLevel.Warning, "Нет статуса", BuildControllerDetails(service, "API недоступен, ошибка HTTP или таймаут 3 с", null, "Состояние контроллера не получено"), serviceStatus.Services, "Служба запущена, состояние контроллера не получено");
-
-            if (apiResult.Kind == EsmStatusResultKind.NotConfigured)
-                return new NodeStatus(NodeLevel.Warning, "Не настроен", BuildControllerDetails(service, "API вернул 204 или экземпляр отсутствует", null, "ЕСМ не настроен"), serviceStatus.Services, "ЕСМ не настроен");
-
-            var controller = apiResult.Status?.LmController;
-            if (controller?.Code == null)
-                return new NodeStatus(NodeLevel.Warning, "Нет статуса", BuildControllerDetails(service, "API ответил", controller, "В ответе отсутствует lmController.code"), serviceStatus.Services, "Состояние контроллера не получено");
-
-            if (controller.Code != 0 || !string.IsNullOrWhiteSpace(controller.Error))
-            {
-                string error = string.IsNullOrWhiteSpace(controller.Error)
-                    ? $"Код ошибки: {controller.Code}"
-                    : controller.Error.Trim();
-                return new NodeStatus(NodeLevel.Error, "Ошибка", BuildControllerDetails(service, "API ответил", controller, $"Ошибка контроллера: {error}", now), serviceStatus.Services, error);
-            }
-
-            if (apiResult.Status?.LmInfo == null)
-            {
-                if (!lmReady)
-                {
-                    return new NodeStatus(
-                        NodeLevel.Warning,
-                        "Ожидание ЛМ",
-                        BuildControllerDetails(service, "API ответил", controller, "LM.Data отсутствует, но ЛМ ЧЗ на :5995 не готова; перезапуск контроллера не предлагается", now, hasLmData: false),
-                        statusText: "Нет данных ЛМ\nСначала восстановите ЛМ ЧЗ");
-                }
-
-                return new NodeStatus(
-                    NodeLevel.Error,
-                    "Нет данных ЛМ",
-                    BuildControllerDetails(service, "API ответил", controller, "LM.Data отсутствует", now, hasLmData: false),
-                    serviceStatus.Services,
-                    "Контроллер не получил данные ЛМ");
-            }
-
-            if (!lmReady)
-            {
-                return new NodeStatus(
-                    NodeLevel.Warning,
-                    "ЛМ не готова",
-                    BuildControllerDetails(service, "API ответил", controller, "LM.Data получены, но ЛМ ЧЗ на :5995 сейчас не готова", now, hasLmData: true),
-                    statusText: "Данные контроллера есть\nЛМ ЧЗ не готова");
-            }
-
-            return new NodeStatus(
-                NodeLevel.Ok,
-                "Работает",
-                BuildControllerDetails(service, "API ответил", controller, "LM.Data получены", now, hasLmData: true),
-                serviceStatus.Services,
-                "Контроллер работает");
+            string missing = string.Join(",", RequiredKktServices.Where(name => services.All(service =>
+                !string.Equals(service.ServiceName, name, StringComparison.OrdinalIgnoreCase))));
+            string stopped = string.Join(",", services.Where(service =>
+                RequiredKktServices.Contains(service.ServiceName, StringComparer.OrdinalIgnoreCase) && !service.IsRunning)
+                .Select(service => service.ServiceName));
+            return $"PnP={pnp?.Kind.ToString() ?? "Unknown"}; " +
+                   $"PnPDetails={pnp?.Details ?? "-"}; " +
+                   $"DriverArchitecture={driver?.RequiredArchitecture ?? "-"}; " +
+                   $"DriverFound={driver?.DriverFound == true}; " +
+                   $"InstalledVersion={driver?.InstalledVersion ?? "-"}; " +
+                   $"MinimumSupportedVersion={ComponentVersionRequirements.MinimumSupportedAtolDriver}; " +
+                   $"TargetVersion={driverVersion?.TargetVersion ?? "-"}; " +
+                   $"MissingServices={(string.IsNullOrWhiteSpace(missing) ? "-" : missing)}; " +
+                   $"StoppedServices={(string.IsNullOrWhiteSpace(stopped) ? "-" : stopped)}; " +
+                   $"Port4041={(port?.IsAvailable == true ? "Success" : "Failure")}; " +
+                   $"Port4041Error={port?.ErrorCategory ?? "-"}.";
         }
 
-        private static string BuildControllerDetails(ServiceSnapshot service, string apiState, EsmComponentStatus controller, string decision, DateTime? now = null, bool? hasLmData = null)
+        public static NodeStatus BuildControllerStatus(
+            NodeStatus serviceStatus,
+            ControllerServiceInfoResult serviceInfo,
+            ComponentVersionStatus version)
         {
-            string serviceState = service == null ? "не найдена" : service.State;
-            string code = controller?.Code?.ToString() ?? "-";
-            string error = string.IsNullOrWhiteSpace(controller?.Error) ? "пусто" : controller.Error.Trim();
-            string lastConnection = string.IsNullOrWhiteSpace(controller?.LastConnection) ? "-" : controller.LastConnection;
-            string age = "не вычислен";
-            if (now.HasValue && TryParseEsmTime(controller?.LastConnection, out var connectedAt))
-                age = $"{Math.Max(0, (now.Value - connectedAt).TotalSeconds):0} сек";
+            ServiceSnapshot service = serviceStatus?.Services?.FirstOrDefault();
+            IReadOnlyList<ServiceSnapshot> services = serviceStatus?.Services ?? Array.Empty<ServiceSnapshot>();
 
-            return
-                $"Служба esm-lm-controller: {serviceState}\n" +
-                "Источник контроллера: GET /api/v1/status/{id} → lmController\n" +
-                "Проверка данных ЛМ: GET /api/v1/instances/lm/{id}\n" +
-                $"Получение API: {apiState}\n" +
-                $"lmController.code: {code}\n" +
-                $"lmController.error: {error}\n" +
-                $"lmController.lastConnection: {lastConnection}\n" +
-                $"Возраст последней связи: {age}\n" +
-                $"LM.Data: {(hasLmData.HasValue ? hasLmData.Value ? "получены" : "отсутствуют" : "не проверялись")}\n\n" +
-                $"Итог: {decision}";
+            if (version?.State == ComponentVersionState.NotInstalled)
+                return ControllerNode(NodeLevel.Error, "Контроллер не установлен", service, version, serviceInfo, services);
+            if (service is null)
+                return ControllerNode(NodeLevel.Error, "Служба не найдена", service, version, serviceInfo, services);
+            if (!service.IsRunning)
+                return ControllerNode(NodeLevel.Error, "Служба остановлена", service, version, serviceInfo, services);
+            if (serviceInfo?.IsAvailable != true)
+                return ControllerNode(NodeLevel.Error, "Контроллер недоступен", service, version, serviceInfo, services);
+            if (version is null || version.State == ComponentVersionState.Unknown)
+                return ControllerNode(NodeLevel.Warning, "Версия не определена", service, version, serviceInfo, services);
+            if (version.State is ComponentVersionState.UpdateRequired or ComponentVersionState.BelowMinimum)
+                return ControllerNode(NodeLevel.Warning, "Установите последнюю\nверсию", service, version, serviceInfo, services);
+
+            return ControllerNode(NodeLevel.Ok, "Доступно", service, version, serviceInfo, services);
         }
 
-        private static bool TryParseEsmTime(string value, out DateTime result) =>
-            DateTime.TryParseExact(value, "HH:mm:ss dd-MM-yyyy", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out result);
+        private static NodeStatus ControllerNode(
+            NodeLevel level,
+            string statusText,
+            ServiceSnapshot service,
+            ComponentVersionStatus version,
+            ControllerServiceInfoResult serviceInfo,
+            IReadOnlyList<ServiceSnapshot> services) =>
+            new(level, statusText, BuildControllerDetails(service, version, serviceInfo), services, statusText);
+
+        private static string BuildControllerDetails(
+            ServiceSnapshot service,
+            ComponentVersionStatus version,
+            ControllerServiceInfoResult serviceInfo) =>
+            $"Installed={version?.State != ComponentVersionState.NotInstalled}; " +
+            $"InstalledVersion={version?.InstalledVersion ?? "-"}; " +
+            $"TargetVersion={version?.TargetVersion ?? "-"}; " +
+            $"VersionMatch={version?.State == ComponentVersionState.Current}; " +
+            $"ServiceExists={service is not null}; " +
+            $"ServiceRunning={service?.IsRunning == true}; " +
+            $"ServiceInfoAvailable={serviceInfo?.IsAvailable == true}; " +
+            $"ServiceInfoHttpStatus={serviceInfo?.HttpStatusCode?.ToString() ?? "-"}; " +
+            $"ServiceInfoErrorCategory={serviceInfo?.ErrorCategory ?? "-"}.";
 
         private async Task<NodeStatus> CheckRuDesktopStatusAsync()
         {
@@ -469,7 +430,7 @@ namespace HonestFlow.Application.PointStatus
                 actionKind: NodeActionKind.RequestRuDesktopHelp);
         }
 
-        private async Task<LmDiagnosticProbeResult> CheckLmStatusAsync(ServiceSnapshot[] services)
+        private async Task<LmDiagnosticProbeResult> CheckLmStatusAsync(ServiceSnapshot[] services, IPData currentClient)
         {
             bool lmReady = false;
             var serviceStatus = CheckExactServices(services, "regime", "yenisei");
@@ -501,14 +462,31 @@ namespace HonestFlow.Application.PointStatus
                 bool notConfigured =
                     string.Equals(status.Status, "not-configured", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(status.Status, "not_configured", StringComparison.OrdinalIgnoreCase);
-                bool hasLmInn = !string.IsNullOrWhiteSpace(status.Inn);
-                var client = hasLmInn ? FindClientByInn(status.Inn) : null;
-                bool clientFound = client != null;
+                string actualInn = NormalizeInn(status.Inn);
+                string expectedInn = NormalizeInn(ResolveExpectedClientInn(currentClient));
+                bool hasLmInn = !string.IsNullOrWhiteSpace(actualInn);
+                bool hasExpectedInn = !string.IsNullOrWhiteSpace(expectedInn);
+                LmInnComparisonState innComparison = !hasExpectedInn
+                    ? LmInnComparisonState.Unknown
+                    : !hasLmInn
+                        ? LmInnComparisonState.Missing
+                        : string.Equals(actualInn, expectedInn, StringComparison.Ordinal)
+                            ? LmInnComparisonState.Match
+                            : LmInnComparisonState.Mismatch;
+                string actualInnMasked = hasLmInn ? MaskInn(actualInn) : "-";
+                string expectedInnMasked = hasExpectedInn ? MaskInn(expectedInn) : "-";
+                string comparisonDetails = innComparison switch
+                {
+                    LmInnComparisonState.Match => "LM INN matches expected current-client INN",
+                    LmInnComparisonState.Mismatch => "LM INN differs from expected current-client INN",
+                    LmInnComparisonState.Missing => "LM API returned no INN",
+                    _ => "Expected client INN unavailable"
+                };
 
                 string apiStatus = string.IsNullOrWhiteSpace(status.Status) ? "ответ есть" : status.Status;
-                string clientName = clientFound ? client.Name : hasLmInn ? "не найден в списке" : "ИНН не указан";
-                string innText = hasLmInn ? MaskInn(status.Inn) : "не указан";
-                string matchText = clientFound ? "клиент найден по ИНН" : hasLmInn ? "клиент не найден по ИНН" : "ИНН ЛМ не указан";
+                string clientName = string.IsNullOrWhiteSpace(currentClient?.Name) ? "текущий клиент не определён" : currentClient.Name;
+                string innText = hasLmInn ? actualInnMasked : "не указан";
+                string matchText = comparisonDetails;
 
                 string statusText = $"API: {apiStatus}\nКлиент: {clientName}";
                 string details =
@@ -521,15 +499,6 @@ namespace HonestFlow.Application.PointStatus
                     $"ИНН ЛМ: {innText}\n" +
                     $"Сопоставление: {matchText}";
 
-                if (hasLmInn && !clientFound)
-                {
-                    return new LmDiagnosticProbeResult(new NodeStatus(
-                        NodeLevel.Error,
-                        "Клиент не найден",
-                        details + "\n\nИтог: клиент по ИНН не найден. Обратитесь к администратору.",
-                        statusText: "Клиент по ИНН не найден\nОбратитесь к администратору"), lmReady, LmDiagnosticProbeState.Failure, status.Status);
-                }
-
                 if (notConfigured)
                 {
                     return new LmDiagnosticProbeResult(new NodeStatus(
@@ -537,7 +506,9 @@ namespace HonestFlow.Application.PointStatus
                         "Не настроена",
                         details + "\n\nИтог: ЛМ ЧЗ требуется инициализация.",
                         statusText: "ЛМ ЧЗ не настроена\nНажмите «Исправить»",
-                        actionKind: NodeActionKind.InitializeLm), lmReady, LmDiagnosticProbeState.NotConfigured, status.Status);
+                        actionKind: NodeActionKind.InitializeLm), lmReady, LmDiagnosticProbeState.NotConfigured, status.Status,
+                        innComparison: innComparison, actualInnMasked: actualInnMasked,
+                        expectedInnMasked: expectedInnMasked, innComparisonDetails: comparisonDetails);
                 }
 
                 if (initializing)
@@ -546,7 +517,9 @@ namespace HonestFlow.Application.PointStatus
                         NodeLevel.Warning,
                         "Инициализация",
                         details + "\n\nИтог: допустимое переходное состояние initialization.",
-                        statusText: "ЛМ ЧЗ инициализируется\nНажмите «Обновить»"), lmReady, LmDiagnosticProbeState.Initializing, status.Status);
+                        statusText: "ЛМ ЧЗ инициализируется\nНажмите «Обновить»"), lmReady, LmDiagnosticProbeState.Initializing, status.Status,
+                        innComparison: innComparison, actualInnMasked: actualInnMasked,
+                        expectedInnMasked: expectedInnMasked, innComparisonDetails: comparisonDetails);
                 }
 
                 if (!lmReady)
@@ -559,7 +532,9 @@ namespace HonestFlow.Application.PointStatus
                         string.Equals(status.Status, "sync_error", StringComparison.OrdinalIgnoreCase)
                             ? LmDiagnosticProbeState.SyncError
                             : LmDiagnosticProbeState.Failure,
-                        status.Status);
+                        status.Status,
+                        innComparison: innComparison, actualInnMasked: actualInnMasked,
+                        expectedInnMasked: expectedInnMasked, innComparisonDetails: comparisonDetails);
                 }
 
                 var readyLevel = serviceStatus.Level == NodeLevel.Ok ? NodeLevel.Ok : NodeLevel.Warning;
@@ -568,7 +543,9 @@ namespace HonestFlow.Application.PointStatus
                     "Ready",
                     details,
                     serviceStatus.Services,
-                    statusText), lmReady, LmDiagnosticProbeState.Available, status.Status);
+                    statusText), true, LmDiagnosticProbeState.Available, status.Status,
+                    innComparison: innComparison, actualInnMasked: actualInnMasked,
+                    expectedInnMasked: expectedInnMasked, innComparisonDetails: comparisonDetails);
             }
             catch (Exception ex)
             {
@@ -678,22 +655,17 @@ namespace HonestFlow.Application.PointStatus
             return string.IsNullOrWhiteSpace(value) ? "-" : value;
         }
 
-        private IPData FindClientByInn(string inn)
-        {
-            string normalizedInn = NormalizeInn(inn);
-            if (string.IsNullOrWhiteSpace(normalizedInn))
-                return null;
+        private static string ResolveExpectedClientInn(IPData currentClient) => currentClient?.Inn;
 
-            return _clients.FirstOrDefault(x =>
-                string.Equals(NormalizeInn(x?.Inn), normalizedInn, StringComparison.OrdinalIgnoreCase));
-        }
+        private static EsmStatusDto GetEsmApiData(EsmStatusDto status) =>
+            status?.Software?.Data ?? status?.Data?.Software?.Data ?? status?.Data ?? status;
 
         private static string NormalizeInn(string inn)
         {
             if (string.IsNullOrWhiteSpace(inn))
                 return string.Empty;
 
-            return new string(inn.Where(char.IsDigit).ToArray());
+            return inn.Trim();
         }
 
         private static string MaskInn(string inn)

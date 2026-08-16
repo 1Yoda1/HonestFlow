@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Core;
@@ -32,7 +33,7 @@ namespace HonestFlow.Application.PointStatus
             bool includeLicensedComponents,
             CancellationToken cancellationToken)
         {
-            Task<PointStatusResult> pointStatusTask = _pointStatusService.CheckAsync(cancellationToken);
+            Task<PointStatusResult> pointStatusTask = _pointStatusService.CheckAsync(selectedClient, cancellationToken);
             Task<ComponentVersionStatus[]> versionStatusTask = includeLicensedComponents
                 ? Task.Run(
                     () => _componentVersionStatusService.GetStatuses(selectedClient, configuredVersions),
@@ -42,6 +43,28 @@ namespace HonestFlow.Application.PointStatus
             await Task.WhenAll(pointStatusTask, versionStatusTask);
             PointStatusResult pointStatus = await pointStatusTask;
             ComponentVersionStatus[] versionStatuses = await versionStatusTask;
+
+            if (pointStatus.ControllerServiceStatus != null || pointStatus.ControllerServiceInfo != null)
+            {
+                ComponentVersionStatus controllerVersion = versionStatuses.FirstOrDefault(status =>
+                    string.Equals(status.ComponentName, "Контроллер", StringComparison.OrdinalIgnoreCase));
+                pointStatus.Controller = PointStatusService.BuildControllerStatus(
+                    pointStatus.ControllerServiceStatus,
+                    pointStatus.ControllerServiceInfo,
+                    controllerVersion);
+            }
+
+            if (pointStatus.KktServiceStatus != null || pointStatus.KktDriver != null || pointStatus.KktPort4041 != null)
+            {
+                ComponentVersionStatus kktDriverVersion = versionStatuses.FirstOrDefault(status =>
+                    string.Equals(status.ComponentName, "Драйвер ККТ", StringComparison.OrdinalIgnoreCase));
+                pointStatus.Kkt = PointStatusService.BuildKktStatus(
+                    pointStatus.KktPnP,
+                    pointStatus.KktDriver,
+                    pointStatus.KktServiceStatus,
+                    pointStatus.KktPort4041,
+                    kktDriverVersion);
+            }
 
             NodeStatus[] visibleStatuses = includeLicensedComponents
                 ? new[]

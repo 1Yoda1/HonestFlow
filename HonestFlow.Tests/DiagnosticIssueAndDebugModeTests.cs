@@ -193,13 +193,14 @@ namespace HonestFlow.Tests
                 Controller = Node(NodeLevel.Ok, services[5]),
                 EsmRegistration = EsmRegistrationResult.Registered(),
                 CashRegister = EsmCashRegisterResult.Connected(),
-                KktPnP = KktPnpResult.NotDetected(),
+                KktPnP = KktPnpResult.Detected("ATOL 30F"),
                 AtolDriverVersion = "10.10.8.23 (64-bit)",
                 ServiceSnapshots = services,
                 LmProbe = new LmDiagnosticProbeResult(lm, true, LmDiagnosticProbeState.Available, "ready"),
                 EsmApiStatus = EsmStatusResult.Success(new EsmStatusDto
                 {
-                    ClientSoftware = Code(0), Gismt = Code(0), LmController = Code(0), Lm = Code(0)
+                    ClientSoftware = Code(0), Gismt = Code(0), LmController = Code(0), Lm = Code(0),
+                    LmInfo = new EsmLmInfoDto { Code = 0 }
                 })
             };
         }

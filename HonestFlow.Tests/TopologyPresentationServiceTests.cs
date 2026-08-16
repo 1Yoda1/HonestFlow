@@ -8,7 +8,7 @@ namespace HonestFlow.Tests
         private readonly TopologyPresentationService _service = new();
 
         [Fact]
-        public void RunningServicesAndHealthyChecks_ProduceGreenFramesAndLinks()
+        public void RunningServicesAndHealthyEsmCodes_ProduceGreenFramesAndLinks()
         {
             TopologyPresentation result = _service.Create(CreateResult(Healthy("lm"), Healthy("controller"), Healthy("esm"), Healthy("kkt"), Cloud(NodeLevel.Ok)));
             Assert.Equal(TopologyVisualState.Healthy, result.LmFrame);
@@ -19,21 +19,20 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void StoppedService_ProducesRedFrameButYellowConnection()
+        public void StoppedService_ProducesRedFrameWithoutChangingHealthyEsmLink()
         {
             NodeStatus stopped = Node(NodeLevel.Error, new ServiceSnapshot("lm", "Stopped"));
             TopologyPresentation result = _service.Create(CreateResult(stopped, Healthy("controller"), Healthy("esm"), Healthy("kkt"), Cloud(NodeLevel.Ok)));
             Assert.Equal(TopologyVisualState.Missing, result.LmFrame);
-            Assert.Equal(TopologyVisualState.Uncertain, result.ControllerToLm.State);
+            Assert.Equal(TopologyVisualState.Healthy, result.ControllerToLm.State);
         }
 
         [Fact]
-        public void MissingComponent_ProducesRedCrossConnection()
+        public void MissingComponent_DoesNotChangeEsmLinkWithHealthyEsmCode()
         {
             NodeStatus missing = new(NodeLevel.Error, "Не установлен", "Компонент отсутствует");
             TopologyPresentation result = _service.Create(CreateResult(missing, Healthy("controller"), Healthy("esm"), Healthy("kkt"), Cloud(NodeLevel.Ok)));
-            Assert.Equal(TopologyVisualState.Missing, result.ControllerToLm.State);
-            Assert.Contains("отсутствует", result.ControllerToLm.Explanation);
+            Assert.Equal(TopologyVisualState.Healthy, result.ControllerToLm.State);
         }
 
         [Fact]
@@ -49,6 +48,13 @@ namespace HonestFlow.Tests
             Esm = esm,
             Kkt = kkt,
             Cloud = cloud,
+            EsmApiStatus = EsmStatusResult.Success(new EsmStatusDto
+            {
+                LmInfo = new EsmLmInfoDto { Code = 0 },
+                Lm = new EsmComponentStatus { Code = 0 }
+            }),
+            EsmRegistration = EsmRegistrationResult.Registered(),
+            CashRegister = EsmCashRegisterResult.Connected(),
             RuDesktop = Node(NodeLevel.Ok, new ServiceSnapshot("RuDesktop", "Running"))
         };
 

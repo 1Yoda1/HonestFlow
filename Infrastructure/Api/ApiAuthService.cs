@@ -146,6 +146,7 @@ namespace HonestFlow.Infrastructure.Api
             {
                 ClientId = configuration.Client.ClientId,
                 Name = configuration.Client.Name,
+                Inn = configuration.Client.Inn,
                 Architecture = configuration.Client.Architecture,
                 HasLmDatabaseBackup = configuration.Client.HasLmDatabaseBackup,
                 RuDesktop = new RuDesktopOptions

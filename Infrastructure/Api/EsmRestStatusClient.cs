@@ -47,55 +47,68 @@ namespace HonestFlow.Infrastructure.Api
                     new Uri(baseUri, "instances/info"), timeout.Token).ConfigureAwait(false);
 
                 if (instancesResponse.StatusCode == HttpStatusCode.NoContent)
-                    return EsmStatusResult.NotConfigured();
+                    return EsmStatusResult.NotConfigured(port);
                 if (!instancesResponse.IsSuccessStatusCode)
-                    return EsmStatusResult.Unavailable();
+                    return EsmStatusResult.Unavailable(port);
 
                 string instancesJson = await instancesResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
                 string id = ReadFirstInstanceId(instancesJson);
                 if (string.IsNullOrWhiteSpace(id))
-                    return EsmStatusResult.NotConfigured();
+                    return EsmStatusResult.NotConfigured(port);
 
                 string escapedId = Uri.EscapeDataString(id);
                 using var statusResponse = await _httpClient.GetAsync(
                     new Uri(baseUri, $"status/{escapedId}"), timeout.Token).ConfigureAwait(false);
                 if (statusResponse.StatusCode == HttpStatusCode.NoContent)
-                    return EsmStatusResult.NotConfigured();
+                    return EsmStatusResult.NotConfigured(port);
                 if (!statusResponse.IsSuccessStatusCode)
-                    return EsmStatusResult.Unavailable();
+                    return EsmStatusResult.Unavailable(port);
 
                 string statusJson = await statusResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
                 var status = JsonConvert.DeserializeObject<EsmStatusDto>(statusJson);
                 if (status == null)
-                    return EsmStatusResult.Unavailable();
+                    return EsmStatusResult.Unavailable(port);
 
-                using var lmResponse = await _httpClient.GetAsync(
-                    new Uri(baseUri, $"instances/lm/{escapedId}"), timeout.Token).ConfigureAwait(false);
-                if (lmResponse.StatusCode == HttpStatusCode.NoContent)
-                    return EsmStatusResult.Success(status);
-                if (!lmResponse.IsSuccessStatusCode)
-                    return EsmStatusResult.Unavailable();
-
-                string lmJson = await lmResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
-                string normalizedLmJson = lmJson?.Trim();
-                status.LmInfo = string.IsNullOrWhiteSpace(normalizedLmJson) ||
-                                string.Equals(normalizedLmJson, "null", StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(normalizedLmJson, "[]", StringComparison.Ordinal)
-                    ? null
-                    : JsonConvert.DeserializeObject<EsmLmInfoDto>(normalizedLmJson);
-                return EsmStatusResult.Success(status);
+                try
+                {
+                    using var lmResponse = await _httpClient.GetAsync(
+                        new Uri(baseUri, $"instances/lm/{escapedId}"), timeout.Token).ConfigureAwait(false);
+                    if (lmResponse.IsSuccessStatusCode && lmResponse.StatusCode != HttpStatusCode.NoContent)
+                    {
+                        string lmJson = await lmResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        string normalizedLmJson = lmJson?.Trim();
+                        status.LmInfo = string.IsNullOrWhiteSpace(normalizedLmJson) ||
+                                        string.Equals(normalizedLmJson, "null", StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(normalizedLmJson, "[]", StringComparison.Ordinal)
+                            ? null
+                            : JsonConvert.DeserializeObject<EsmLmInfoDto>(normalizedLmJson);
+                    }
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // /status/{id} is still authoritative for live ESM/controller connections.
+                }
+                catch (HttpRequestException)
+                {
+                    // Keep the successfully obtained /status/{id} snapshot.
+                }
+                catch (JsonException)
+                {
+                    // Keep the successfully obtained /status/{id} snapshot.
+                }
+                return EsmStatusResult.Success(status, port);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                return EsmStatusResult.Unavailable();
+                return EsmStatusResult.Unavailable(port);
             }
             catch (HttpRequestException)
             {
-                return EsmStatusResult.Unavailable();
+                return EsmStatusResult.Unavailable(port);
             }
             catch (JsonException)
             {
-                return EsmStatusResult.Unavailable();
+                return EsmStatusResult.Unavailable(port);
             }
         }
 
@@ -125,10 +138,10 @@ namespace HonestFlow.Infrastructure.Api
                 if (snapshot == null)
                     return EsmCashRegisterResult.Disconnected();
 
-                // Supports both the diagnostic snapshot { data: { kkt: [...] } }
-                // and the native ESM response { kkt: [...] } without retaining KKT identifiers.
-                bool hasData = snapshot.Data != null || snapshot.Kkt != null;
-                return hasData
+                // Supports both envelopes without retaining identifiers. A successful response
+                // proves the ESM-to-KKT link only when the kkt array has an actual entry.
+                EsmCashRegisterMarkerDto[] kkt = snapshot.Data?.Kkt ?? snapshot.Kkt;
+                return kkt is { Length: > 0 }
                     ? EsmCashRegisterResult.Connected()
                     : EsmCashRegisterResult.Disconnected();
             }

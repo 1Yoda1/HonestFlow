@@ -47,8 +47,6 @@ namespace HonestFlow.Application.PointStatus
 
     public sealed class DiagnosticsSnapshotBuilder
     {
-        private static readonly Version MinimumAtolVersion = new(ComponentVersionRequirements.MinimumSupportedAtolDriver);
-
         public DiagnosticsSnapshot Create(
             PointStatusResult result,
             IReadOnlyList<ComponentVersionStatus> versionStatuses = null)
@@ -66,18 +64,17 @@ namespace HonestFlow.Application.PointStatus
                     : result.EsmRegistration?.Kind != EsmRegistrationResultKind.Registered
                         ? "ЕСМ не зарегистрирован."
                         : result.Esm?.Details);
-            DiagnosticComponentFact kkt = Component(
-                IsAtolVersionReady(result.AtolDriverVersion) && HasRunningService(result.Kkt, "atol-grpc-service"),
-                IsAtolVersionReady(result.AtolDriverVersion)
-                    ? "Служба atol-grpc-service отсутствует или остановлена."
-                    : "Драйвер ККТ отсутствует или его версия ниже 10.10.8.23.");
-            DiagnosticComponentFact lm = FromNode(result.Lm);
-            DiagnosticComponentFact controller = FromNode(result.Controller);
+            DiagnosticComponentFact kkt = FromKktNode(result.Kkt);
+            DiagnosticComponentFact lm = FromLmProbe(result.LmProbe, result.Lm);
+            DiagnosticComponentFact controller = FromControllerNode(result.Controller);
             DiagnosticComponentFact gismt = ComponentFromCode(api?.Gismt, "GIS MT");
 
             DiagnosticConnectionFact gisLink = FromCode(api?.Gismt, "GIS MT ↔ ЕСМ");
-            DiagnosticConnectionFact esmKkt = FromCashRegister(result.CashRegister, result.KktPnP);
-            DiagnosticConnectionFact esmController = FromCode(api?.LmController, "ЕСМ ↔ Controller");
+            DiagnosticConnectionFact esmKkt = FromCashRegister(
+                result.EsmApiStatus,
+                result.EsmRegistration,
+                result.CashRegister);
+            DiagnosticConnectionFact esmController = FromLmInfoCode(result.EsmApiStatus?.Status?.LmInfo, "ЕСМ ↔ Controller");
             DiagnosticConnectionFact lmConnection = FromCode(api?.Lm, "Связь с ЛМ");
 
             if (esm.State == DiagnosticState.Failed)
@@ -89,7 +86,7 @@ namespace HonestFlow.Application.PointStatus
             }
 
             bool gisPathAvailable = gismt.State == DiagnosticState.Healthy;
-            bool lmPathAvailable = lm.State == DiagnosticState.Healthy &&
+            bool lmPathAvailable = IsLmTechnicallyAvailable(result.LmProbe, lm) &&
                 esmController.State == DiagnosticConnectionState.Connected &&
                 lmConnection.State == DiagnosticConnectionState.Connected;
 
@@ -156,6 +153,30 @@ namespace HonestFlow.Application.PointStatus
             new(healthy ? DiagnosticState.Healthy : DiagnosticState.Failed, details);
         private static DiagnosticComponentFact FromNode(NodeStatus node) =>
             new(node?.Level == NodeLevel.Ok ? DiagnosticState.Healthy : node == null ? DiagnosticState.Unknown : DiagnosticState.Failed, node?.Details);
+        private static DiagnosticComponentFact FromControllerNode(NodeStatus node) =>
+            new(node?.Level == NodeLevel.Ok ? DiagnosticState.Healthy :
+                node?.Level == NodeLevel.Warning ? DiagnosticState.Unknown :
+                node == null ? DiagnosticState.Unknown : DiagnosticState.Failed,
+                node?.Details);
+        private static DiagnosticComponentFact FromKktNode(NodeStatus node) =>
+            new(node?.Level == NodeLevel.Ok ? DiagnosticState.Healthy :
+                node?.Level == NodeLevel.Warning ? DiagnosticState.Unknown :
+                node == null ? DiagnosticState.Unknown : DiagnosticState.Failed,
+                node?.Details);
+        private static DiagnosticComponentFact FromLmProbe(LmDiagnosticProbeResult probe, NodeStatus node) =>
+            probe == null
+                ? FromNode(node)
+                : new DiagnosticComponentFact(
+                    probe.State == LmDiagnosticProbeState.Available && probe.HealthAvailable
+                        ? DiagnosticState.Healthy
+                        : probe.State == LmDiagnosticProbeState.Unknown
+                            ? DiagnosticState.Unknown
+                            : DiagnosticState.Failed,
+                    node?.Details);
+        private static bool IsLmTechnicallyAvailable(LmDiagnosticProbeResult probe, DiagnosticComponentFact lm) =>
+            probe == null
+                ? lm.State == DiagnosticState.Healthy
+                : probe.State == LmDiagnosticProbeState.Available && probe.HealthAvailable;
         private static DiagnosticComponentFact ComponentFromCode(EsmComponentStatus status, string name) =>
             status?.Code == null ? new(DiagnosticState.Unknown, $"{name}: данные отсутствуют.") :
             status.Code == 0 ? new(DiagnosticState.Healthy, $"{name}: код 0.") :
@@ -164,24 +185,27 @@ namespace HonestFlow.Application.PointStatus
             status?.Code == null ? Unknown($"{name}: данные отсутствуют.") :
             status.Code == 0 ? new(DiagnosticConnectionState.Connected, $"{name}: код 0.") :
             new(DiagnosticConnectionState.Disconnected, $"{name}: код {status.Code}. {status.Error}".Trim());
-        private static DiagnosticConnectionFact FromCashRegister(EsmCashRegisterResult result, KktPnpResult pnp) => result?.Kind switch
+        private static DiagnosticConnectionFact FromLmInfoCode(EsmLmInfoDto status, string name) =>
+            status?.EffectiveCode == null ? Unknown($"{name}: данные отсутствуют.") :
+            status.EffectiveCode == 0 ? new(DiagnosticConnectionState.Connected, $"{name}: код 0.") :
+            new(DiagnosticConnectionState.Disconnected, $"{name}: код {status.EffectiveCode}.");
+        private static DiagnosticConnectionFact FromCashRegister(
+            EsmStatusResult esmApi,
+            EsmRegistrationResult registration,
+            EsmCashRegisterResult result)
         {
+            if (esmApi?.Kind != EsmStatusResultKind.Success)
+                return Unknown("Связь не проверена: API ЕСМ недоступен.");
+            if (registration?.Kind != EsmRegistrationResultKind.Registered)
+                return Unknown("Связь не проверена: ЕСМ не зарегистрирован.");
+            return result?.Kind switch
+            {
             EsmCashRegisterResultKind.Connected => new(DiagnosticConnectionState.Connected, "CashRegister.Data.kkt[] содержит подключённую ККТ."),
-            EsmCashRegisterResultKind.Disconnected when pnp?.Kind == KktPnpResultKind.Detected =>
-                new(DiagnosticConnectionState.Disconnected, "CashRegister.Data.kkt[] пуст; " + pnp.Details),
-            EsmCashRegisterResultKind.Disconnected when pnp?.Kind == KktPnpResultKind.NotDetected =>
-                new(DiagnosticConnectionState.Disconnected, "CashRegister.Data.kkt[] пуст; ATOL PnP device not found."),
-            EsmCashRegisterResultKind.Disconnected => new(DiagnosticConnectionState.Disconnected, "CashRegister.Data.kkt[] пуст; PnP status unavailable."),
+            EsmCashRegisterResultKind.Disconnected => new(DiagnosticConnectionState.Disconnected, "CashRegister.Data.kkt[] пуст."),
             _ => Unknown("CashRegister.Data.kkt[] не получен.")
         };
-        private static DiagnosticConnectionFact Unknown(string details) => new(DiagnosticConnectionState.Unknown, details);
-        private static bool HasRunningService(NodeStatus status, string name) => status?.Services?.Any(x => string.Equals(x.ServiceName, name, StringComparison.OrdinalIgnoreCase) && x.IsRunning) == true;
-        private static bool IsAtolVersionReady(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value)) return false;
-            string token = value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-            return Version.TryParse(token, out Version version) && version >= MinimumAtolVersion;
         }
+        private static DiagnosticConnectionFact Unknown(string details) => new(DiagnosticConnectionState.Unknown, details);
         private static void AddFailed(List<string> reasons, DiagnosticComponentFact fact, string name) { if (fact.State == DiagnosticState.Failed) reasons.Add(name + ": " + fact.Details); }
         private static void AddDisconnected(List<string> reasons, DiagnosticConnectionFact fact, string name) { if (fact.State == DiagnosticConnectionState.Disconnected) reasons.Add(name + ": " + fact.Details); }
 

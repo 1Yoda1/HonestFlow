@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -24,30 +25,36 @@ namespace HonestFlow.Application.Installation
             if (string.IsNullOrEmpty(expectedVersion))
                 return false;
 
-            string currentInfo = GetAtolDriverInfo();
+            string currentInfo = GetAtolDriverInfo(selectedIP?.Architecture);
             _log.LogDebug($"Текущий драйвер АТОЛ: {currentInfo}");
 
             if (currentInfo == "не установлен")
                 return true;
 
             string currentVersion = currentInfo.Split(' ')[0];
-            string needArch = selectedIP.Architecture;
+            bool needInstall = Version.TryParse(currentVersion, out Version installed) &&
+                Version.TryParse(expectedVersion, out Version target)
+                ? installed < target
+                : currentVersion != expectedVersion;
 
-            bool hasCorrectArch = false;
-            if (needArch == "x64" && currentInfo.Contains("64-bit"))
-                hasCorrectArch = true;
-            else if (needArch == "x86" && currentInfo.Contains("32-bit"))
-                hasCorrectArch = true;
-
-            bool needInstall = !hasCorrectArch || currentVersion != expectedVersion;
-
-            if (!hasCorrectArch)
-                _log.LogDebug($"⚠️ Нужная разрядность {needArch} не найдена среди установленных");
-
-            if (currentVersion != expectedVersion)
-                _log.LogDebug($"⚠️ Версия не совпадает: {currentVersion} != {expectedVersion}");
+            if (needInstall)
+                _log.LogDebug($"⚠️ Требуется обновление: {currentVersion} < {expectedVersion}");
 
             return needInstall;
+        }
+
+        public string GetAtolDriverInfo(string requiredArchitecture)
+        {
+            bool x86 = string.Equals(requiredArchitecture, "x86", System.StringComparison.OrdinalIgnoreCase);
+            string path = x86
+                ? @"C:\Program Files (x86)\ATOL\Drivers10\KKT\bin\fptr10_t.exe"
+                : @"C:\Program Files\ATOL\Drivers10\KKT\bin\fptr10_t.exe";
+            if (!File.Exists(path))
+                return "не установлен";
+
+            var versionInfo = FileVersionInfo.GetVersionInfo(path);
+            string architecture = x86 ? "32-bit" : "64-bit";
+            return $"{versionInfo.FileVersion ?? "версия не определена"} ({architecture})";
         }
 
         public bool NeedEsmInstall(string expectedVersion)

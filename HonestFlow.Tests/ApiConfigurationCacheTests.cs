@@ -19,14 +19,19 @@ namespace HonestFlow.Tests
                 var cache = new FileApiConfigurationCache(path, new ReversingProtector());
                 var configuration = new ApiConfigurationResponse
                 {
-                    Client = new ApiClientConfiguration { ClientId = "client-secret", Name = "Point" },
+                    Client = new ApiClientConfiguration
+                    {
+                        ClientId = "client-secret", Name = "Point", Inn = "007701234567"
+                    },
                     Device = new ApiDeviceConfiguration { DeviceId = "device-1" }
                 };
                 await cache.SaveAsync(configuration, CancellationToken.None);
 
                 string persisted = await File.ReadAllTextAsync(path);
                 Assert.DoesNotContain("client-secret", persisted);
-                Assert.Equal("client-secret", (await cache.LoadAsync("device-1", CancellationToken.None)).Client.ClientId);
+                ApiConfigurationResponse restored = await cache.LoadAsync("device-1", CancellationToken.None);
+                Assert.Equal("client-secret", restored.Client.ClientId);
+                Assert.Equal("007701234567", restored.Client.Inn);
                 Assert.Null(await cache.LoadAsync("another-device", CancellationToken.None));
             }
             finally

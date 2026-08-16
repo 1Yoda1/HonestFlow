@@ -17,11 +17,16 @@ namespace HonestFlow.Application.PointStatus
         ATOL_GRPC_SERVICE_STOPPED,
         KKT_NOT_DETECTED,
         KKT_NOT_VISIBLE_TO_ESM,
+        KKT_SERVICE_MISSING,
+        KKT_PORT_UNAVAILABLE,
         LM_NOT_INSTALLED,
         LM_API_UNAVAILABLE,
+        LM_NOT_READY,
         LM_SYNC_ERROR,
         LM_NOT_CONFIGURED,
         LM_INITIALIZING,
+        LM_INN_MISMATCH,
+        LM_INN_MISSING,
         LM_CONTROLLER_DISCONNECTED,
         GIS_MT_UNAVAILABLE,
         MARKING_CHANNEL_UNAVAILABLE,
@@ -141,7 +146,6 @@ namespace HonestFlow.Application.PointStatus
             PointStatusResult result = context.Result;
             ServiceSnapshot orchestrator = FindService(result, "esm-orchestrator");
             ServiceSnapshot cm = FindServicePrefix(result, "esm-cm-");
-            ServiceSnapshot atolGrpc = FindService(result, "atol-grpc-service");
 
             if (orchestrator == null && cm == null)
                 Add(issues, Issue(DiagnosticIssueCode.ESM_NOT_INSTALLED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
@@ -162,7 +166,7 @@ namespace HonestFlow.Application.PointStatus
                 Add(issues, Issue(DiagnosticIssueCode.ESM_NOT_REGISTERED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
                     "ТС ПИоТ не зарегистрирован", "Экземпляр ТС ПИоТ требует регистрации.", context.Esm.Details));
 
-            AddAtolIssues(issues, context, atolGrpc);
+            AddAtolIssues(issues, context);
             AddLmIssues(issues, context);
 
             if (!context.GisPathAvailable)
@@ -203,36 +207,69 @@ namespace HonestFlow.Application.PointStatus
             return issues;
         }
 
-        private static void AddAtolIssues(List<DiagnosticIssue> issues, DiagnosticEvaluationContext context, ServiceSnapshot atolGrpc)
+        private static void AddAtolIssues(List<DiagnosticIssue> issues, DiagnosticEvaluationContext context)
         {
-            string version = context.Result.AtolDriverVersion;
-            if (string.IsNullOrWhiteSpace(version) || version.Contains("не установлен", StringComparison.OrdinalIgnoreCase))
+            KktDriverProbeResult driver = context.Result.KktDriver;
+            bool driverMissing = driver != null
+                ? !driver.DriverFound
+                : string.IsNullOrWhiteSpace(context.Result.AtolDriverVersion) ||
+                  context.Result.AtolDriverVersion.Contains("не установлен", StringComparison.OrdinalIgnoreCase);
+            bool driverTooOld = driver != null
+                ? driver.DriverFound && (!driver.HasKnownVersion || !driver.IsAtLeast(ComponentVersionRequirements.MinimumSupportedAtolDriver))
+                : !driverMissing && !IsLegacyAtolSupported(context.Result.AtolDriverVersion);
+            if (driverMissing)
                 Add(issues, Issue(DiagnosticIssueCode.ATOL_DRIVER_MISSING, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
-                    "Драйвер ККТ не установлен", "Драйвер АТОЛ не найден.", version));
-            else if (!IsAtolSupported(version))
+                    "Драйвер ККТ не установлен", "Драйвер АТОЛ не найден.", context.Kkt.Details,
+                    evidence: new[] { Evidence("Architecture", driver?.RequiredArchitecture ?? "unknown") }));
+            else if (driverTooOld)
                 Add(issues, Issue(DiagnosticIssueCode.ATOL_DRIVER_TOO_OLD, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
-                    "Версия драйвера ККТ не поддерживается", "Обновите драйвер АТОЛ.", version));
+                    "Версия драйвера ККТ не поддерживается", "Обновите драйвер АТОЛ.", context.Kkt.Details,
+                    evidence: new[] { Evidence("Architecture", driver?.RequiredArchitecture ?? "unknown"), Evidence("Version", driver?.InstalledVersion ?? context.Result.AtolDriverVersion ?? "unknown") }));
 
-            if (atolGrpc == null || !atolGrpc.IsRunning)
-                Add(issues, Issue(DiagnosticIssueCode.ATOL_GRPC_SERVICE_STOPPED, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
-                    "Служба ККТ остановлена", "Служба atol-grpc-service не запущена.", context.Kkt.Details,
-                    DiagnosticFixKey.StartAtolGrpcService,
-                    Evidence("State", atolGrpc?.State ?? "missing")));
+            if (context.Result.KktPnP?.Kind == KktPnpResultKind.NotDetected)
+                Add(issues, Issue(DiagnosticIssueCode.KKT_NOT_DETECTED, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
+                    "ККТ не обнаружена", "ККТ физически не подключена.", context.Kkt.Details,
+                    evidence: new[] { Evidence("PnP", "NotDetected") }));
 
-            if (context.Result.CashRegister?.Kind == EsmCashRegisterResultKind.Disconnected)
+            IReadOnlyList<ServiceSnapshot> services = context.Result.KktServiceStatus?.Services ?? AllServices(context.Result).ToArray();
+            if (context.Result.KktServiceStatus != null)
             {
-                bool detected = context.Result.KktPnP?.Kind == KktPnpResultKind.Detected;
-                Add(issues, Issue(detected ? DiagnosticIssueCode.KKT_NOT_VISIBLE_TO_ESM : DiagnosticIssueCode.KKT_NOT_DETECTED,
-                    DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
-                    detected ? "ТС ПИоТ не видит ККТ" : "ККТ не обнаружена",
-                    detected ? "ККТ обнаружена Windows, но ТС ПИоТ её не видит." : "ККТ не обнаружена.",
-                    context.EsmKkt.Details, detected ? DiagnosticFixKey.RepairKktConnection : null,
-                    Evidence("PnP", context.Result.KktPnP?.Kind.ToString() ?? "Unknown")));
+                string missingService = RequiredKktServices.FirstOrDefault(name => services.All(service =>
+                    !string.Equals(service.ServiceName, name, StringComparison.OrdinalIgnoreCase)));
+                if (missingService != null)
+                    Add(issues, Issue(DiagnosticIssueCode.KKT_SERVICE_MISSING, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
+                        "Служба ККТ не найдена", "Не найдена обязательная служба ККТ.", context.Kkt.Details,
+                        DiagnosticFixKey.StartAtolGrpcService, Evidence("Service", missingService), Evidence("State", "missing")));
             }
+            ServiceSnapshot stoppedService = services.FirstOrDefault(service =>
+                RequiredKktServices.Contains(service.ServiceName, StringComparer.OrdinalIgnoreCase) && !service.IsRunning);
+            if (stoppedService != null)
+                Add(issues, Issue(DiagnosticIssueCode.ATOL_GRPC_SERVICE_STOPPED, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
+                    "Служба ККТ остановлена", "Служба ККТ не запущена.", context.Kkt.Details,
+                    DiagnosticFixKey.StartAtolGrpcService,
+                    Evidence("Service", stoppedService.ServiceName), Evidence("State", stoppedService.State)));
+
+            if (context.Result.KktPort4041?.IsAvailable == false)
+                Add(issues, Issue(DiagnosticIssueCode.KKT_PORT_UNAVAILABLE, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
+                    "Порт ККТ не найден", "Локальный порт ККТ 4041 недоступен.", context.Kkt.Details,
+                    evidence: new[] { Evidence("Endpoint", "127.0.0.1:4041"), Evidence("Error", context.Result.KktPort4041.ErrorCategory ?? "unknown") }));
+
+            if (context.EsmKkt.State == DiagnosticConnectionState.Disconnected)
+                Add(issues, Issue(DiagnosticIssueCode.KKT_NOT_VISIBLE_TO_ESM, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
+                    "ТС ПИоТ не видит ККТ", "ТС ПИоТ не видит ККТ.", context.EsmKkt.Details,
+                    DiagnosticFixKey.RepairKktConnection));
+
+            if (context.Kkt.State == DiagnosticState.Failed &&
+                !issues.Any(issue => issue.Component == DiagnosticComponent.Kkt && issue.Severity == DiagnosticSeverity.WorkImpossible))
+                Add(issues, Issue(DiagnosticIssueCode.ATOL_GRPC_SERVICE_STOPPED, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
+                    "Служба ККТ остановлена", "Служба ККТ не запущена.", context.Kkt.Details,
+                    DiagnosticFixKey.StartAtolGrpcService));
         }
 
         private static void AddLmIssues(List<DiagnosticIssue> issues, DiagnosticEvaluationContext context)
         {
+            AddLmInnIssues(issues, context.Result.LmProbe);
+
             LmDiagnosticProbeState state = context.Result.LmProbe?.State ??
                 (context.Lm.State == DiagnosticState.Healthy ? LmDiagnosticProbeState.Available : LmDiagnosticProbeState.ApiUnavailable);
             if (state == LmDiagnosticProbeState.Available) return;
@@ -247,12 +284,36 @@ namespace HonestFlow.Application.PointStatus
                     "ЛМ ЧЗ не настроен", "ЛМ ЧЗ требует настройки.", context.Lm.Details, DiagnosticFixKey.InitializeLm),
                 LmDiagnosticProbeState.Initializing => Issue(DiagnosticIssueCode.LM_INITIALIZING, DiagnosticComponent.Lm, severity,
                     "ЛМ ЧЗ инициализируется", "Инициализация ЛМ ЧЗ ещё не завершена.", context.Lm.Details),
-                _ => Issue(DiagnosticIssueCode.LM_API_UNAVAILABLE, DiagnosticComponent.Lm, severity,
+                LmDiagnosticProbeState.ApiUnavailable => Issue(DiagnosticIssueCode.LM_API_UNAVAILABLE, DiagnosticComponent.Lm, severity,
                     "ЛМ ЧЗ недоступен", context.GisPathAvailable
                         ? "ЛМ ЧЗ недоступен. Проверка выполняется через ГИС МТ."
-                        : "API ЛМ ЧЗ не отвечает.", context.Lm.Details, DiagnosticFixKey.RestartLm)
+                        : "API ЛМ ЧЗ не отвечает.", context.Lm.Details, DiagnosticFixKey.RestartLm),
+                _ => Issue(DiagnosticIssueCode.LM_NOT_READY, DiagnosticComponent.Lm, severity,
+                    "ЛМ ЧЗ не готов", "ЛМ ЧЗ отвечает, но ещё не готов к работе.", context.Lm.Details)
             };
             Add(issues, issue);
+        }
+
+        private static void AddLmInnIssues(List<DiagnosticIssue> issues, LmDiagnosticProbeResult probe)
+        {
+            if (probe?.State != LmDiagnosticProbeState.Available || !probe.HealthAvailable)
+                return;
+
+            DiagnosticEvidence[] evidence =
+            {
+                Evidence("actualLmInn", probe.ActualInnMasked ?? "-"),
+                Evidence("expectedClientInn", probe.ExpectedInnMasked ?? "-"),
+                Evidence("lm.runtimeStatus", probe.RuntimeStatus ?? "unknown"),
+                Evidence("lm.apiAvailability", "Available")
+            };
+            if (probe.InnComparison == LmInnComparisonState.Mismatch)
+                Add(issues, Issue(DiagnosticIssueCode.LM_INN_MISMATCH, DiagnosticComponent.Lm, DiagnosticSeverity.Attention,
+                    "ИНН ЛМ ЧЗ не соответствует клиенту", "ЛМ ЧЗ настроен на другой ИНН.",
+                    probe.InnComparisonDetails, evidence: evidence));
+            else if (probe.InnComparison == LmInnComparisonState.Missing)
+                Add(issues, Issue(DiagnosticIssueCode.LM_INN_MISSING, DiagnosticComponent.Lm, DiagnosticSeverity.Attention,
+                    "ИНН ЛМ ЧЗ не определён", "Не удалось определить ИНН ЛМ ЧЗ.",
+                    probe.InnComparisonDetails, evidence: evidence));
         }
 
         private static DiagnosticIssue Issue(
@@ -279,11 +340,13 @@ namespace HonestFlow.Application.PointStatus
             .Concat(result.Controller?.Services ?? Array.Empty<ServiceSnapshot>())
             .GroupBy(x => x.ServiceName, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First());
-        private static bool IsAtolSupported(string value)
+        private static readonly string[] RequiredKktServices = { "uem-agent", "uem-updater", "atol-grpc-service" };
+        private static bool IsLegacyAtolSupported(string value)
         {
-            string token = value.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-            return Version.TryParse(token, out Version actual) &&
-                Version.TryParse(ComponentVersionRequirements.MinimumSupportedAtolDriver, out Version minimum) && actual >= minimum;
+            string token = value?.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            return Version.TryParse(token, out Version installed) &&
+                Version.TryParse(ComponentVersionRequirements.MinimumSupportedAtolDriver, out Version minimum) &&
+                installed >= minimum;
         }
         private static string VersionEvidence(ComponentVersionStatus version) =>
             $"installed={version.InstalledVersion ?? "-"}; minimum={version.MinimumSupportedVersion ?? "-"}; target={version.TargetVersion ?? "-"}";
@@ -306,27 +369,98 @@ namespace HonestFlow.Application.PointStatus
                     version.State is ComponentVersionState.Unknown ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
                     version.InstalledVersion ?? "not installed", VersionEvidence(version)));
 
+            ComponentVersionStatus controllerVersion = (context.Versions ?? Array.Empty<ComponentVersionStatus>())
+                .FirstOrDefault(version => string.Equals(version.ComponentName, "Контроллер", StringComparison.OrdinalIgnoreCase));
+            ServiceSnapshot controllerService = context.Result.ControllerServiceStatus?.Services?.FirstOrDefault() ??
+                (context.Result.ServiceSnapshots ?? Array.Empty<ServiceSnapshot>()).FirstOrDefault(service =>
+                    string.Equals(service.ServiceName, "esm-lm-controller", StringComparison.OrdinalIgnoreCase));
+            ControllerServiceInfoResult serviceInfo = context.Result.ControllerServiceInfo;
+            facts.Add(new DiagnosticFact("Controller.Installed", DiagnosticComponent.Controller,
+                controllerVersion?.State == ComponentVersionState.NotInstalled ? DiagnosticFactState.Failure :
+                controllerVersion is null ? DiagnosticFactState.Unknown : DiagnosticFactState.Success,
+                controllerVersion?.State == ComponentVersionState.NotInstalled ? "NotInstalled" : "Installed"));
+            facts.Add(new DiagnosticFact("Controller.InstalledVersion", DiagnosticComponent.Controller,
+                string.IsNullOrWhiteSpace(controllerVersion?.InstalledVersion) ? DiagnosticFactState.Unknown : DiagnosticFactState.Success,
+                controllerVersion?.InstalledVersion ?? "-"));
+            facts.Add(new DiagnosticFact("Controller.TargetVersion", DiagnosticComponent.Controller,
+                string.IsNullOrWhiteSpace(controllerVersion?.TargetVersion) ? DiagnosticFactState.Unknown : DiagnosticFactState.Success,
+                controllerVersion?.TargetVersion ?? "-"));
+            facts.Add(new DiagnosticFact("Controller.VersionMatch", DiagnosticComponent.Controller,
+                controllerVersion?.State == ComponentVersionState.Current ? DiagnosticFactState.Success :
+                controllerVersion?.State is ComponentVersionState.UpdateRequired or ComponentVersionState.BelowMinimum ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
+                controllerVersion?.State.ToString() ?? "Unknown"));
+            facts.Add(new DiagnosticFact("Controller.ServiceExists", DiagnosticComponent.Controller,
+                controllerService is null ? DiagnosticFactState.Failure : DiagnosticFactState.Success,
+                controllerService?.ServiceName ?? "missing"));
+            facts.Add(new DiagnosticFact("Controller.ServiceRunning", DiagnosticComponent.Controller,
+                controllerService?.IsRunning == true ? DiagnosticFactState.Success :
+                controllerService is null ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
+                controllerService?.State ?? "missing"));
+            facts.Add(new DiagnosticFact("Controller.ServiceInfoAvailable", DiagnosticComponent.Controller,
+                serviceInfo?.IsAvailable == true ? DiagnosticFactState.Success :
+                serviceInfo is null ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
+                serviceInfo?.IsAvailable == true ? "Available" : "Unavailable",
+                $"httpStatus={serviceInfo?.HttpStatusCode?.ToString() ?? "-"}; errorCategory={serviceInfo?.ErrorCategory ?? "-"}"));
+            facts.Add(new DiagnosticFact("Controller.ServiceInfoHttpStatus", DiagnosticComponent.Controller,
+                serviceInfo?.HttpStatusCode.HasValue == true ? DiagnosticFactState.Success : DiagnosticFactState.Unknown,
+                serviceInfo?.HttpStatusCode?.ToString() ?? "-"));
+            facts.Add(new DiagnosticFact("Controller.ServiceInfoErrorCategory", DiagnosticComponent.Controller,
+                string.IsNullOrWhiteSpace(serviceInfo?.ErrorCategory) ? DiagnosticFactState.Success : DiagnosticFactState.Failure,
+                string.IsNullOrWhiteSpace(serviceInfo?.ErrorCategory) ? "-" : serviceInfo.ErrorCategory));
+
             EsmComponentStatus client = context.Api?.ClientSoftware;
             facts.Add(new DiagnosticFact("Esm.Api", DiagnosticComponent.Esm,
                 context.Result.EsmApiStatus?.Kind == EsmStatusResultKind.Success ? DiagnosticFactState.Success : DiagnosticFactState.Failure,
                 context.Result.EsmApiStatus?.Kind.ToString() ?? "not requested", context.Esm.Details));
+            facts.Add(new DiagnosticFact("EsmApiPort", DiagnosticComponent.Esm,
+                context.Result.EsmApiStatus?.ApiPort.HasValue == true ? DiagnosticFactState.Success : DiagnosticFactState.Unknown,
+                context.Result.EsmApiStatus?.ApiPort?.ToString() ?? "-"));
             facts.Add(new DiagnosticFact("Esm.Registration", DiagnosticComponent.Esm,
                 context.Result.EsmRegistration?.Kind == EsmRegistrationResultKind.Registered ? DiagnosticFactState.Success : DiagnosticFactState.Failure,
                 context.Result.EsmRegistration?.Kind.ToString() ?? "unknown"));
             facts.Add(new DiagnosticFact("Kkt.Live", DiagnosticComponent.Kkt,
-                context.EsmKkt.State == DiagnosticConnectionState.Connected ? DiagnosticFactState.Success : DiagnosticFactState.Failure,
+                context.EsmKkt.State == DiagnosticConnectionState.Connected ? DiagnosticFactState.Success :
+                context.EsmKkt.State == DiagnosticConnectionState.Disconnected ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
                 context.Result.CashRegister?.Kind.ToString() ?? "unknown", context.EsmKkt.Details));
             facts.Add(new DiagnosticFact("Kkt.PnP", DiagnosticComponent.Kkt,
                 context.Result.KktPnP?.Kind == KktPnpResultKind.Detected ? DiagnosticFactState.Success :
                 context.Result.KktPnP?.Kind == KktPnpResultKind.NotDetected ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
                 context.Result.KktPnP?.Kind.ToString() ?? "unknown", context.Result.KktPnP?.Details));
+            KktDriverProbeResult kktDriver = context.Result.KktDriver;
+            facts.Add(new DiagnosticFact("Kkt.DriverArchitecture", DiagnosticComponent.Kkt,
+                kktDriver == null ? DiagnosticFactState.Unknown : DiagnosticFactState.Success,
+                kktDriver?.RequiredArchitecture ?? "unknown"));
+            facts.Add(new DiagnosticFact("Kkt.Driver", DiagnosticComponent.Kkt,
+                kktDriver?.DriverFound == true ? DiagnosticFactState.Success :
+                kktDriver == null ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
+                kktDriver?.InstalledVersion ?? "not installed",
+                $"minimum={ComponentVersionRequirements.MinimumSupportedAtolDriver}; error={kktDriver?.ErrorCategory ?? "-"}"));
+            KktPortProbeResult kktPort = context.Result.KktPort4041;
+            facts.Add(new DiagnosticFact("Kkt.Port4041", DiagnosticComponent.Kkt,
+                kktPort?.IsAvailable == true ? DiagnosticFactState.Success :
+                kktPort == null ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
+                kktPort?.IsAvailable == true ? "Success" : "Failure",
+                $"endpoint=127.0.0.1:4041; result={kktPort?.ErrorCategory ?? (kktPort?.IsAvailable == true ? "success" : "unknown")}"));
             facts.Add(new DiagnosticFact("ClientSoftware", DiagnosticComponent.ClientSoftware,
                 DiagnosticFactState.Unknown, client?.Name ?? "not detected", ClientSoftwareEvidence(client)));
             facts.Add(new DiagnosticFact("Lm.Health", DiagnosticComponent.Lm,
                 context.Lm.State == DiagnosticState.Healthy ? DiagnosticFactState.Success :
                 context.Lm.State == DiagnosticState.Failed ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
                 context.Result.LmProbe?.State.ToString() ?? context.Lm.State.ToString(), context.Lm.Details));
+            LmDiagnosticProbeResult lmProbe = context.Result.LmProbe;
+            facts.Add(new DiagnosticFact("LmInnComparison", DiagnosticComponent.Lm,
+                lmProbe?.InnComparison == LmInnComparisonState.Match ? DiagnosticFactState.Success :
+                lmProbe?.InnComparison is LmInnComparisonState.Mismatch or LmInnComparisonState.Missing ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
+                lmProbe?.InnComparison.ToString() ?? "Unknown",
+                $"Reason={lmProbe?.InnComparisonDetails ?? "LM probe unavailable"}; " +
+                $"actual={lmProbe?.ActualInnMasked ?? "-"}; expected={lmProbe?.ExpectedInnMasked ?? "-"}; " +
+                $"runtime={lmProbe?.RuntimeStatus ?? "unknown"}; api={lmProbe?.State.ToString() ?? "unknown"}"));
             facts.Add(ConnectionFact("Lm.Controller", DiagnosticComponent.Controller, context.EsmController));
+            facts.Add(new DiagnosticFact("EsmToController.LmDataCode", DiagnosticComponent.Controller,
+                context.Result.EsmApiStatus?.Status?.LmInfo?.EffectiveCode == 0 ? DiagnosticFactState.Success :
+                context.Result.EsmApiStatus?.Status?.LmInfo?.EffectiveCode.HasValue == true ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
+                context.Result.EsmApiStatus?.Status?.LmInfo?.EffectiveCode?.ToString() ?? "missing"));
+            facts.Add(ConnectionFact("EsmToController.LinkState", DiagnosticComponent.Controller, context.EsmController));
             facts.Add(ConnectionFact("Lm.Connection", DiagnosticComponent.Lm, context.LmConnection));
             facts.Add(new DiagnosticFact("GisMt", DiagnosticComponent.GisMt,
                 context.Gismt.State == DiagnosticState.Healthy ? DiagnosticFactState.Success :

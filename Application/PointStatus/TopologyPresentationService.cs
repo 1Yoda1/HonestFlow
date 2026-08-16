@@ -40,16 +40,18 @@ namespace HonestFlow.Application.PointStatus
         public TopologyPresentation Create(PointStatusResult result)
         {
             if (result == null) throw new ArgumentNullException(nameof(result));
+            EsmStatusDto status = result.EsmApiStatus?.Status;
+            EsmStatusDto api = status?.Software?.Data ?? status?.Data?.Software?.Data ?? status?.Data ?? status;
             return new TopologyPresentation
             {
                 LmFrame = FrameFromServices(result.Lm),
                 EsmFrame = FrameFromServices(result.Esm),
                 KktFrame = FrameFromServices(result.Kkt),
-                ControllerFrame = FrameFromServices(result.Controller),
+                ControllerFrame = FrameFromNode(result.Controller),
                 CloudToEsm = LinkFromCloud(result.Cloud),
-                EsmToController = LinkBetween(result.Esm, result.Controller, "ЕСМ", "контроллером"),
-                ControllerToLm = LinkBetween(result.Controller, result.Lm, "контроллер", "ЛМ ЧЗ"),
-                EsmToKkt = LinkBetween(result.Esm, result.Kkt, "ЕСМ", "ККТ")
+                EsmToController = LinkFromEsmInstance(result, LinkFromLmInfoCode(result.EsmApiStatus?.Status?.LmInfo, "ЕСМ ↔ Controller")),
+                ControllerToLm = LinkFromEsmInstance(result, LinkFromCode(api?.Lm, "Связь с ЛМ")),
+                EsmToKkt = LinkFromEsmInstance(result, LinkFromCashRegister(result.CashRegister))
             };
         }
 
@@ -89,6 +91,44 @@ namespace HonestFlow.Application.PointStatus
                 ? TopologyVisualState.Healthy
                 : TopologyVisualState.Missing;
 
+        private static TopologyVisualState FrameFromNode(NodeStatus node) => node?.Level switch
+        {
+            NodeLevel.Ok => TopologyVisualState.Healthy,
+            NodeLevel.Error => TopologyVisualState.Missing,
+            _ => TopologyVisualState.Uncertain
+        };
+
+        private static TopologyLinkPresentation LinkFromCode(EsmComponentStatus status, string name) =>
+            status?.Code == 0
+                ? new TopologyLinkPresentation(TopologyVisualState.Healthy, $"{name}: код 0.")
+                : status?.Code.HasValue == true
+                    ? new TopologyLinkPresentation(TopologyVisualState.Missing, $"{name}: код {status.Code}.")
+                    : new TopologyLinkPresentation(TopologyVisualState.Uncertain, $"{name}: данные отсутствуют.");
+
+        private static TopologyLinkPresentation LinkFromLmInfoCode(EsmLmInfoDto status, string name) =>
+            status?.EffectiveCode == 0
+                ? new TopologyLinkPresentation(TopologyVisualState.Healthy, $"{name}: код 0.")
+                : status?.EffectiveCode.HasValue == true
+                    ? new TopologyLinkPresentation(TopologyVisualState.Missing, $"{name}: код {status.EffectiveCode}.")
+                    : new TopologyLinkPresentation(TopologyVisualState.Uncertain, $"{name}: данные отсутствуют.");
+
+        private static TopologyLinkPresentation LinkFromCashRegister(EsmCashRegisterResult result) => result?.Kind switch
+        {
+            EsmCashRegisterResultKind.Connected => new TopologyLinkPresentation(TopologyVisualState.Healthy, "ЕСМ видит подключённую ККТ."),
+            EsmCashRegisterResultKind.Disconnected => new TopologyLinkPresentation(TopologyVisualState.Missing, "ЕСМ не видит ККТ."),
+            _ => new TopologyLinkPresentation(TopologyVisualState.Uncertain, "Связь ЕСМ с ККТ не проверена.")
+        };
+
+        private static TopologyLinkPresentation LinkFromEsmInstance(
+            PointStatusResult result,
+            TopologyLinkPresentation link)
+        {
+            if (result?.EsmApiStatus?.Kind != EsmStatusResultKind.Success ||
+                result.EsmRegistration?.Kind != EsmRegistrationResultKind.Registered)
+                return new TopologyLinkPresentation(TopologyVisualState.Uncertain, "Связь не проверена: ЕСМ не зарегистрирован или его API недоступен.");
+            return link;
+        }
+
         private static TopologyLinkPresentation LinkFromCloud(NodeStatus cloud)
         {
             if (cloud?.Level == NodeLevel.Ok)
@@ -96,20 +136,9 @@ namespace HonestFlow.Application.PointStatus
             return new TopologyLinkPresentation(TopologyVisualState.Uncertain, Explain(cloud, "Не удалось подтвердить связь с облаком."));
         }
 
-        private static TopologyLinkPresentation LinkBetween(NodeStatus source, NodeStatus target, string sourceName, string targetName)
-        {
-            if (HasMissingComponent(source) || HasMissingComponent(target))
-                return new TopologyLinkPresentation(TopologyVisualState.Missing, $"Связь между {sourceName} и {targetName} невозможна: отсутствует необходимый компонент или набор служб.");
-            if (HasStoppedServices(source) || HasStoppedServices(target))
-                return new TopologyLinkPresentation(TopologyVisualState.Uncertain, $"Связь между {sourceName} и {targetName} не проверена полностью: одна или несколько служб остановлены.");
-            if (source?.Level == NodeLevel.Ok && target?.Level == NodeLevel.Ok)
-                return new TopologyLinkPresentation(TopologyVisualState.Healthy, $"Связь между {sourceName} и {targetName} подтверждена.");
-            return new TopologyLinkPresentation(TopologyVisualState.Uncertain, Explain(target, $"При проверке связи между {sourceName} и {targetName} обнаружена проблема."));
-        }
-
-        private static bool HasMissingComponent(NodeStatus node) => node == null || node.Services == null || node.Services.Count == 0;
-        private static bool HasStoppedServices(NodeStatus node) => node?.Services != null && node.Services.Any(service => !service.IsRunning);
         private static string Explain(NodeStatus node, string fallback) =>
-            !string.IsNullOrWhiteSpace(node?.Details) ? node.Details : !string.IsNullOrWhiteSpace(node?.StatusText) ? node.StatusText : fallback;
+            !string.IsNullOrWhiteSpace(node?.Details) ? node.Details :
+            !string.IsNullOrWhiteSpace(node?.StatusText) ? node.StatusText : fallback;
+
     }
 }

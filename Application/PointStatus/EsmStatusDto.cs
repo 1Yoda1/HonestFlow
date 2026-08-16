@@ -55,11 +55,17 @@ namespace HonestFlow.Application.PointStatus
 
     public sealed class EsmLmInfoDto
     {
+        [JsonProperty("data")]
+        public EsmLmInfoDto Data { get; set; }
+
         [JsonProperty("controllerVersion")]
         public string ControllerVersion { get; set; }
 
         [JsonProperty("code")]
         public int? Code { get; set; }
+
+        [JsonIgnore]
+        public int? EffectiveCode => Data?.Code ?? Code;
 
         [JsonProperty("lmStatus")]
         public EsmLmStatusDto LmStatus { get; set; }

@@ -709,7 +709,10 @@ public partial class MainWindow : Window
         SimpleStatusDescription.Text = "Пожалуйста, подождите. HonestFlow проверяет готовность кассы и маркировки.";
         SimpleFixButton.Visibility = Visibility.Collapsed;
         SimpleHelpButton.Visibility = Visibility.Collapsed;
-        foreach (Border border in new[] { EsmNodeBorder, ControllerNodeBorder, LmNodeBorder, KktNodeBorder }) border.BorderBrush = neutral;
+        foreach (Border border in new[] { GismtNodeBorder, EsmNodeBorder, ControllerNodeBorder, LmNodeBorder, KktNodeBorder }) border.BorderBrush = neutral;
+        foreach (Ellipse dot in new[] { GismtNodeStatusDot, EsmNodeStatusDot, ControllerNodeStatusDot, LmNodeStatusDot, KktNodeStatusDot }) dot.Fill = neutral;
+        foreach (TextBlock icon in new[] { GismtNodeIcon, EsmNodeIcon, ControllerNodeIcon, LmNodeIcon, KktNodeIcon }) icon.Foreground = neutral;
+        foreach (TextBlock text in new[] { GismtNodeStatusText, EsmNodeStatusText, ControllerNodeStatusText, LmNodeStatusText, KktNodeStatusText }) text.Foreground = neutral;
         foreach (Line line in new[] { CloudEsmLine, EsmControllerLine, ControllerLmLine, EsmKktLine }) line.Stroke = neutral;
         foreach (Border marker in new[] { CloudEsmMarker, EsmControllerMarker, ControllerLmMarker, EsmKktMarker }) marker.Visibility = Visibility.Collapsed;
         EsmNodeStatusText.Text = ControllerNodeStatusText.Text = LmNodeStatusText.Text = KktNodeStatusText.Text = "Проверка…";
@@ -721,20 +724,20 @@ public partial class MainWindow : Window
         if (_lastDiagnostics == null) return;
 
         ApplyStandaloneFrame(
-            GismtNodeBorder, GismtNodeIcon, GismtNodeStatusText, _lastDiagnostics.Gismt,
+            GismtNodeBorder, GismtNodeIcon, GismtNodeStatusDot, GismtNodeStatusText, _lastDiagnostics.Gismt,
             _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Gismt, "Недоступен"), "ГИС МТ");
         ApplyFrame(
-            EsmNodeBorder, EsmNodeIcon, EsmNodeStatusText, _lastDiagnostics.Esm, presentation.EsmFrame,
+            EsmNodeBorder, EsmNodeIcon, EsmNodeStatusDot, EsmNodeStatusText, _lastDiagnostics.Esm, presentation.EsmFrame,
             _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Esm, "API недоступен"), "ТС ПИоТ");
         ApplyFrame(
-            ControllerNodeBorder, ControllerNodeIcon, ControllerNodeStatusText, _lastDiagnostics.Controller, presentation.ControllerFrame,
-            _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Controller, "Служба остановлена"), "Локальный контроллер");
+            ControllerNodeBorder, ControllerNodeIcon, ControllerNodeStatusDot, ControllerNodeStatusText, _lastDiagnostics.Controller, presentation.ControllerFrame,
+            _lastPointStatus?.Controller?.StatusText ?? _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Controller, "Контроллер недоступен"), "Локальный контроллер");
         ApplyFrame(
-            LmNodeBorder, LmNodeIcon, LmNodeStatusText, _lastDiagnostics.Lm, presentation.LmFrame,
+            LmNodeBorder, LmNodeIcon, LmNodeStatusDot, LmNodeStatusText, _lastDiagnostics.Lm, presentation.LmFrame,
             _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Lm, "Недоступен"), "ЛМ ЧЗ");
         ApplyFrame(
-            KktNodeBorder, KktNodeIcon, KktNodeStatusText, _lastDiagnostics.Kkt, presentation.KktFrame,
-            _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Kkt, "Служба остановлена"), "ККТ");
+            KktNodeBorder, KktNodeIcon, KktNodeStatusDot, KktNodeStatusText, _lastDiagnostics.Kkt, presentation.KktFrame,
+            _lastPointStatus?.Kkt?.StatusText ?? _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Kkt, "Служба остановлена"), "ККТ");
         ApplyLink(CloudEsmLine, CloudEsmMarker, presentation.CloudToEsm,
             _diagnosticPresentation.ConnectionDetails(_lastDiagnostics.GismtToEsm, "Связь с ГИС МТ"));
         ApplyLink(EsmControllerLine, EsmControllerMarker, presentation.EsmToController,
@@ -753,13 +756,19 @@ public partial class MainWindow : Window
             : $"{issue.Description}\n{issue.Recommendation}";
     }
 
-    private void ApplyStandaloneFrame(Border border, TextBlock icon, TextBlock text, DiagnosticComponentFact fact, string status, string componentName)
+    private void ApplyStandaloneFrame(Border border, TextBlock icon, Ellipse statusDot, TextBlock text, DiagnosticComponentFact fact, string status, string componentName)
     {
-        Brush color = fact.State == DiagnosticState.Healthy ? BrushFrom("#0E9F6E") :
-            fact.State == DiagnosticState.Failed ? BrushFrom("#D91532") : BrushFrom("#F4B740");
+        TopologyVisualState state = fact?.State switch
+        {
+            DiagnosticState.Healthy => TopologyVisualState.Healthy,
+            DiagnosticState.Failed => TopologyVisualState.Missing,
+            _ => TopologyVisualState.Uncertain
+        };
+        Brush color = BrushForNodeState(state);
         border.BorderBrush = color;
         border.ToolTip = _diagnosticPresentation.ComponentDetails(fact, componentName);
         icon.Foreground = color;
+        statusDot.Fill = color;
         text.Text = status;
         text.Foreground = color;
     }
@@ -835,24 +844,30 @@ public partial class MainWindow : Window
     private void ApplyFrame(
         Border border,
         TextBlock icon,
+        Ellipse statusDot,
         TextBlock text,
         DiagnosticComponentFact fact,
         TopologyVisualState state,
         string status,
         string componentName)
     {
-        border.BorderBrush = state switch
-        {
-            TopologyVisualState.Healthy => BrushFrom("#0E9F6E"),
-            TopologyVisualState.Missing => BrushFrom("#D91532"),
-            _ => BrushFrom("#F4B740")
-        };
+        Brush color = BrushForNodeState(state);
+        border.BorderBrush = color;
         border.BorderThickness = new Thickness(2.2);
         border.ToolTip = _diagnosticPresentation.ComponentDetails(fact, componentName);
         text.Text = status;
-        text.Foreground = border.BorderBrush;
-        icon.Foreground = border.BorderBrush;
+        text.Foreground = color;
+        icon.Foreground = color;
+        statusDot.Fill = color;
     }
+
+    private static Brush BrushForNodeState(TopologyVisualState state) => state switch
+    {
+        TopologyVisualState.Healthy => BrushFrom("#0E9F6E"),
+        TopologyVisualState.Missing => BrushFrom("#D91532"),
+        TopologyVisualState.Ignored => BrushFrom("#94A3B8"),
+        _ => BrushFrom("#F4B740")
+    };
 
     private static void ApplyLink(Line line, Border marker, TopologyLinkPresentation presentation, string description)
     {

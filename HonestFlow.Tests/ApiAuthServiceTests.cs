@@ -16,7 +16,7 @@ namespace HonestFlow.Tests
         [Fact]
         public async Task Login_LoadsOnlyCurrentClientConfiguration()
         {
-            const string json = "{\"client\":{\"clientId\":\"c1\",\"name\":\"Point\",\"architecture\":\"x64\",\"hasLmDatabaseBackup\":true,\"ruDesktopEnabled\":true},\"device\":{\"deviceId\":\"d1\",\"status\":\"Approved\"},\"components\":[{\"component\":\"LmModule\",\"effectiveVersion\":\"4.2\"}]}";
+            const string json = "{\"client\":{\"clientId\":\"c1\",\"name\":\"Point\",\"inn\":\"007701234567\",\"architecture\":\"x64\",\"hasLmDatabaseBackup\":true,\"ruDesktopEnabled\":true},\"device\":{\"deviceId\":\"d1\",\"status\":\"Approved\"},\"components\":[{\"component\":\"LmModule\",\"effectiveVersion\":\"4.2\"}]}";
             var session = new FakeSession(json);
             var service = new ApiAuthService(
                 session,
@@ -28,6 +28,7 @@ namespace HonestFlow.Tests
 
             Assert.Equal("seller", session.Login);
             Assert.Equal("c1", result.Client.ClientId);
+            Assert.Equal("007701234567", result.Client.Inn);
             Assert.Equal("4.2", result.Client.Versions.LmModule);
             Assert.Null(result.Client.Password);
         }

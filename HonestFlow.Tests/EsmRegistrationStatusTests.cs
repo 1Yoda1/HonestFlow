@@ -18,24 +18,21 @@ namespace HonestFlow.Tests
             var services = EsmServices("Stopped", "Running");
             var result = PointStatusService.BuildEsmStatus(
                 services,
-                EsmRegistrationResult.Registered(),
-                EsmCashRegisterResult.Connected());
+                EsmRegistrationResult.Registered());
 
             Assert.Equal(NodeLevel.Error, result.Level);
             Assert.Equal("Запустить", result.ActionText);
         }
 
         [Fact]
-        public void NotConfiguredWithConnectedCashRegister_ShowsRegistrationInstruction()
+        public void NotConfigured_ShowsRegistrationInstruction()
         {
             var result = PointStatusService.BuildEsmStatus(
                 EsmServices("Running", "Running"),
-                EsmRegistrationResult.NotConfigured(),
-                EsmCashRegisterResult.Connected());
+                EsmRegistrationResult.NotConfigured());
 
-            Assert.Equal(NodeLevel.Error, result.Level);
+            Assert.Equal(NodeLevel.Warning, result.Level);
             Assert.Contains("нажмите «Зарегистрировать»", result.StatusText);
-            Assert.Contains("CashRegister.Data: получены", result.Details);
             Assert.False(result.CanManageServices);
         }
 
@@ -44,12 +41,10 @@ namespace HonestFlow.Tests
         {
             var result = PointStatusService.BuildEsmStatus(
                 EsmServices("Running", "Running"),
-                EsmRegistrationResult.NotConfigured(),
-                EsmCashRegisterResult.Disconnected());
+                EsmRegistrationResult.NotConfigured());
 
             Assert.Equal(NodeLevel.Warning, result.Level);
             Assert.Contains("ЕСМ не зарегистрирован", result.StatusText);
-            Assert.Contains("ККТ", result.StatusText);
         }
 
         [Fact]
@@ -57,8 +52,7 @@ namespace HonestFlow.Tests
         {
             var result = PointStatusService.BuildEsmStatus(
                 EsmServices("Running", "Running"),
-                EsmRegistrationResult.Registered(),
-                EsmCashRegisterResult.Connected());
+                EsmRegistrationResult.Registered());
 
             Assert.Equal(NodeLevel.Ok, result.Level);
             Assert.Equal("ЕСМ зарегистрирован", result.StatusText);
@@ -70,8 +64,7 @@ namespace HonestFlow.Tests
             var services = new NodeStatus(NodeLevel.Error, "Не найдено", "Службы отсутствуют");
             var result = PointStatusService.BuildEsmStatus(
                 services,
-                EsmRegistrationResult.NotConfigured(),
-                EsmCashRegisterResult.Disconnected());
+                EsmRegistrationResult.NotConfigured());
 
             Assert.Equal(NodeLevel.Error, result.Level);
             Assert.Contains("Установите ЕСМ", result.StatusText);

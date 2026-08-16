@@ -36,7 +36,10 @@ namespace HonestFlow.Tests
         public void OldOrMissingAtolDriver_MakesKktFailed_WorkImpossible(string version)
         {
             PointStatusResult result = Healthy();
-            result.AtolDriverVersion = version;
+            result.Kkt = Node(NodeLevel.Error, "atol-grpc-service", "Stopped");
+            result.KktDriver = version == "не установлен"
+                ? KktDriverProbeResult.NotFound("x64")
+                : KktDriverProbeResult.Found("x64", version);
             DiagnosticsSnapshot snapshot = _builder.Create(result);
             Assert.Equal(DiagnosticState.Failed, snapshot.Kkt.State);
             Assert.Equal(WorkState.WorkImpossible, snapshot.WorkState);
@@ -119,7 +122,7 @@ namespace HonestFlow.Tests
         public void LmConnections_MapFromTheirOwnCodes_WithoutClientSoftwareHealth()
         {
             PointStatusResult result = Healthy();
-            result.EsmApiStatus.Status.LmController.Code = 4;
+            result.EsmApiStatus.Status.LmInfo.Code = 4;
             result.EsmApiStatus.Status.Lm.Code = 5;
             DiagnosticsSnapshot snapshot = _builder.Create(result);
             Assert.Equal(DiagnosticConnectionState.Disconnected, snapshot.EsmToController.State);
@@ -176,6 +179,7 @@ namespace HonestFlow.Tests
             result.EsmApiStatus = EsmStatusResult.Success(new EsmStatusDto
             {
                 ClientSoftware = null,
+                LmInfo = new EsmLmInfoDto { Code = 0 },
                 Software = new EsmSoftwareStatusDto
                 {
                     Data = new EsmStatusDto
@@ -211,6 +215,8 @@ namespace HonestFlow.Tests
         public void BelowHardMinimum_IsWorkImpossible()
         {
             PointStatusResult result = Healthy();
+            result.Kkt = Node(NodeLevel.Error, "atol-grpc-service", "Stopped");
+            result.KktDriver = KktDriverProbeResult.Found("x64", "10.10.8.22");
             result.AtolDriverVersion = "10.10.8.22 (64-bit)";
             ComponentVersionStatus version = ComponentVersionStatus.Create(
                 "Драйвер ККТ", result.AtolDriverVersion, "10.10.8.24", true,
@@ -282,7 +288,7 @@ namespace HonestFlow.Tests
         public void ControllerLmDisconnected_AndGisAvailable_IsAttention()
         {
             PointStatusResult result = Healthy();
-            result.EsmApiStatus.Status.LmController.Code = 3;
+            result.EsmApiStatus.Status.LmInfo.Code = 3;
 
             DiagnosticsSnapshot snapshot = _builder.Create(result);
 
@@ -291,15 +297,16 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void LiveKktConnection_WinsWhenAtolPnpIsNotFound()
+        public void LiveKktConnection_DoesNotMakePhysicallyMissingKktHealthy()
         {
             PointStatusResult result = Healthy();
             result.KktPnP = KktPnpResult.NotDetected();
+            result.Kkt = Node(NodeLevel.Error, "atol-grpc-service", "Stopped");
 
             DiagnosticsSnapshot snapshot = _builder.Create(result);
 
             Assert.Equal(DiagnosticConnectionState.Connected, snapshot.EsmToKkt.State);
-            Assert.DoesNotContain("ККТ не обнаружена.", snapshot.UserMessages);
+            Assert.Equal(DiagnosticState.Failed, snapshot.Kkt.State);
         }
 
         [Fact]
@@ -312,7 +319,7 @@ namespace HonestFlow.Tests
             DiagnosticsSnapshot snapshot = _builder.Create(result);
 
             Assert.Equal(WorkState.WorkImpossible, snapshot.WorkState);
-            Assert.Contains("ККТ обнаружена Windows, но ТС ПИоТ её не видит.", snapshot.UserMessages);
+            Assert.Contains("ТС ПИоТ не видит ККТ.", snapshot.UserMessages);
         }
 
         [Fact]
@@ -325,7 +332,7 @@ namespace HonestFlow.Tests
             DiagnosticsSnapshot snapshot = _builder.Create(result);
 
             Assert.Equal(WorkState.WorkImpossible, snapshot.WorkState);
-            Assert.Contains("ККТ не обнаружена.", snapshot.UserMessages);
+            Assert.Contains("ККТ физически не подключена.", snapshot.UserMessages);
         }
 
         [Theory]
@@ -348,11 +355,12 @@ namespace HonestFlow.Tests
             Controller = Node(NodeLevel.Ok, "esm-lm-controller", "Running"),
             EsmRegistration = EsmRegistrationResult.Registered(),
             CashRegister = EsmCashRegisterResult.Connected(),
-            KktPnP = KktPnpResult.NotDetected(),
+            KktPnP = KktPnpResult.Detected("ATOL 30F"),
             AtolDriverVersion = "10.10.8.23 (64-bit)",
             EsmApiStatus = EsmStatusResult.Success(new EsmStatusDto
             {
-                ClientSoftware = Code(0), Gismt = Code(0), LmController = Code(0), Lm = Code(0)
+                ClientSoftware = Code(0), Gismt = Code(0), LmController = Code(0), Lm = Code(0),
+                LmInfo = new EsmLmInfoDto { Code = 0 }
             })
         };
 

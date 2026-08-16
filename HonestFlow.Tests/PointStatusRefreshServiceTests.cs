@@ -117,6 +117,7 @@ namespace HonestFlow.Tests
             public bool NeedEsmInstall(string expectedVersion) => false;
             public bool NeedControllerInstall(string expectedVersion) => false;
             public string GetAtolDriverInfo() => "1.0 (64-bit)";
+            public string GetAtolDriverInfo(string requiredArchitecture) => "1.0 (64-bit)";
             public string GetEsmVersion() => "1.0";
             public string GetControllerVersion() => "1.0";
         }

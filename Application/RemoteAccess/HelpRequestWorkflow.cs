@@ -35,7 +35,7 @@ namespace HonestFlow.Application.RemoteAccess
             DateTimeOffset checkedAt = DateTimeOffset.Now;
             try
             {
-                pointStatus = await _pointStatusService.CheckAsync(cancellationToken);
+                pointStatus = await _pointStatusService.CheckAsync(input.SelectedClient, cancellationToken);
                 checkedAt = DateTimeOffset.Now;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

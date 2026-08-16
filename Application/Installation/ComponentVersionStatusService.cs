@@ -41,7 +41,7 @@ namespace HonestFlow.Application.Installation
             };
 
             string lmVersion = _installedLmVersion();
-            string atolVersion = _versionChecker.GetAtolDriverInfo();
+            string atolVersion = _versionChecker.GetAtolDriverInfo(selectedClient?.Architecture);
             string esmVersion = _versionChecker.GetEsmVersion();
             string controllerVersion = _versionChecker.GetControllerVersion();
 

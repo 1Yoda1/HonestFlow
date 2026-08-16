@@ -382,3 +382,10 @@ licenses.json.sig
 
 # Local release output created by scripts/publish-honestflow.ps1
 /release/
+
+# Local generated publish/build outputs
+/publish-hf/
+/publish-diagnostics-test/
+/publish-honestflow/
+/.codex-build/
+/.codex-server-obj/
