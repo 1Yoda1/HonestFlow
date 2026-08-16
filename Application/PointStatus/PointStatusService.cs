@@ -6,7 +6,10 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Lm;
+using HonestFlow.Application.Core;
+using HonestFlow.Application.Installation;
 using HonestFlow.Application.RemoteAccess;
+using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Api;
 using HonestFlow.Models;
 
@@ -22,6 +25,7 @@ namespace HonestFlow.Application.PointStatus
         private readonly IWindowsServiceSnapshotProvider _serviceSnapshotProvider;
         private readonly ILmStatusClient _lmApiClient;
         private readonly ICloudConnectivityProbe _cloudConnectivityProbe;
+        private readonly IKktPnpProbe _kktPnpProbe;
         public PointStatusService(
             bool remoteConfigLoaded,
             int ipCount,
@@ -30,7 +34,8 @@ namespace HonestFlow.Application.PointStatus
             IEsmStatusClient esmStatusClient = null,
             IWindowsServiceSnapshotProvider serviceSnapshotProvider = null,
             ILmStatusClient lmStatusClient = null,
-            ICloudConnectivityProbe cloudConnectivityProbe = null)
+            ICloudConnectivityProbe cloudConnectivityProbe = null,
+            IKktPnpProbe kktPnpProbe = null)
         {
             _remoteConfigLoaded = remoteConfigLoaded;
             _ipCount = ipCount;
@@ -40,6 +45,7 @@ namespace HonestFlow.Application.PointStatus
             _serviceSnapshotProvider = serviceSnapshotProvider ?? new WindowsServiceSnapshotProvider();
             _lmApiClient = lmStatusClient ?? new LmApiClient(enableDetailedLogging: false);
             _cloudConnectivityProbe = cloudConnectivityProbe ?? new CloudConnectivityProbe();
+            _kktPnpProbe = kktPnpProbe ?? new WindowsKktPnpProbe();
         }
 
         public async Task<PointStatusResult> CheckAsync(CancellationToken cancellationToken)
@@ -71,11 +77,14 @@ namespace HonestFlow.Application.PointStatus
             {
                 esmTask = _esmStatusClient.GetRegistrationStatusAsync(cancellationToken);
             }
-            Task<(NodeStatus Status, bool Ready)> lmTask = CheckLmStatusAsync(services);
+            Task<LmDiagnosticProbeResult> lmTask = CheckLmStatusAsync(services);
             Task<NodeStatus> cloudTask = CheckCloudStatusAsync(cancellationToken);
             Task<NodeStatus> ruDesktopTask = CheckRuDesktopStatusAsync();
-            await Task.WhenAll(controllerTask, kktTask, esmTask, lmTask, cloudTask, ruDesktopTask).ConfigureAwait(false);
-            (NodeStatus lmStatus, bool lmReady) = await lmTask.ConfigureAwait(false);
+            Task<KktPnpResult> kktPnpTask = DetectKktPnpAsync(cancellationToken);
+            await Task.WhenAll(controllerTask, kktTask, esmTask, lmTask, cloudTask, ruDesktopTask, kktPnpTask).ConfigureAwait(false);
+            LmDiagnosticProbeResult lmProbe = await lmTask.ConfigureAwait(false);
+            NodeStatus lmStatus = lmProbe.Status;
+            bool lmReady = lmProbe.HealthAvailable;
             lmStatus = ApplyLmSystemRequirements(lmStatus, LmSystemRequirements.Check());
 
             return new PointStatusResult
@@ -85,8 +94,32 @@ namespace HonestFlow.Application.PointStatus
                 Esm = BuildEsmStatus(esmService, esmTask.Result, kktTask.Result),
                 Kkt = BuildKktStatus(kktService, kktTask.Result),
                 Cloud = await cloudTask.ConfigureAwait(false),
-                RuDesktop = await ruDesktopTask.ConfigureAwait(false)
+                RuDesktop = await ruDesktopTask.ConfigureAwait(false),
+                EsmApiStatus = controllerTask.Result,
+                EsmRegistration = esmTask.Result,
+                CashRegister = kktTask.Result,
+                AtolDriverVersion = new VersionCheckService(new LogService()).GetAtolDriverInfo(),
+                KktPnP = await kktPnpTask.ConfigureAwait(false),
+                LmProbe = lmProbe,
+                ServiceSnapshots = services
             };
+        }
+
+        private async Task<KktPnpResult> DetectKktPnpAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _kktPnpProbe.DetectAsync(cancellationToken).ConfigureAwait(false) ??
+                    KktPnpResult.Unavailable("PnP probe returned no result.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return KktPnpResult.Unavailable("PnP probe failed: " + ex.Message);
+            }
         }
 
         private static bool AreAllKktServicesRunning(NodeStatus serviceStatus) =>
@@ -436,7 +469,7 @@ namespace HonestFlow.Application.PointStatus
                 actionKind: NodeActionKind.RequestRuDesktopHelp);
         }
 
-        private async Task<(NodeStatus Status, bool Ready)> CheckLmStatusAsync(ServiceSnapshot[] services)
+        private async Task<LmDiagnosticProbeResult> CheckLmStatusAsync(ServiceSnapshot[] services)
         {
             bool lmReady = false;
             var serviceStatus = CheckExactServices(services, "regime", "yenisei");
@@ -456,7 +489,11 @@ namespace HonestFlow.Application.PointStatus
                 var response = await _lmApiClient.GetStatus().ConfigureAwait(false);
 
                 if (!response.IsSuccess || response.Data == null)
-                    return (BuildLmApiUnavailableStatus(serviceStatus, serviceText, response.ErrorMessage), false);
+                    return new LmDiagnosticProbeResult(
+                        BuildLmApiUnavailableStatus(serviceStatus, serviceText, response.ErrorMessage),
+                        false,
+                        serviceStatus.Services.Count == 0 ? LmDiagnosticProbeState.NotInstalled : LmDiagnosticProbeState.ApiUnavailable,
+                        error: response.ErrorMessage);
 
                 var status = response.Data;
                 lmReady = string.Equals(status.Status, "ready", StringComparison.OrdinalIgnoreCase);
@@ -486,52 +523,60 @@ namespace HonestFlow.Application.PointStatus
 
                 if (hasLmInn && !clientFound)
                 {
-                    return (new NodeStatus(
+                    return new LmDiagnosticProbeResult(new NodeStatus(
                         NodeLevel.Error,
                         "Клиент не найден",
                         details + "\n\nИтог: клиент по ИНН не найден. Обратитесь к администратору.",
-                        statusText: "Клиент по ИНН не найден\nОбратитесь к администратору"), lmReady);
+                        statusText: "Клиент по ИНН не найден\nОбратитесь к администратору"), lmReady, LmDiagnosticProbeState.Failure, status.Status);
                 }
 
                 if (notConfigured)
                 {
-                    return (new NodeStatus(
+                    return new LmDiagnosticProbeResult(new NodeStatus(
                         NodeLevel.Warning,
                         "Не настроена",
                         details + "\n\nИтог: ЛМ ЧЗ требуется инициализация.",
                         statusText: "ЛМ ЧЗ не настроена\nНажмите «Исправить»",
-                        actionKind: NodeActionKind.InitializeLm), lmReady);
+                        actionKind: NodeActionKind.InitializeLm), lmReady, LmDiagnosticProbeState.NotConfigured, status.Status);
                 }
 
                 if (initializing)
                 {
-                    return (new NodeStatus(
+                    return new LmDiagnosticProbeResult(new NodeStatus(
                         NodeLevel.Warning,
                         "Инициализация",
                         details + "\n\nИтог: допустимое переходное состояние initialization.",
-                        statusText: "ЛМ ЧЗ инициализируется\nНажмите «Обновить»"), lmReady);
+                        statusText: "ЛМ ЧЗ инициализируется\nНажмите «Обновить»"), lmReady, LmDiagnosticProbeState.Initializing, status.Status);
                 }
 
                 if (!lmReady)
                 {
-                    return (new NodeStatus(
+                    return new LmDiagnosticProbeResult(new NodeStatus(
                         NodeLevel.Error,
                         "Не готова",
                         details + "\n\nИтог: API отвечает, но статус не ready.",
-                        statusText: $"ЛМ ЧЗ: {apiStatus}\nОжидается ready"), lmReady);
+                        statusText: $"ЛМ ЧЗ: {apiStatus}\nОжидается ready"), lmReady,
+                        string.Equals(status.Status, "sync_error", StringComparison.OrdinalIgnoreCase)
+                            ? LmDiagnosticProbeState.SyncError
+                            : LmDiagnosticProbeState.Failure,
+                        status.Status);
                 }
 
                 var readyLevel = serviceStatus.Level == NodeLevel.Ok ? NodeLevel.Ok : NodeLevel.Warning;
-                return (new NodeStatus(
+                return new LmDiagnosticProbeResult(new NodeStatus(
                     readyLevel,
                     "Ready",
                     details,
                     serviceStatus.Services,
-                    statusText), lmReady);
+                    statusText), lmReady, LmDiagnosticProbeState.Available, status.Status);
             }
             catch (Exception ex)
             {
-                return (BuildLmApiUnavailableStatus(serviceStatus, serviceText, ex.Message), false);
+                return new LmDiagnosticProbeResult(
+                    BuildLmApiUnavailableStatus(serviceStatus, serviceText, ex.Message),
+                    false,
+                    serviceStatus.Services.Count == 0 ? LmDiagnosticProbeState.NotInstalled : LmDiagnosticProbeState.ApiUnavailable,
+                    error: ex.Message);
             }
         }
 

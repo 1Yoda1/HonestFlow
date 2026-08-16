@@ -58,7 +58,8 @@ namespace HonestFlow.Application.Installation
                     expected.AtolDriver,
                     HasExpected(expected.AtolDriver)
                         ? _versionChecker.NeedAtolInstall(selectedClient, expected.AtolDriver)
-                        : null),
+                        : null,
+                    ComponentVersionRequirements.MinimumSupportedAtolDriver),
                 ComponentVersionStatus.Create(
                     "ЕСМ",
                     esmVersion,

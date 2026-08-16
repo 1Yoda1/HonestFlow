@@ -327,6 +327,64 @@ namespace HonestFlow.Tests
             Assert.False(await service.RefreshSessionAsync(CancellationToken.None));
         }
 
+        [Fact]
+        public async Task Login_InternalTokenTimeoutIsBoundedWithoutCancellingCallerToken()
+        {
+            var handler = new DelayingHandler();
+            using var http = new HttpClient(handler) { BaseAddress = new Uri("https://example.test/") };
+            var service = new ApiSessionService(
+                http,
+                new MemoryStore(null),
+                tokenRequestTimeout: TimeSpan.FromMilliseconds(40));
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                service.LoginAsync("", "password", "device-1", "PC", CancellationToken.None));
+
+            Assert.True(handler.RequestTokenWasCancelled);
+        }
+
+        [Fact]
+        public async Task Login_UserCancellationRemainsObservableByCaller()
+        {
+            var handler = new DelayingHandler();
+            using var http = new HttpClient(handler) { BaseAddress = new Uri("https://example.test/") };
+            var service = new ApiSessionService(
+                http,
+                new MemoryStore(null),
+                tokenRequestTimeout: TimeSpan.FromSeconds(5));
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                service.LoginAsync("", "password", "device-1", "PC", cancellation.Token));
+
+            Assert.True(cancellation.IsCancellationRequested);
+        }
+
+        [Fact]
+        public async Task Refresh_ServerErrorDoesNotClearRememberedSession()
+        {
+            var persisted = new ApiSession
+            {
+                AccessToken = "expired-access",
+                RefreshToken = "refresh",
+                AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+                ExternalDeviceId = "device-1"
+            };
+            var store = new MemoryStore(persisted);
+            using var http = new HttpClient(new QueueHandler(Json(HttpStatusCode.ServiceUnavailable, "{}")))
+            {
+                BaseAddress = new Uri("https://example.test/")
+            };
+            var service = new ApiSessionService(http, store);
+
+            ApiRequestException error = await Assert.ThrowsAsync<ApiRequestException>(() =>
+                service.RefreshSessionAsync(CancellationToken.None));
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, error.StatusCode);
+            Assert.Same(persisted, store.Session);
+        }
+
         private static HttpResponseMessage Json(HttpStatusCode status, string json) => new(status)
         { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
@@ -363,6 +421,27 @@ namespace HonestFlow.Tests
         {
             protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
                 Task.FromException<HttpResponseMessage>(new HttpRequestException("offline"));
+        }
+
+        private sealed class DelayingHandler : HttpMessageHandler
+        {
+            public bool RequestTokenWasCancelled { get; private set; }
+
+            protected override async Task<HttpResponseMessage> SendAsync(
+                HttpRequestMessage request,
+                CancellationToken cancellationToken)
+            {
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                    throw new InvalidOperationException("The test request must be cancelled.");
+                }
+                catch (OperationCanceledException)
+                {
+                    RequestTokenWasCancelled = true;
+                    throw;
+                }
+            }
         }
     }
 }

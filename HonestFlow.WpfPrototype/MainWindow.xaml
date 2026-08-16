@@ -155,6 +155,7 @@
               <Button x:Name="DiagnosticsNavButton" Style="{StaticResource NavButton}" Click="DiagnosticsNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Инструменты" VerticalAlignment="Center"/></StackPanel></Button>
               <Button x:Name="ComponentsNavButton" Style="{StaticResource NavButton}" Click="ComponentsNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE90F;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Компоненты" VerticalAlignment="Center"/></StackPanel></Button>
               <Button x:Name="LogNavButton" Style="{StaticResource NavButton}" Click="LogNav_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xEA37;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Журнал" VerticalAlignment="Center"/></StackPanel></Button>
+              <Button x:Name="DeveloperDiagnosticsButton" Style="{StaticResource NavButton}" Visibility="Visible" Click="DeveloperDiagnostics_Click"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE943;" FontFamily="Segoe MDL2 Assets" FontSize="25" Width="50"/><TextBlock Text="Developer diagnostics" VerticalAlignment="Center"/></StackPanel></Button>
             </StackPanel>
 
             <StackPanel Grid.Row="2" Margin="24,0,24,26">
@@ -264,13 +265,12 @@
                   <Line x:Name="CloudEsmLine" X1="260" Y1="250" X2="330" Y2="250" Stroke="#16875A" StrokeThickness="3" StrokeDashArray="8,7"/>
                   <Line x:Name="EsmControllerLine" X1="650" Y1="250" X2="720" Y2="250" Stroke="#16875A" StrokeThickness="3" StrokeDashArray="8,7"/>
                   <Line x:Name="ControllerLmLine" X1="980" Y1="250" X2="1040" Y2="250" Stroke="#D31A35" StrokeThickness="3" StrokeDashArray="8,7"/>
-                  <Line x:Name="AccountingEsmLine" X1="490" Y1="116" X2="490" Y2="180" Stroke="#7C3FA0" StrokeThickness="3" StrokeDashArray="8,7"/>
-                  <Line x:Name="EsmKktLine" X1="490" Y1="320" X2="490" Y2="384" Stroke="#D98A00" StrokeThickness="3" StrokeDashArray="8,7"/>
+                    <Line x:Name="EsmKktLine" X1="490" Y1="320" X2="490" Y2="384" Stroke="#D98A00" StrokeThickness="3" StrokeDashArray="8,7"/>
 
-                  <Border Canvas.Left="20" Canvas.Top="198" Width="240" Height="104" CornerRadius="12" Background="White" BorderBrush="#16875A" BorderThickness="1.6">
+                  <Border x:Name="GismtNodeBorder" Canvas.Left="20" Canvas.Top="198" Width="240" Height="104" CornerRadius="12" Background="White" BorderBrush="#16875A" BorderThickness="1.6">
                     <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="66"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE753;" FontFamily="Segoe MDL2 Assets" Foreground="#1267BA" FontSize="44" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ГИС МТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Доступно" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
+                      <TextBlock x:Name="GismtNodeIcon" Text="&#xE753;" FontFamily="Segoe MDL2 Assets" Foreground="#1267BA" FontSize="44" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="ГИС МТ" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock x:Name="GismtNodeStatusText" Text="Доступно" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
                     </Grid>
                   </Border>
 
@@ -299,13 +299,6 @@
                     </Grid>
                   </Border>
 
-                  <Border Canvas.Left="360" Canvas.Top="8" Width="260" Height="108" CornerRadius="12" Background="White" BorderBrush="#7C3FA0" BorderThickness="1.6">
-                    <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                      <TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="#7C3FA0" FontSize="45" VerticalAlignment="Center"/>
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Товароучётная&#x0a;система (ТУС)" Style="{StaticResource NodeTitle}"/><StackPanel Orientation="Horizontal" Margin="0,6,0,0"><Ellipse Width="10" Height="10" Fill="{StaticResource Green}"/><TextBlock Text="Подключено" Margin="8,-4,0,0" FontSize="14"/></StackPanel></StackPanel>
-                    </Grid>
-                  </Border>
-
                   <Border x:Name="KktNodeBorder" Canvas.Left="360" Canvas.Top="384" Width="260" Height="108" CornerRadius="12" Background="White" BorderBrush="#D98A00" BorderThickness="1.6" Cursor="Hand" MouseLeftButtonUp="KktNode_Click">
                     <Grid Margin="18,8"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                       <TextBlock x:Name="KktNodeIcon" Text="&#xE749;" FontFamily="Segoe MDL2 Assets" Foreground="#D98A00" FontSize="45" VerticalAlignment="Center"/>
@@ -320,9 +313,8 @@
                   <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
                   <Grid Width="70" Height="70" VerticalAlignment="Center"><Ellipse Fill="#FFF0F2"/><TextBlock Text="⚠" Foreground="{StaticResource Red}" FontSize="43" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
                   <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="14,0,10,0">
-                    <TextBlock Text="Обнаружено 2 проблемы" FontSize="18" FontWeight="SemiBold"/>
-                    <TextBlock Text="•" Foreground="{StaticResource Red}" FontSize="20" Margin="0,7,0,0"><Run Text=" Связь с ЛМ ЧЗ отсутствует" Foreground="#182033" FontSize="14"/></TextBlock>
-                    <TextBlock Text="•" Foreground="{StaticResource Red}" FontSize="20" Margin="0,-4,0,0"><Run Text=" ГИС МТ отвечает медленно (время отклика: 6.2 сек)" Foreground="#182033" FontSize="14"/></TextBlock>
+                    <TextBlock x:Name="DetailedProblemTitle" Text="Проблемы не обнаружены" FontSize="18" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="DetailedProblemReasons" Foreground="#182033" FontSize="14" LineHeight="20" TextWrapping="Wrap" Margin="0,7,0,0"/>
                   </StackPanel>
                   <StackPanel Grid.Column="2" VerticalAlignment="Center">
                     <Button Style="{StaticResource PrimaryButton}" Content="✧  Исправить автоматически" Margin="0,0,0,9"/>

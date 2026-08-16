@@ -6,6 +6,7 @@ namespace HonestFlow.Application.Installation
     {
         Current,
         UpdateRequired,
+        BelowMinimum,
         NotInstalled,
         Unknown
     }
@@ -17,22 +18,36 @@ namespace HonestFlow.Application.Installation
             string installedVersion,
             string expectedVersion,
             ComponentVersionState state)
+            : this(componentName, installedVersion, expectedVersion, null, state)
+        {
+        }
+
+        public ComponentVersionStatus(
+            string componentName,
+            string installedVersion,
+            string targetVersion,
+            string minimumSupportedVersion,
+            ComponentVersionState state)
         {
             ComponentName = componentName;
             InstalledVersion = installedVersion;
-            ExpectedVersion = expectedVersion;
+            TargetVersion = targetVersion;
+            MinimumSupportedVersion = minimumSupportedVersion;
             State = state;
         }
 
         public string ComponentName { get; }
         public string InstalledVersion { get; }
-        public string ExpectedVersion { get; }
+        public string TargetVersion { get; }
+        public string ExpectedVersion => TargetVersion;
+        public string MinimumSupportedVersion { get; }
         public ComponentVersionState State { get; }
 
         public string StateText => State switch
         {
             ComponentVersionState.Current => "Актуально",
             ComponentVersionState.UpdateRequired => "Нужно обновить",
+            ComponentVersionState.BelowMinimum => "Версия не поддерживается",
             ComponentVersionState.NotInstalled => "Не установлено",
             _ => "Не удалось определить"
         };
@@ -41,25 +56,45 @@ namespace HonestFlow.Application.Installation
             string componentName,
             string installedVersion,
             string expectedVersion,
-            bool? updateRequired)
+            bool? updateRequired,
+            string minimumSupportedVersion = null)
         {
             string installed = Normalize(installedVersion);
             string expected = Normalize(expectedVersion);
+            string minimum = Normalize(minimumSupportedVersion);
 
             if (IsUnknown(installedVersion))
-                return new ComponentVersionStatus(componentName, null, expected, ComponentVersionState.Unknown);
+                return new ComponentVersionStatus(componentName, null, expected, minimum, ComponentVersionState.Unknown);
 
             if (string.IsNullOrWhiteSpace(installed))
-                return new ComponentVersionStatus(componentName, null, expected, ComponentVersionState.NotInstalled);
+                return new ComponentVersionStatus(componentName, null, expected, minimum, ComponentVersionState.NotInstalled);
+
+            if (IsBelowMinimum(installed, minimum))
+                return new ComponentVersionStatus(componentName, installed, expected, minimum, ComponentVersionState.BelowMinimum);
 
             if (string.IsNullOrWhiteSpace(expected) || updateRequired == null)
-                return new ComponentVersionStatus(componentName, installed, expected, ComponentVersionState.Unknown);
+                return new ComponentVersionStatus(componentName, installed, expected, minimum, ComponentVersionState.Unknown);
 
             return new ComponentVersionStatus(
                 componentName,
                 installed,
                 expected,
+                minimum,
                 updateRequired.Value ? ComponentVersionState.UpdateRequired : ComponentVersionState.Current);
+        }
+
+        private static bool IsBelowMinimum(string installed, string minimum)
+        {
+            if (string.IsNullOrWhiteSpace(minimum)) return false;
+            return TryParseVersion(installed, out Version installedVersion) &&
+                   TryParseVersion(minimum, out Version minimumVersion) &&
+                   installedVersion < minimumVersion;
+        }
+
+        private static bool TryParseVersion(string value, out Version version)
+        {
+            string token = value?.Trim().Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)[0];
+            return Version.TryParse(token, out version);
         }
 
         private static string Normalize(string value)

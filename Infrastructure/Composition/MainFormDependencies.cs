@@ -157,7 +157,8 @@ namespace HonestFlow.Infrastructure.Composition
                 PointStatusRefreshService = new PointStatusRefreshService(
                     pointStatusService,
                     componentVersionStatusService,
-                    pointStatusReportBuilder)
+                    pointStatusReportBuilder,
+                    logService)
             };
         }
     }

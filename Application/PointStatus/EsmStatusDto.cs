@@ -4,8 +4,23 @@ namespace HonestFlow.Application.PointStatus
 {
     public sealed class EsmStatusDto
     {
+        [JsonProperty("software")]
+        public EsmSoftwareStatusDto Software { get; set; }
+
+        [JsonProperty("data")]
+        public EsmStatusDto Data { get; set; }
+
         [JsonProperty("lmController")]
         public EsmComponentStatus LmController { get; set; }
+
+        [JsonProperty("clientSoftware")]
+        public EsmComponentStatus ClientSoftware { get; set; }
+
+        [JsonProperty("gismt")]
+        public EsmComponentStatus Gismt { get; set; }
+
+        [JsonProperty("lm")]
+        public EsmComponentStatus Lm { get; set; }
 
         [JsonIgnore]
         public EsmLmInfoDto LmInfo { get; set; }
@@ -13,6 +28,15 @@ namespace HonestFlow.Application.PointStatus
 
     public sealed class EsmComponentStatus
     {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("version")]
+        public string Version { get; set; }
+
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
         [JsonProperty("code")]
         public int? Code { get; set; }
 
@@ -21,6 +45,12 @@ namespace HonestFlow.Application.PointStatus
 
         [JsonProperty("lastConnection")]
         public string LastConnection { get; set; }
+    }
+
+    public sealed class EsmSoftwareStatusDto
+    {
+        [JsonProperty("data")]
+        public EsmStatusDto Data { get; set; }
     }
 
     public sealed class EsmLmInfoDto

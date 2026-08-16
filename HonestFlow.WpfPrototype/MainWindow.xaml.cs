@@ -47,18 +47,22 @@ public partial class MainWindow : Window
     private bool _operationRunning;
     private bool _returningToStartup;
     private readonly TopologyPresentationService _topologyPresentation = new();
+    private readonly DiagnosticIssuePresentationMapper _diagnosticPresentation = new();
     private PointStatusRefreshService? _pointStatusRefresh;
     private PointStatusResult? _lastPointStatus;
+    private DiagnosticsSnapshot? _lastDiagnostics;
     private ComponentVersionStatusService? _componentVersionStatusService;
     private readonly DispatcherTimer _logTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private string? _deviceId;
     private bool _ratingSent;
     private ComponentVersionStatus[] _componentStatuses = Array.Empty<ComponentVersionStatus>();
     private readonly WindowsServiceSnapshotProvider _serviceSnapshotProvider = new();
+    private readonly bool _diagnosticsDebugEnabled = DiagnosticsDebugMode.IsEnabled(Environment.GetCommandLineArgs());
 
     public MainWindow()
     {
         InitializeComponent();
+        DeveloperDiagnosticsButton.Visibility = _diagnosticsDebugEnabled ? Visibility.Visible : Visibility.Collapsed;
         MoveToolsPanelIntoActionPanel();
     }
 
@@ -89,7 +93,8 @@ public partial class MainWindow : Window
         _pointStatusRefresh = new PointStatusRefreshService(
             statusService,
             _componentVersionStatusService,
-            new PointStatusReportBuilder());
+            new PointStatusReportBuilder(),
+            _logService);
         _logTimer.Tick += (_, _) => UpdateLiveLog();
         LicenseObservationSnapshotStore.Instance.SnapshotChanged += LicenseSnapshotChanged;
         Loaded += async (_, _) =>
@@ -117,6 +122,14 @@ public partial class MainWindow : Window
     {
         ShowSection(Section.Log, "Журнал операций", "Полный журнал текущего сеанса обновляется автоматически.", null, null, null, null);
         UpdateLiveLog(force: true);
+    }
+
+    private void DeveloperDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_diagnosticsDebugEnabled || _pointStatusRefresh == null || _client == null) return;
+        var session = new DeveloperDiagnosticsSession(_lastDiagnostics, RefreshDeveloperDiagnosticsAsync);
+        var window = new DeveloperDiagnosticsWindow(session) { Owner = this };
+        window.Show();
     }
 
     private void ShowHome()
@@ -265,6 +278,7 @@ public partial class MainWindow : Window
             {
                 ComponentVersionState.Current => "Да",
                 ComponentVersionState.UpdateRequired => "Нет",
+                ComponentVersionState.BelowMinimum => "Не поддерживается",
                 ComponentVersionState.NotInstalled => "Не установлен",
                 _ => "Неизвестно"
             },
@@ -600,6 +614,11 @@ public partial class MainWindow : Window
     private void DetailedView_Click(object sender, RoutedEventArgs e) => ShowDetailedView();
     private async void SimpleFix_Click(object sender, RoutedEventArgs e)
     {
+        await StartAutoFixAsync();
+    }
+
+    public async Task StartAutoFixAsync()
+    {
         ComponentsNav_Click(ComponentsNavButton, new RoutedEventArgs());
         await InstallAsync(reinstall: false);
     }
@@ -642,14 +661,7 @@ public partial class MainWindow : Window
                 _startup?.RemoteVersions,
                 includeLicensedComponents: true,
                 _lifetime.Token);
-            _lastPointStatus = refresh.PointStatus;
-            TopologyPresentation presentation = _topologyPresentation.Create(refresh.PointStatus);
-            ApplyTopology(presentation);
-            ApplySimpleStatus(presentation);
-            string checkedAt = DateTime.Now.ToString("d MMMM yyyy, HH:mm:ss");
-            LastCheckText.Text = checkedAt;
-            SimpleLastCheckText.Text = $"Последняя проверка: {checkedAt}";
-            SectionOutput.Text = "Проверка связей завершена.";
+            ApplyPointStatusRefresh(refresh);
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         catch (Exception ex)
@@ -658,6 +670,33 @@ public partial class MainWindow : Window
             SectionOutput.Text = ex.Message;
         }
         finally { RefreshTopologyButton.IsEnabled = true; }
+    }
+
+    private async Task<DiagnosticsSnapshot> RefreshDeveloperDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        if (_pointStatusRefresh == null || _client == null)
+            throw new InvalidOperationException("Diagnostics refresh is not initialized.");
+        PointStatusRefreshResult refresh = await _pointStatusRefresh.RefreshAsync(
+            _client,
+            _startup?.RemoteVersions,
+            includeLicensedComponents: true,
+            cancellationToken);
+        ApplyPointStatusRefresh(refresh);
+        return refresh.Diagnostics;
+    }
+
+    private void ApplyPointStatusRefresh(PointStatusRefreshResult refresh)
+    {
+        _lastPointStatus = refresh.PointStatus;
+        _lastDiagnostics = refresh.Diagnostics;
+        TopologyPresentation presentation = _topologyPresentation.Create(refresh.Diagnostics);
+        ApplyTopology(presentation);
+        ApplySimpleStatus(presentation);
+        ApplyDetailedProblems(_diagnosticPresentation.Create(refresh.Diagnostics));
+        string checkedAt = DateTime.Now.ToString("d MMMM yyyy, HH:mm:ss");
+        LastCheckText.Text = checkedAt;
+        SimpleLastCheckText.Text = $"Последняя проверка: {checkedAt}";
+        SectionOutput.Text = "Проверка связей завершена.";
     }
 
     private void SetTopologyChecking()
@@ -674,24 +713,80 @@ public partial class MainWindow : Window
         foreach (Line line in new[] { CloudEsmLine, EsmControllerLine, ControllerLmLine, EsmKktLine }) line.Stroke = neutral;
         foreach (Border marker in new[] { CloudEsmMarker, EsmControllerMarker, ControllerLmMarker, EsmKktMarker }) marker.Visibility = Visibility.Collapsed;
         EsmNodeStatusText.Text = ControllerNodeStatusText.Text = LmNodeStatusText.Text = KktNodeStatusText.Text = "Проверка…";
-        AccountingEsmLine.Stroke = BrushFrom("#94A3B8");
-        AccountingEsmLine.ToolTip = "Проверка товароучётной системы пока не выполняется.";
+        GismtNodeStatusText.Text = "Проверка…";
     }
 
     private void ApplyTopology(TopologyPresentation presentation)
     {
-        ApplyFrame(EsmNodeBorder, EsmNodeIcon, EsmNodeStatusText, _lastPointStatus?.Esm, presentation.EsmFrame);
-        ApplyFrame(ControllerNodeBorder, ControllerNodeIcon, ControllerNodeStatusText, _lastPointStatus?.Controller, presentation.ControllerFrame);
-        ApplyFrame(LmNodeBorder, LmNodeIcon, LmNodeStatusText, _lastPointStatus?.Lm, presentation.LmFrame);
-        ApplyFrame(KktNodeBorder, KktNodeIcon, KktNodeStatusText, _lastPointStatus?.Kkt, presentation.KktFrame);
-        ApplyLink(CloudEsmLine, CloudEsmMarker, presentation.CloudToEsm);
-        ApplyLink(EsmControllerLine, EsmControllerMarker, presentation.EsmToController);
-        ApplyLink(ControllerLmLine, ControllerLmMarker, presentation.ControllerToLm);
-        ApplyLink(EsmKktLine, EsmKktMarker, presentation.EsmToKkt);
+        if (_lastDiagnostics == null) return;
+
+        ApplyStandaloneFrame(
+            GismtNodeBorder, GismtNodeIcon, GismtNodeStatusText, _lastDiagnostics.Gismt,
+            _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Gismt, "Недоступен"), "ГИС МТ");
+        ApplyFrame(
+            EsmNodeBorder, EsmNodeIcon, EsmNodeStatusText, _lastDiagnostics.Esm, presentation.EsmFrame,
+            _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Esm, "API недоступен"), "ТС ПИоТ");
+        ApplyFrame(
+            ControllerNodeBorder, ControllerNodeIcon, ControllerNodeStatusText, _lastDiagnostics.Controller, presentation.ControllerFrame,
+            _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Controller, "Служба остановлена"), "Локальный контроллер");
+        ApplyFrame(
+            LmNodeBorder, LmNodeIcon, LmNodeStatusText, _lastDiagnostics.Lm, presentation.LmFrame,
+            _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Lm, "Недоступен"), "ЛМ ЧЗ");
+        ApplyFrame(
+            KktNodeBorder, KktNodeIcon, KktNodeStatusText, _lastDiagnostics.Kkt, presentation.KktFrame,
+            _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Kkt, "Служба остановлена"), "ККТ");
+        ApplyLink(CloudEsmLine, CloudEsmMarker, presentation.CloudToEsm,
+            _diagnosticPresentation.ConnectionDetails(_lastDiagnostics.GismtToEsm, "Связь с ГИС МТ"));
+        ApplyLink(EsmControllerLine, EsmControllerMarker, presentation.EsmToController,
+            _diagnosticPresentation.ConnectionDetails(_lastDiagnostics.EsmToController, "Связь с контроллером"));
+        ApplyLink(ControllerLmLine, ControllerLmMarker, presentation.ControllerToLm,
+            _diagnosticPresentation.ConnectionDetails(_lastDiagnostics.LmConnection, "Связь с ЛМ ЧЗ"));
+        ApplyLink(EsmKktLine, EsmKktMarker, presentation.EsmToKkt,
+            _diagnosticPresentation.ConnectionDetails(_lastDiagnostics.EsmToKkt, "Связь с ККТ"));
+    }
+
+    private void ApplyDetailedProblems(DiagnosticIssuePresentation issue)
+    {
+        DetailedProblemTitle.Text = issue.Title;
+        DetailedProblemReasons.Text = string.IsNullOrWhiteSpace(issue.Recommendation)
+            ? issue.Description
+            : $"{issue.Description}\n{issue.Recommendation}";
+    }
+
+    private void ApplyStandaloneFrame(Border border, TextBlock icon, TextBlock text, DiagnosticComponentFact fact, string status, string componentName)
+    {
+        Brush color = fact.State == DiagnosticState.Healthy ? BrushFrom("#0E9F6E") :
+            fact.State == DiagnosticState.Failed ? BrushFrom("#D91532") : BrushFrom("#F4B740");
+        border.BorderBrush = color;
+        border.ToolTip = _diagnosticPresentation.ComponentDetails(fact, componentName);
+        icon.Foreground = color;
+        text.Text = status;
+        text.Foreground = color;
     }
 
     private void ApplySimpleStatus(TopologyPresentation presentation)
     {
+        if (_lastDiagnostics != null)
+        {
+            string description = _diagnosticPresentation.SimpleDescription(_lastDiagnostics.WorkState);
+            switch (_lastDiagnostics.WorkState)
+            {
+                case WorkState.WorkImpossible:
+                    SetSimpleStatus("#FDE8EC", "#D91532", "×", "Работа невозможна", description, true, true);
+                    return;
+                case WorkState.UnableToVerify:
+                    SetSimpleStatus("#FFF6D8", "#E3A008", "!", "Не удалось подтвердить готовность",
+                        description, false, false);
+                    return;
+                case WorkState.Attention:
+                    SetSimpleStatus("#FFF6D8", "#E3A008", "!", "Требуется внимание", description, true, false);
+                    return;
+                case WorkState.Ready:
+                    SetSimpleStatus("#E8F8F1", "#0E9F6E", "✓", "Всё готово к работе",
+                        description, false, false);
+                    return;
+            }
+        }
         TopologyLinkPresentation[] links =
         {
             presentation.CloudToEsm, presentation.EsmToController,
@@ -737,17 +832,29 @@ public partial class MainWindow : Window
         SimpleHelpButton.Visibility = showHelp ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private static void ApplyFrame(Border border, TextBlock icon, TextBlock text, NodeStatus? status, TopologyVisualState state)
+    private void ApplyFrame(
+        Border border,
+        TextBlock icon,
+        TextBlock text,
+        DiagnosticComponentFact fact,
+        TopologyVisualState state,
+        string status,
+        string componentName)
     {
-        border.BorderBrush = state == TopologyVisualState.Healthy ? BrushFrom("#0E9F6E") : BrushFrom("#D91532");
+        border.BorderBrush = state switch
+        {
+            TopologyVisualState.Healthy => BrushFrom("#0E9F6E"),
+            TopologyVisualState.Missing => BrushFrom("#D91532"),
+            _ => BrushFrom("#F4B740")
+        };
         border.BorderThickness = new Thickness(2.2);
-        border.ToolTip = status?.Details;
-        text.Text = status?.ShortText ?? "Компонент не найден";
+        border.ToolTip = _diagnosticPresentation.ComponentDetails(fact, componentName);
+        text.Text = status;
         text.Foreground = border.BorderBrush;
         icon.Foreground = border.BorderBrush;
     }
 
-    private static void ApplyLink(Line line, Border marker, TopologyLinkPresentation presentation)
+    private static void ApplyLink(Line line, Border marker, TopologyLinkPresentation presentation, string description)
     {
         Brush color = presentation.State switch
         {
@@ -758,7 +865,7 @@ public partial class MainWindow : Window
         line.Stroke = color;
         line.StrokeThickness = 3;
         line.StrokeDashArray = null;
-        line.ToolTip = presentation.Explanation;
+        line.ToolTip = description;
         if (presentation.State == TopologyVisualState.Healthy || presentation.State == TopologyVisualState.Ignored)
         {
             marker.Visibility = Visibility.Collapsed;
@@ -769,7 +876,7 @@ public partial class MainWindow : Window
         marker.Background = missing ? Brushes.White : color;
         marker.BorderBrush = missing ? color : Brushes.Transparent;
         marker.BorderThickness = missing ? new Thickness(1) : new Thickness(0);
-        marker.ToolTip = presentation.Explanation;
+        marker.ToolTip = description;
         if (marker.Child is TextBlock symbol)
         {
             symbol.Text = missing ? "×" : "?";

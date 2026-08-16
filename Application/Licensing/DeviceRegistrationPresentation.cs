@@ -58,6 +58,17 @@ namespace HonestFlow.Application.Licensing
                     SubmitText = "Отправить повторно",
                     ShowSwitchClient = true
                 },
+                DeviceRegistrationStartupState.StatusUnavailable => new()
+                {
+                    Title = "Регистрация устройства",
+                    Description = "Сейчас не удалось получить текущий статус регистрации.",
+                    ClientName = clientName,
+                    GuidanceText = string.IsNullOrWhiteSpace(result.Message)
+                        ? "Не удалось получить статус заявки. Попробуйте проверить снова."
+                        : result.Message,
+                    ShowCheckStatus = true,
+                    ShowSwitchClient = true
+                },
                 _ => new()
                 {
                     Title = "Регистрация устройства",

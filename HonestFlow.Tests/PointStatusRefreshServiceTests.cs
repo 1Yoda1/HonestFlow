@@ -1,5 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using HonestFlow.Application.Core;
 using HonestFlow.Application.Installation;
 using HonestFlow.Application.PointStatus;
 using HonestFlow.Models;
@@ -59,7 +61,32 @@ namespace HonestFlow.Tests
             Assert.Empty(result.VersionStatuses);
         }
 
-        private static PointStatusRefreshService CreateService(PointStatusResult pointStatus)
+        [Fact]
+        public async Task RefreshAsync_LogsEachIssueAsStructuredEvent()
+        {
+            var pointStatus = new PointStatusResult
+            {
+                Esm = Status(NodeLevel.Error, "ESM API unavailable"),
+                Kkt = Status(NodeLevel.Error, "KKT unavailable"),
+                Lm = Status(NodeLevel.Error, "LM unavailable"),
+                Controller = Status(NodeLevel.Error, "Controller unavailable"),
+                EsmApiStatus = EsmStatusResult.Unavailable(),
+                EsmRegistration = EsmRegistrationResult.Unavailable(),
+                CashRegister = EsmCashRegisterResult.Unavailable(),
+                KktPnP = KktPnpResult.Unavailable("probe failed")
+            };
+            var log = new CaptureLog();
+            PointStatusRefreshService service = CreateService(pointStatus, log);
+
+            PointStatusRefreshResult result = await service.RefreshAsync(
+                new IPData(), new VersionsData(), true, CancellationToken.None);
+
+            Assert.NotEmpty(result.Diagnostics.Issues);
+            Assert.Equal(result.Diagnostics.Issues.Count, log.Debug.Count);
+            Assert.All(log.Debug, message => Assert.StartsWith("Event=DiagnosticIssue Code=", message));
+        }
+
+        private static PointStatusRefreshService CreateService(PointStatusResult pointStatus, ILogService log = null)
         {
             var versions = new ComponentVersionStatusService(
                 new StubVersionCheckService(),
@@ -67,7 +94,8 @@ namespace HonestFlow.Tests
             return new PointStatusRefreshService(
                 new StubPointStatusService(pointStatus),
                 versions,
-                new PointStatusReportBuilder());
+                new PointStatusReportBuilder(),
+                log);
         }
 
         private static NodeStatus Status(NodeLevel level, string text) =>
@@ -91,6 +119,14 @@ namespace HonestFlow.Tests
             public string GetAtolDriverInfo() => "1.0 (64-bit)";
             public string GetEsmVersion() => "1.0";
             public string GetControllerVersion() => "1.0";
+        }
+
+        private sealed class CaptureLog : ILogService
+        {
+            public List<string> Debug { get; } = new();
+            public void LogUser(string message, bool isError = false) { }
+            public void LogDebug(string message) => Debug.Add(message);
+            public string GetUserLog() => string.Empty;
         }
     }
 }

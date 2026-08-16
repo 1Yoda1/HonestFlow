@@ -37,10 +37,9 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void AccountingSystem_IsAlwaysIgnored()
+        public void MainTopology_DoesNotContainAccountingSystemLink()
         {
-            TopologyPresentation result = _service.Create(CreateResult(Healthy("lm"), Healthy("controller"), Healthy("esm"), Healthy("kkt"), Cloud(NodeLevel.Ok)));
-            Assert.Equal(TopologyVisualState.Ignored, result.AccountingToEsm.State);
+            Assert.DoesNotContain(typeof(TopologyPresentation).GetProperties(), property => property.Name == "AccountingToEsm");
         }
 
         private static PointStatusResult CreateResult(NodeStatus lm, NodeStatus controller, NodeStatus esm, NodeStatus kkt, NodeStatus cloud) => new()

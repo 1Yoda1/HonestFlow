@@ -66,6 +66,27 @@ namespace HonestFlow.Tests
 
             Assert.Equal(LicenseDecision.Allowed, result.Decision);
             Assert.Equal(LicenseManifestSource.Cache, result.ManifestSource);
+            Assert.Equal(NowUtc.AddHours(-1), result.LastSuccessfulOnlineCheckUtc);
+        }
+
+        [Fact]
+        public async Task Observe_ServerErrorWithCache_UsesCacheWithoutAdvancingOnlineCheck()
+        {
+            DateTimeOffset lastOnlineCheck = NowUtc.AddHours(-2);
+            var cache = new FakeCache
+            {
+                ReadResult = LicenseCacheReadResult.Success(CreateGrant(), lastOnlineCheck)
+            };
+            var fixture = CreateFixture(
+                LicenseManifestReadResult.Failure(LicenseManifestReadStatus.ServerError, "http-503"),
+                cache);
+
+            LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(Client(), CancellationToken.None);
+
+            Assert.Equal(LicenseDecision.Allowed, result.Decision);
+            Assert.Equal(LicenseManifestSource.Cache, result.ManifestSource);
+            Assert.Equal(lastOnlineCheck, result.LastSuccessfulOnlineCheckUtc);
+            Assert.Equal(0, cache.SaveCalls);
         }
 
         [Fact]
@@ -214,6 +235,27 @@ namespace HonestFlow.Tests
             LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(Client(), CancellationToken.None);
 
             Assert.Equal(LicenseDecision.InvalidLicenseState, result.Decision);
+            Assert.Equal(0, cache.ReadCalls);
+        }
+
+        [Theory]
+        [InlineData(LicenseManifestReadStatus.Unauthorized)]
+        [InlineData(LicenseManifestReadStatus.Forbidden)]
+        [InlineData(LicenseManifestReadStatus.RateLimited)]
+        public async Task Observe_AuthoritativeOrRateLimitedResponse_DoesNotUseCache(
+            LicenseManifestReadStatus remoteStatus)
+        {
+            var cache = new FakeCache
+            {
+                ReadResult = LicenseCacheReadResult.Success(CreateGrant(), NowUtc.AddHours(-1))
+            };
+            var fixture = CreateFixture(
+                LicenseManifestReadResult.Failure(remoteStatus, "server-response"),
+                cache);
+
+            LicenseObservationSnapshot result = await fixture.Observer.ObserveAsync(Client(), CancellationToken.None);
+
+            Assert.NotEqual(LicenseDecision.Allowed, result.Decision);
             Assert.Equal(0, cache.ReadCalls);
         }
 

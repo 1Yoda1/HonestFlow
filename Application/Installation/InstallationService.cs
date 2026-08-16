@@ -32,19 +32,25 @@ namespace HonestFlow.Application.Installation
         private readonly IUserDialogService _dialogService;
         private readonly bool _useRemoteConfigMode;
         private readonly ILicenseOperationGuard _licenseGuard;
+        private readonly IInstallationPackageSource _packageSource;
+        private readonly bool _initializeLm;
 
         public InstallationService(
             ILogService logService,
             IProgressService progressService,
             IUserDialogService dialogService,
             ILicenseOperationGuard licenseGuard,
-            bool useRemoteConfigMode = false)
+            bool useRemoteConfigMode = false,
+            IInstallationPackageSource packageSource = null,
+            bool initializeLm = true)
         {
             _log = logService;
             _progress = progressService;
             _dialogService = dialogService ?? new WinFormsDialogService();
             _useRemoteConfigMode = useRemoteConfigMode;
             _licenseGuard = licenseGuard ?? throw new ArgumentNullException(nameof(licenseGuard));
+            _packageSource = packageSource;
+            _initializeLm = initializeLm;
             _lmValidator = new LmValidationService(_log);
             _versionChecker = new VersionCheckService(_log);
         }
@@ -169,9 +175,9 @@ namespace HonestFlow.Application.Installation
 
         private VersionsData LoadVersions()
         {
-            return _useRemoteConfigMode
+            return _packageSource?.Versions ?? (_useRemoteConfigMode
                 ? ConfigManager.LoadRemoteVersions()
-                : ConfigManager.LoadVersions();
+                : ConfigManager.LoadVersions());
         }
 
         /// <summary>
@@ -269,7 +275,7 @@ namespace HonestFlow.Application.Installation
             else if (precheckedLm != null)
             {
                 needLmInstall = precheckedLm.NeedsInstall;
-                needLmInitialize = precheckedLm.NeedsInitialize;
+                needLmInitialize = _initializeLm && precheckedLm.NeedsInitialize;
                 lmStatusText = precheckedLm.DisplayStatus;
 
                 _log.LogDebug(
@@ -284,7 +290,7 @@ namespace HonestFlow.Application.Installation
             {
                 var lmCheck = await _lmValidator.CheckLmStatus(expectedLmVersion);
                 needLmInstall = lmCheck.NeedsInstall;
-                needLmInitialize = lmCheck.NeedsInitialize;
+                needLmInitialize = _initializeLm && lmCheck.NeedsInitialize;
                 lmStatusText = lmCheck.DisplayStatus;
 
                 _log.LogDebug(
@@ -456,11 +462,29 @@ namespace HonestFlow.Application.Installation
             VersionsData versions,
             CancellationToken cancellationToken = default)
         {
+            if (_packageSource != null)
+                return await ResolveAuthorizedInstallers(plan, cancellationToken);
             if (_useRemoteConfigMode)
                 return await DownloadAndResolveRemoteInstallers(plan, cancellationToken);
 
             cancellationToken.ThrowIfCancellationRequested();
             ResolveLocalInstallerPaths(plan, selectedIP);
+            return ValidateRequiredInstallerPaths(plan);
+        }
+
+        private async Task<bool> ResolveAuthorizedInstallers(
+            InstallationPlan plan,
+            CancellationToken cancellationToken)
+        {
+            foreach (ComponentPlanItem item in plan.RequiredItems)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!item.NeedInstall) continue;
+                var progress = new Progress<int>(percent =>
+                    _progress.SetProgress(15 + percent / 2, $"Скачивание {item.DisplayName}: {percent}%"));
+                item.InstallerPath = await _packageSource.ResolveInstallerAsync(
+                    item.Component, progress, cancellationToken);
+            }
             return ValidateRequiredInstallerPaths(plan);
         }
 
@@ -607,6 +631,17 @@ namespace HonestFlow.Application.Installation
             {
                 case InstallationComponent.LmModule:
                     string lmVersion = EnsureLmVersionConfigured(versions);
+                    if (!_initializeLm)
+                    {
+                        var packageInstaller = new LmModuleInstaller(
+                            item.InstallerPath, _dialogService, cancellationToken);
+                        if (item.ForceReinstall)
+                            await packageInstaller.ReinstallExisting("сервисная переустановка");
+                        else
+                            await packageInstaller.CleanInstall();
+                        _log.LogUser("✅ Пакет ЛМ ЧЗ установлен без инициализации");
+                        return true;
+                    }
                     SetComponentProgress(progressStart, progressEnd, 5, "ЛМ ЧЗ: подготовка");
                     var lm = new LmModuleService(
                         item.InstallerPath,

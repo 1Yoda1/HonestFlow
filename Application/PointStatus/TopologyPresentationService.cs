@@ -33,7 +33,6 @@ namespace HonestFlow.Application.PointStatus
         public TopologyLinkPresentation EsmToController { get; init; }
         public TopologyLinkPresentation ControllerToLm { get; init; }
         public TopologyLinkPresentation EsmToKkt { get; init; }
-        public TopologyLinkPresentation AccountingToEsm { get; init; }
     }
 
     public sealed class TopologyPresentationService
@@ -50,10 +49,40 @@ namespace HonestFlow.Application.PointStatus
                 CloudToEsm = LinkFromCloud(result.Cloud),
                 EsmToController = LinkBetween(result.Esm, result.Controller, "ЕСМ", "контроллером"),
                 ControllerToLm = LinkBetween(result.Controller, result.Lm, "контроллер", "ЛМ ЧЗ"),
-                EsmToKkt = LinkBetween(result.Esm, result.Kkt, "ЕСМ", "ККТ"),
-                AccountingToEsm = new TopologyLinkPresentation(TopologyVisualState.Ignored, "Проверка товароучётной системы пока не выполняется.")
+                EsmToKkt = LinkBetween(result.Esm, result.Kkt, "ЕСМ", "ККТ")
             };
         }
+
+        public TopologyPresentation Create(DiagnosticsSnapshot snapshot)
+        {
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+            return new TopologyPresentation
+            {
+                LmFrame = Frame(snapshot.Lm),
+                EsmFrame = Frame(snapshot.Esm),
+                KktFrame = Frame(snapshot.Kkt),
+                ControllerFrame = Frame(snapshot.Controller),
+                CloudToEsm = Link(snapshot.GismtToEsm),
+                EsmToController = Link(snapshot.EsmToController),
+                ControllerToLm = Link(snapshot.LmConnection),
+                EsmToKkt = Link(snapshot.EsmToKkt)
+            };
+        }
+
+        private static TopologyVisualState Frame(DiagnosticComponentFact fact) => fact?.State switch
+        {
+            DiagnosticState.Healthy => TopologyVisualState.Healthy,
+            DiagnosticState.Failed => TopologyVisualState.Missing,
+            _ => TopologyVisualState.Uncertain
+        };
+
+        private static TopologyLinkPresentation Link(DiagnosticConnectionFact fact) => new(
+            fact?.State switch
+            {
+                DiagnosticConnectionState.Connected => TopologyVisualState.Healthy,
+                DiagnosticConnectionState.Disconnected => TopologyVisualState.Missing,
+                _ => TopologyVisualState.Uncertain
+            }, fact?.Details);
 
         private static TopologyVisualState FrameFromServices(NodeStatus node) =>
             node?.Services != null && node.Services.Count > 0 && node.Services.All(service => service.IsRunning)

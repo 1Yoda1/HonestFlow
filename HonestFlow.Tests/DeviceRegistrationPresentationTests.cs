@@ -74,5 +74,20 @@ namespace HonestFlow.Tests
 
             Assert.False(presentation.HasContext);
         }
+
+        [Fact]
+        public void StatusUnavailable_ShowsRetryWithoutOfferingAnotherSubmission()
+        {
+            DeviceRegistrationPresentation presentation = DeviceRegistrationPresentationMapper.Create(
+                DeviceRegistrationStartupResult.StatusUnavailable(
+                    "Не удалось получить статус заявки. Попробуйте проверить снова."),
+                "Точка 1");
+
+            Assert.True(presentation.ShowCheckStatus);
+            Assert.True(presentation.ShowSwitchClient);
+            Assert.False(presentation.ShowAddressEntry);
+            Assert.False(presentation.ShowSubmit);
+            Assert.Contains("проверить снова", presentation.GuidanceText, StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

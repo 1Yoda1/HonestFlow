@@ -14,7 +14,7 @@ namespace HonestFlow.Tests
         [Fact]
         public async Task CheckAsync_StartsIndependentStatusChecksInParallel()
         {
-            var gate = new ParallelGate(expectedEntrants: 5);
+            var gate = new ParallelGate(expectedEntrants: 6);
             var esmClient = new StubEsmClient(gate);
             var service = new PointStatusService(
                 remoteConfigLoaded: true,
@@ -23,7 +23,8 @@ namespace HonestFlow.Tests
                 esmStatusClient: esmClient,
                 lmStatusClient: new StubLmClient(gate),
                 cloudConnectivityProbe: new StubCloudProbe(gate),
-                ruDesktopService: new StubRuDesktopProvider(gate));
+                ruDesktopService: new StubRuDesktopProvider(gate),
+                kktPnpProbe: new StubKktPnpProbe(gate));
 
             Task<PointStatusResult> check = service.CheckAsync(CancellationToken.None);
             await gate.WaitUntilAllEnteredAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -33,7 +34,7 @@ namespace HonestFlow.Tests
             PointStatusResult result = await check.WaitAsync(TimeSpan.FromSeconds(2));
 
             Assert.NotNull(result);
-            Assert.Equal(5, gate.Entrants);
+            Assert.Equal(6, gate.Entrants);
             Assert.Equal(0, esmClient.RegistrationRequests);
             Assert.Equal("Доступно", result.Cloud.ShortText);
             Assert.DoesNotContain("1", result.Cloud.ShortText);
@@ -125,6 +126,18 @@ namespace HonestFlow.Tests
             {
                 await _gate.EnterAsync(cancellationToken);
                 return true;
+            }
+        }
+
+        private sealed class StubKktPnpProbe : IKktPnpProbe
+        {
+            private readonly ParallelGate _gate;
+            public StubKktPnpProbe(ParallelGate gate) => _gate = gate;
+
+            public async Task<KktPnpResult> DetectAsync(CancellationToken cancellationToken)
+            {
+                await _gate.EnterAsync(cancellationToken);
+                return KktPnpResult.NotDetected();
             }
         }
 

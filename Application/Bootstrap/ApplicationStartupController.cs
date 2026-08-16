@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Auth;
 using HonestFlow.Application.Core;
+using HonestFlow.Application.DeviceIdentity;
 using HonestFlow.Application.Licensing;
 using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Application.PointStatus;
@@ -13,6 +14,7 @@ using HonestFlow.Infrastructure.DeviceIdentity;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Infrastructure.Api;
+using HonestFlow.Models;
 
 namespace HonestFlow.Application.Bootstrap
 {
@@ -120,7 +122,21 @@ namespace HonestFlow.Application.Bootstrap
 
             if (apiSession is IApiSessionRefresher refresher)
             {
-                bool refreshed = await refresher.RefreshSessionAsync(cancellationToken);
+                bool refreshed;
+                try
+                {
+                    refreshed = await refresher.RefreshSessionAsync(cancellationToken);
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
+                                           IsTransientApiFailure(ex))
+                {
+                    Logger.Warning(
+                        $"Event=RegistrationContinuationRefreshDeferred ErrorType={ex.GetType().Name}",
+                        nameof(ApplicationStartupController));
+                    return RegistrationContinuationSnapshot(
+                        continuation,
+                        "Статус заявки сейчас недоступен. Попробуйте проверить снова.");
+                }
                 if (!refreshed)
                     return null;
                 if (apiSession is IApiClientAccessStateProvider access &&
@@ -140,7 +156,15 @@ namespace HonestFlow.Application.Bootstrap
                 }
             }
 
-            return new LicenseObservationSnapshot
+            return RegistrationContinuationSnapshot(
+                continuation,
+                "Продолжаем регистрацию устройства.");
+        }
+
+        private static LicenseObservationSnapshot RegistrationContinuationSnapshot(
+            ApiSession continuation,
+            string message) =>
+            new()
             {
                 ObservedAtUtc = DateTimeOffset.UtcNow,
                 ClientId = continuation.ClientId,
@@ -148,8 +172,59 @@ namespace HonestFlow.Application.Bootstrap
                 DeviceId = continuation.ExternalDeviceId,
                 Decision = LicenseDecision.DeviceNotRegistered,
                 TechnicalCode = "REGISTRATION_CONTINUATION",
-                Message = "Продолжаем регистрацию устройства."
+                Message = message
             };
+
+        private static bool IsTransientApiFailure(Exception exception) =>
+            exception is System.Net.Http.HttpRequestException ||
+            exception is OperationCanceledException ||
+            exception is ApiRequestException apiError && (int)apiError.StatusCode >= 500;
+
+        public async Task<LastAuthorizedClientHint> LoadLastAuthorizedClientHintAsync(
+            CancellationToken cancellationToken)
+        {
+            DeviceIdentityResult identity = await new FileDeviceIdentityService(
+                    new DpapiDeviceIdentityStateProtector())
+                .GetOrCreateAsync(cancellationToken);
+            if (!identity.IsAvailable)
+                return null;
+
+            return await new LastAuthorizedClientHintStore()
+                .LoadForDeviceAsync(identity.DeviceId, cancellationToken);
+        }
+
+        public async Task SaveLastAuthorizedClientHintAsync(
+            IPData client,
+            LicenseObservationSnapshot snapshot,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                DeviceIdentityResult identity = await new FileDeviceIdentityService(
+                        new DpapiDeviceIdentityStateProtector())
+                    .GetOrCreateAsync(cancellationToken);
+                if (!identity.IsAvailable)
+                    return;
+
+                LastAuthorizedClientHint hint = LastAuthorizedClientHint.CreateForAllowed(
+                    client, snapshot, identity.DeviceId);
+                if (hint == null)
+                    return;
+
+                await new LastAuthorizedClientHintStore().SaveAsync(hint, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException ||
+                                       ex is System.Security.SecurityException ||
+                                       ex is System.Security.Cryptography.CryptographicException ||
+                                       ex is Newtonsoft.Json.JsonException)
+            {
+                Logger.Warning(
+                    $"Event=LastAuthorizedClientHintWriteFailed ErrorType={ex.GetType().Name}",
+                    nameof(ApplicationStartupController));
+            }
         }
 
         public async Task LogoutAsync(ApplicationStartupSession session, CancellationToken cancellationToken)

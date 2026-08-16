@@ -29,6 +29,20 @@ namespace HonestFlow.Tests
             Assert.Equal(expectedState, result.State);
         }
 
+        [Fact]
+        public void Create_SeparatesMinimumSupportedVersionFromTargetVersion()
+        {
+            ComponentVersionStatus supported = ComponentVersionStatus.Create(
+                "Драйвер ККТ", "10.10.8.23 (64-bit)", "10.10.8.24", true, "10.10.8.23");
+            ComponentVersionStatus unsupported = ComponentVersionStatus.Create(
+                "Драйвер ККТ", "10.10.8.22 (64-bit)", "10.10.8.24", true, "10.10.8.23");
+
+            Assert.Equal(ComponentVersionState.UpdateRequired, supported.State);
+            Assert.Equal(ComponentVersionState.BelowMinimum, unsupported.State);
+            Assert.Equal("10.10.8.23", unsupported.MinimumSupportedVersion);
+            Assert.Equal("10.10.8.24", unsupported.TargetVersion);
+        }
+
         [Theory]
         [InlineData("Regime", true)]
         [InlineData("Regime Local Module", true)]

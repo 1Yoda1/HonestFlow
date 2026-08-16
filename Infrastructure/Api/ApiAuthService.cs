@@ -82,7 +82,10 @@ namespace HonestFlow.Infrastructure.Api
                 await _configurationCache.SaveAsync(configuration, cancellationToken);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
-                                       (ex is HttpRequestException || ex is TaskCanceledException))
+                                       (ex is HttpRequestException ||
+                                        ex is OperationCanceledException ||
+                                        ex is ApiRequestException apiError &&
+                                        (int)apiError.StatusCode >= 500))
             {
                 configuration = await _configurationCache.LoadAsync(identity.DeviceId, cancellationToken);
                 if (configuration == null) return new LicenseAuthenticationResult(null, null);

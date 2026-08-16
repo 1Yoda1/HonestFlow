@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using HonestFlow.Application.Core;
 using HonestFlow.Application.Installation;
 using HonestFlow.Models;
 
@@ -11,15 +12,18 @@ namespace HonestFlow.Application.PointStatus
         private readonly IPointStatusService _pointStatusService;
         private readonly ComponentVersionStatusService _componentVersionStatusService;
         private readonly PointStatusReportBuilder _reportBuilder;
+        private readonly ILogService _log;
 
         public PointStatusRefreshService(
             IPointStatusService pointStatusService,
             ComponentVersionStatusService componentVersionStatusService,
-            PointStatusReportBuilder reportBuilder)
+            PointStatusReportBuilder reportBuilder,
+            ILogService log = null)
         {
             _pointStatusService = pointStatusService ?? throw new ArgumentNullException(nameof(pointStatusService));
             _componentVersionStatusService = componentVersionStatusService ?? throw new ArgumentNullException(nameof(componentVersionStatusService));
             _reportBuilder = reportBuilder ?? throw new ArgumentNullException(nameof(reportBuilder));
+            _log = log;
         }
 
         public async Task<PointStatusRefreshResult> RefreshAsync(
@@ -51,11 +55,15 @@ namespace HonestFlow.Application.PointStatus
                 }
                 : new[] { pointStatus.Cloud, pointStatus.RuDesktop };
 
+            DiagnosticsSnapshot diagnostics = new DiagnosticsSnapshotBuilder().Create(pointStatus, versionStatuses);
+            foreach (DiagnosticIssue issue in diagnostics.Issues)
+                _log?.LogDebug(issue.ToStructuredLog());
             return new PointStatusRefreshResult(
                 pointStatus,
                 versionStatuses,
                 _reportBuilder.Build(pointStatus),
-                GetOverallLevel(visibleStatuses));
+                GetOverallLevel(visibleStatuses),
+                diagnostics);
         }
 
         private static NodeLevel GetOverallLevel(NodeStatus[] statuses)
@@ -79,17 +87,20 @@ namespace HonestFlow.Application.PointStatus
             PointStatusResult pointStatus,
             ComponentVersionStatus[] versionStatuses,
             string diagnosticReport,
-            NodeLevel overallLevel)
+            NodeLevel overallLevel,
+            DiagnosticsSnapshot diagnostics)
         {
             PointStatus = pointStatus;
             VersionStatuses = versionStatuses ?? Array.Empty<ComponentVersionStatus>();
             DiagnosticReport = diagnosticReport;
             OverallLevel = overallLevel;
+            Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
         }
 
         public PointStatusResult PointStatus { get; }
         public ComponentVersionStatus[] VersionStatuses { get; }
         public string DiagnosticReport { get; }
         public NodeLevel OverallLevel { get; }
+        public DiagnosticsSnapshot Diagnostics { get; }
     }
 }

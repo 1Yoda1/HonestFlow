@@ -16,20 +16,27 @@ namespace HonestFlow.Infrastructure.Api
         IApiSessionPersistenceController,
         IApiClientAccessStateProvider
     {
+        public static readonly TimeSpan DefaultTokenRequestTimeout = TimeSpan.FromSeconds(15);
+
         private readonly HttpClient _httpClient;
         private readonly IApiSessionStore _store;
         private readonly IApiSessionStore _registrationStore;
+        private readonly TimeSpan _tokenRequestTimeout;
         private readonly SemaphoreSlim _refreshLock = new(1, 1);
         private ApiSession _processSession;
         private bool _persistSession = true;
         private SessionPersistenceMode _persistenceMode = SessionPersistenceMode.Remembered;
 
         public ApiSessionService(HttpClient httpClient, IApiSessionStore store,
-            IApiSessionStore registrationStore = null)
+            IApiSessionStore registrationStore = null,
+            TimeSpan? tokenRequestTimeout = null)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _registrationStore = registrationStore ?? new NullApiSessionStore();
+            _tokenRequestTimeout = tokenRequestTimeout ?? DefaultTokenRequestTimeout;
+            if (_tokenRequestTimeout <= TimeSpan.Zero || _tokenRequestTimeout == Timeout.InfiniteTimeSpan)
+                throw new ArgumentOutOfRangeException(nameof(tokenRequestTimeout));
         }
 
         public void SetPersistSession(bool persistSession)
@@ -170,13 +177,17 @@ namespace HonestFlow.Infrastructure.Api
             {
                 Content = new StringContent(JsonConvert.SerializeObject(payload), Encoding.UTF8, "application/json")
             };
-            using HttpResponseMessage response = await _httpClient.SendAsync(request, cancellationToken);
+            using var timeoutSource = new CancellationTokenSource(_tokenRequestTimeout);
+            using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                timeoutSource.Token);
+            using HttpResponseMessage response = await _httpClient.SendAsync(request, linkedSource.Token);
             if (!response.IsSuccessStatusCode)
             {
                 string errorCode = null;
                 try
                 {
-                    string errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+                    string errorJson = await response.Content.ReadAsStringAsync(linkedSource.Token);
                     errorCode = JsonConvert.DeserializeObject<ApiErrorResponse>(errorJson)?.Code;
                 }
                 catch (JsonException)
@@ -185,7 +196,7 @@ namespace HonestFlow.Infrastructure.Api
                 }
                 throw new ApiRequestException(response.StatusCode, errorCode);
             }
-            string json = await response.Content.ReadAsStringAsync(cancellationToken);
+            string json = await response.Content.ReadAsStringAsync(linkedSource.Token);
             ApiTokenResponse tokens = JsonConvert.DeserializeObject<ApiTokenResponse>(json);
             if (tokens == null || string.IsNullOrWhiteSpace(tokens.AccessToken) || string.IsNullOrWhiteSpace(tokens.RefreshToken))
                 throw new InvalidOperationException("API returned an incomplete token response.");

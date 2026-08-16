@@ -1,6 +1,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Net.Http;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,6 +11,7 @@ using HonestFlow.Application.Auth;
 using HonestFlow.Application.Bootstrap;
 using HonestFlow.Application.Core;
 using HonestFlow.Application.Licensing;
+using HonestFlow.Application.Installation;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Dialogs;
@@ -22,6 +25,7 @@ public partial class StartupWindow : Window
 {
     private static readonly Brush ActiveBlue = BrushFrom("#0967D9");
     private static readonly Brush CompleteGreen = BrushFrom("#0E9F6E");
+    private static readonly Brush ErrorRed = BrushFrom("#D91532");
     private static readonly Brush InactiveBorder = BrushFrom("#536985");
     private static readonly Brush InactiveText = BrushFrom("#AFBDD2");
     private readonly CancellationTokenSource _lifetime = new();
@@ -30,7 +34,9 @@ public partial class StartupWindow : Window
     private LicenseObservationSnapshot? _restrictedSnapshot;
     private DeviceRegistrationStartupWorkflow? _deviceRegistrationWorkflow;
     private LicenseNotIssuedStartupWorkflow? _licenseNotIssuedWorkflow;
+    private LastAuthorizedClientHint? _lastAuthorizedClientHint;
     private readonly string? _accessNotice;
+    private StartupPresentationPhase _startupPhase;
 
     public StartupWindow() : this(null)
     {
@@ -40,6 +46,7 @@ public partial class StartupWindow : Window
     {
         _accessNotice = accessNotice;
         InitializeComponent();
+        ApplyStartupPhase(StartupPresentationPhase.Initializing);
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -47,9 +54,8 @@ public partial class StartupWindow : Window
         try
         {
             _session = await _controller.InitializeAsync(new WpfProgress(this), new WpfDialogs(this), _lifetime.Token);
-            StartupProgress.Value = 100;
-            LoadingPercent.Text = "100%";
-            LoadingStatus.Text = "Проверяем состояние устройства…";
+            _lastAuthorizedClientHint = await _controller.LoadLastAuthorizedClientHintAsync(_lifetime.Token);
+            ApplyStartupPhase(StartupPresentationPhase.RememberedAccessChecking);
             LicenseObservationSnapshot? continuation = await _controller
                 .TryResumeRegistrationContinuationAsync(_session, _lifetime.Token);
             if (continuation != null)
@@ -64,10 +70,7 @@ public partial class StartupWindow : Window
             {
                 if (resumed.LicenseSnapshot?.Decision == LicenseDecision.Allowed)
                 {
-                    var mainWindow = new MainWindow(_session.Startup, resumed.Client, resumed.LicenseSnapshot);
-                    System.Windows.Application.Current.MainWindow = mainWindow;
-                    mainWindow.Show();
-                    Close();
+                    await OpenMainWindowAsync(resumed.Client, resumed.LicenseSnapshot);
                     return;
                 }
 
@@ -85,18 +88,23 @@ public partial class StartupWindow : Window
         catch (Exception ex)
         {
             Logger.LogException(ex, "WPF startup failed", nameof(StartupWindow));
+            if (_startupPhase == StartupPresentationPhase.Initializing)
+                ApplyStartupPhase(StartupPresentationPhase.PreparationFailed);
             LoadingStatus.Text = "Ошибка запуска";
             LoadingDescription.Text = ex.Message;
-            StartupProgress.Foreground = BrushFrom("#D91532");
         }
     }
 
     private void ShowLogin()
     {
+        ApplyStartupPhase(StartupPresentationPhase.FreshLogin);
         ShowOnly(LoginPanel);
+        LastAuthorizedClientHintPanel.Visibility = string.IsNullOrWhiteSpace(_lastAuthorizedClientHint?.ClientName)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        LastAuthorizedClientName.Text = _lastAuthorizedClientHint?.ClientName ?? string.Empty;
         LoginButton.Content = "Войти и продолжить";
         LoginButton.IsEnabled = true;
-        SetStep(LoginStepBadge, LoginStepText, LoginStepLabel, StepState.Active);
         PasswordInput.Focus();
     }
 
@@ -113,6 +121,7 @@ public partial class StartupWindow : Window
 
         LoginError.Visibility = Visibility.Collapsed;
         LoginButton.IsEnabled = false;
+        ApplyStartupPhase(StartupPresentationPhase.ManualAccessChecking);
         try
         {
             var progress = new Progress<LicenseAuthenticationProgress>(ReportAuthenticationProgress);
@@ -135,10 +144,7 @@ public partial class StartupWindow : Window
 
             if (result.LicenseSnapshot?.Decision == LicenseDecision.Allowed)
             {
-                var mainWindow = new MainWindow(_session.Startup, result.Client, result.LicenseSnapshot);
-                System.Windows.Application.Current.MainWindow = mainWindow;
-                mainWindow.Show();
-                Close();
+                await OpenMainWindowAsync(result.Client, result.LicenseSnapshot);
                 return;
             }
 
@@ -169,6 +175,17 @@ public partial class StartupWindow : Window
 
     private void ReportAuthenticationProgress(LicenseAuthenticationProgress progress)
     {
+        if (progress.Stage == LicenseAuthenticationStage.CheckingPassword &&
+            _startupPhase != StartupPresentationPhase.RememberedAccessChecking)
+        {
+            ApplyStartupPhase(StartupPresentationPhase.ManualAccessChecking);
+        }
+        else if (progress.Stage is LicenseAuthenticationStage.ClientResolved or
+                 LicenseAuthenticationStage.CheckingDeviceAndLicense)
+        {
+            ApplyStartupPhase(StartupPresentationPhase.LicenseChecking);
+        }
+
         LoginButton.Content = progress.Stage switch
         {
             LicenseAuthenticationStage.CheckingPassword => "Проверяем код клиента…",
@@ -176,10 +193,53 @@ public partial class StartupWindow : Window
             LicenseAuthenticationStage.CheckingDeviceAndLicense => "Проверяем лицензию…",
             _ => "Завершаем проверку…"
         };
-        if (progress.Stage != LicenseAuthenticationStage.CheckingPassword)
-            SetStep(LoginStepBadge, LoginStepText, LoginStepLabel, StepState.Complete);
-        if (progress.Stage == LicenseAuthenticationStage.CheckingDeviceAndLicense)
-            SetStep(LicenseStepBadge, LicenseStepText, LicenseStepLabel, StepState.Active);
+    }
+
+    private void ServiceInstallation_Click(object sender, RoutedEventArgs e)
+    {
+        if (_session == null) return;
+        ServiceInstallationButton.IsEnabled = false;
+        HttpClient? httpClient = null;
+        try
+        {
+            httpClient = CreateServiceInstallationHttpClient();
+            var workflow = new ServiceInstallationAccessWorkflow(
+                new ApiServiceInstallationAccessClient(httpClient));
+            string architecture = Environment.Is64BitOperatingSystem ? "x64" : "x86";
+            string appVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
+            var dialog = new ServiceAccessDialog(
+                workflow, architecture, appVersion, _lifetime.Token) { Owner = this };
+            if (dialog.ShowDialog() != true || dialog.Session == null)
+            {
+                httpClient.Dispose();
+                return;
+            }
+
+            PasswordInput.Clear();
+            var installationWindow = new InstallationModeWindow(
+                dialog.Session, httpClient, _session.LogService);
+            httpClient = null;
+            System.Windows.Application.Current.MainWindow = installationWindow;
+            installationWindow.Show();
+            Close();
+        }
+        finally
+        {
+            httpClient?.Dispose();
+            ServiceInstallationButton.IsEnabled = true;
+        }
+    }
+
+    private static HttpClient CreateServiceInstallationHttpClient()
+    {
+        string? configuredBaseUrl = Environment.GetEnvironmentVariable("HONESTFLOW_API_BASE_URL");
+        return new HttpClient
+        {
+            BaseAddress = new Uri(string.IsNullOrWhiteSpace(configuredBaseUrl)
+                ? "https://api.honestflow.ru/"
+                : configuredBaseUrl.TrimEnd('/') + "/"),
+            Timeout = TimeSpan.FromSeconds(30)
+        };
     }
 
     private async Task ShowRestrictedAccessAsync(LicenseObservationSnapshot? snapshot)
@@ -199,6 +259,7 @@ public partial class StartupWindow : Window
 
         if (snapshot?.TechnicalCode == "CLIENT_ACCESS_DISABLED")
         {
+            ApplyStartupPhase(StartupPresentationPhase.ClientAccessDisabled);
             LicenseMissingTitle.Text = "Доступ к HonestFlow отключён";
             LicenseMissingDescription.Text = "Доступ к HonestFlow для этого клиента отключён.";
             RegistrationStatus.Text = string.Empty;
@@ -213,6 +274,7 @@ public partial class StartupWindow : Window
             _session?.Startup.AuthorizedClient != null &&
             _session.Startup.AuthService is ILicenseObservationRefresher licenseRefresher)
         {
+            ApplyStartupPhase(StartupPresentationPhase.LicenseNotIssued);
             LicenseMissingTitle.Text = "Лицензия ещё не выдана";
             LicenseMissingDescription.Text =
                 "Устройство уже зарегистрировано. После выдачи лицензии запуск продолжится без повторного входа.";
@@ -224,6 +286,8 @@ public partial class StartupWindow : Window
                 _session.Startup.AuthorizedClient);
             return;
         }
+
+        ApplyStartupPhase(StartupStagePresentationMapper.PhaseForLicense(snapshot));
 
         LicenseMissingTitle.Text = "Доступ ограничен";
         LicenseMissingDescription.Text =
@@ -237,6 +301,7 @@ public partial class StartupWindow : Window
 
     private async Task ShowDeviceRegistrationAsync(LicenseObservationSnapshot snapshot)
     {
+        ApplyStartupPhase(StartupPresentationPhase.DeviceAwaitingAddress);
         _restrictedSnapshot = snapshot;
         _deviceRegistrationWorkflow = CreateDeviceRegistrationWorkflow(
             string.Equals(snapshot.TechnicalCode, "REGISTRATION_CONTINUATION", StringComparison.Ordinal));
@@ -269,6 +334,7 @@ public partial class StartupWindow : Window
 
     private async Task ApplyDeviceRegistrationStateAsync(DeviceRegistrationStartupResult state)
     {
+        ApplyStartupPhase(StartupStagePresentationMapper.PhaseForRegistration(state.State));
         if (state.State == DeviceRegistrationStartupState.SessionInvalid)
         {
             ShowLogin();
@@ -281,11 +347,7 @@ public partial class StartupWindow : Window
         {
             _session!.Startup.AuthorizedClient = state.Authentication.Client;
             _session.Startup.SellerAuthenticationHandled = true;
-            var mainWindow = new MainWindow(_session.Startup, state.Authentication.Client,
-                state.Authentication.LicenseSnapshot);
-            System.Windows.Application.Current.MainWindow = mainWindow;
-            mainWindow.Show();
-            Close();
+            await OpenMainWindowAsync(state.Authentication.Client, state.Authentication.LicenseSnapshot);
             return;
         }
 
@@ -442,6 +504,7 @@ public partial class StartupWindow : Window
 
         RetryLicenseButton.IsEnabled = false;
         RegistrationStatus.Text = "Проверяем лицензию…";
+        ApplyStartupPhase(StartupPresentationPhase.LicenseChecking);
         try
         {
             LicenseNotIssuedStartupResult result = await _licenseNotIssuedWorkflow.CheckAsync(_lifetime.Token);
@@ -449,18 +512,15 @@ public partial class StartupWindow : Window
             {
                 _session!.Startup.AuthorizedClient = result.Authentication.Client;
                 _session.Startup.SellerAuthenticationHandled = true;
-                var mainWindow = new MainWindow(
-                    _session.Startup,
-                    result.Authentication.Client,
-                    result.Authentication.LicenseSnapshot);
-                System.Windows.Application.Current.MainWindow = mainWindow;
-                mainWindow.Show();
-                Close();
+                await OpenMainWindowAsync(result.Authentication.Client, result.Authentication.LicenseSnapshot);
                 return;
             }
 
             if (result.Snapshot != null)
+            {
                 _restrictedSnapshot = result.Snapshot;
+                ApplyStartupPhase(StartupStagePresentationMapper.PhaseForLicense(result.Snapshot));
+            }
             RegistrationStatus.Text = result.Message;
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
@@ -490,6 +550,7 @@ public partial class StartupWindow : Window
         catch (Exception ex)
         {
             Logger.LogException(ex, "WPF device registration failed", nameof(StartupWindow));
+            ApplyStartupPhase(StartupPresentationPhase.DeviceStatusUnavailable);
             DeviceRegistrationStatus.Text = "Не удалось выполнить операцию. Попробуйте проверить снова.";
         }
         finally
@@ -517,14 +578,50 @@ public partial class StartupWindow : Window
         }
     }
 
-    private static void SetStep(Border badge, TextBlock number, TextBlock label, StepState state)
+    private async Task OpenMainWindowAsync(IPData client, LicenseObservationSnapshot? snapshot)
     {
-        bool complete = state == StepState.Complete;
-        badge.Background = state == StepState.Active ? ActiveBlue : complete ? CompleteGreen : Brushes.Transparent;
-        badge.BorderBrush = state == StepState.Active ? ActiveBlue : complete ? CompleteGreen : InactiveBorder;
-        number.Text = complete ? "✓" : number.Text;
-        number.Foreground = state == StepState.Inactive ? InactiveText : Brushes.White;
-        label.Foreground = state == StepState.Inactive ? InactiveText : complete ? BrushFrom("#DCE8F7") : Brushes.White;
+        ApplyStartupPhase(StartupStagePresentationMapper.PhaseForLicense(snapshot));
+        var compactWindow = new CompactMainWindow(_session!, client, snapshot);
+        System.Windows.Application.Current.MainWindow = compactWindow;
+        compactWindow.Show();
+        await _controller.SaveLastAuthorizedClientHintAsync(client, snapshot!, CancellationToken.None);
+        ApplyStartupPhase(StartupPresentationPhase.Launched);
+        Close();
+    }
+
+    private void ApplyStartupPhase(StartupPresentationPhase phase)
+    {
+        _startupPhase = phase;
+        StartupStagePresentation presentation = StartupStagePresentationMapper.Create(phase);
+        SetStep(PreparationStepBadge, PreparationStepText, PreparationStepLabel, "1", presentation.Preparation);
+        SetStep(AccessStepBadge, AccessStepText, AccessStepLabel, "2", presentation.Access);
+        SetStep(DeviceStepBadge, DeviceStepText, DeviceStepLabel, "3", presentation.Device);
+        SetStep(LicenseStepBadge, LicenseStepText, LicenseStepLabel, "4", presentation.License);
+        SetStep(LaunchStepBadge, LaunchStepText, LaunchStepLabel, "5", presentation.Launch);
+        LoadingStatus.Text = presentation.StatusText ?? string.Empty;
+    }
+
+    private static void SetStep(
+        Border badge,
+        TextBlock number,
+        TextBlock label,
+        string stageNumber,
+        StartupStageVisualState state)
+    {
+        bool active = state == StartupStageVisualState.Active;
+        bool complete = state == StartupStageVisualState.Complete;
+        bool error = state == StartupStageVisualState.Error;
+        badge.Background = active ? ActiveBlue : complete ? CompleteGreen : error ? ErrorRed : Brushes.Transparent;
+        badge.BorderBrush = active ? ActiveBlue : complete ? CompleteGreen : error ? ErrorRed : InactiveBorder;
+        number.Text = complete ? "✓" : error ? "!" : stageNumber;
+        number.Foreground = state == StartupStageVisualState.Inactive ? InactiveText : Brushes.White;
+        label.Foreground = state switch
+        {
+            StartupStageVisualState.Inactive => InactiveText,
+            StartupStageVisualState.Complete => BrushFrom("#DCE8F7"),
+            StartupStageVisualState.Error => BrushFrom("#FFD5DC"),
+            _ => Brushes.White
+        };
     }
 
     private static Brush BrushFrom(string color) => (Brush)new BrushConverter().ConvertFromString(color)!;
@@ -540,12 +637,7 @@ public partial class StartupWindow : Window
         private readonly StartupWindow _window;
         public WpfProgress(StartupWindow window) => _window = window;
         public void SetProgress(int percent, string stepName) => _window.Dispatcher.Invoke(() =>
-        {
-            int safe = Math.Clamp(percent, 0, 100);
-            _window.StartupProgress.Value = safe;
-            _window.LoadingPercent.Text = $"{safe}%";
-            _window.LoadingStatus.Text = stepName;
-        });
+            _window.LoadingStatus.Text = "Подготавливаем HonestFlow…");
     }
 
     private sealed class WpfDialogs : IUserDialogService
@@ -558,6 +650,4 @@ public partial class StartupWindow : Window
         public bool Confirm(string message, string title, UserDialogIcon icon = UserDialogIcon.Warning) => Show(message, title, MessageBoxButton.YesNo, icon == UserDialogIcon.Error ? MessageBoxImage.Error : MessageBoxImage.Warning) == MessageBoxResult.Yes;
         private MessageBoxResult Show(string message, string title, MessageBoxButton buttons, MessageBoxImage icon) => _owner.Dispatcher.Invoke(() => MessageBox.Show(_owner, message, title, buttons, icon));
     }
-
-    private enum StepState { Inactive, Active, Complete }
 }

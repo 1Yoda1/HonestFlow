@@ -47,8 +47,10 @@ namespace HonestFlow.Tests
             Assert.Equal("cached-client", result.Client.ClientId);
         }
 
-        [Fact]
-        public async Task Resume_UnauthorizedClearsCacheAndDoesNotFallback()
+        [Theory]
+        [InlineData(HttpStatusCode.Unauthorized)]
+        [InlineData(HttpStatusCode.Forbidden)]
+        public async Task Resume_AuthoritativeDenialClearsCacheAndDoesNotFallback(HttpStatusCode statusCode)
         {
             var cache = new MemoryConfigurationCache(new ApiConfigurationResponse
             {
@@ -56,13 +58,46 @@ namespace HonestFlow.Tests
                 Device = new ApiDeviceConfiguration { DeviceId = "d1" }
             });
             var service = new ApiAuthService(
-                new FailingSession(new ApiRequestException(HttpStatusCode.Unauthorized)),
+                new FailingSession(new ApiRequestException(statusCode)),
                 new FakeIdentity(), new FakeLog(), cache);
 
             var result = await service.TryResumeAsync(null, CancellationToken.None);
 
             Assert.Null(result.Client);
             Assert.True(cache.Cleared);
+            Assert.Equal(0, cache.LoadCalls);
+        }
+
+        [Fact]
+        public async Task Resume_ServerErrorUsesDeviceBoundProtectedCache()
+        {
+            var cache = new MemoryConfigurationCache(new ApiConfigurationResponse
+            {
+                Client = new ApiClientConfiguration { ClientId = "cached-client", Name = "Cached" },
+                Device = new ApiDeviceConfiguration { DeviceId = "d1" }
+            });
+            var service = new ApiAuthService(
+                new FailingSession(new ApiRequestException(HttpStatusCode.ServiceUnavailable)),
+                new FakeIdentity(), new FakeLog(), cache);
+
+            var result = await service.TryResumeAsync(null, CancellationToken.None);
+
+            Assert.Equal("cached-client", result.Client.ClientId);
+            Assert.False(cache.Cleared);
+        }
+
+        [Fact]
+        public async Task Resume_TransientFailureWithoutConfigurationCacheIsNotSuccessful()
+        {
+            var cache = new MemoryConfigurationCache(null);
+            var service = new ApiAuthService(
+                new FailingSession(new HttpRequestException("offline")),
+                new FakeIdentity(), new FakeLog(), cache);
+
+            var result = await service.TryResumeAsync(null, CancellationToken.None);
+
+            Assert.Null(result.Client);
+            Assert.Equal(1, cache.LoadCalls);
         }
 
         [Fact]
@@ -164,8 +199,12 @@ namespace HonestFlow.Tests
             private ApiConfigurationResponse _configuration;
             public MemoryConfigurationCache(ApiConfigurationResponse configuration) { _configuration = configuration; }
             public bool Cleared { get; private set; }
-            public Task<ApiConfigurationResponse> LoadAsync(string deviceId, CancellationToken cancellationToken) =>
-                Task.FromResult(string.Equals(_configuration?.Device?.DeviceId, deviceId, StringComparison.Ordinal) ? _configuration : null);
+            public int LoadCalls { get; private set; }
+            public Task<ApiConfigurationResponse> LoadAsync(string deviceId, CancellationToken cancellationToken)
+            {
+                LoadCalls++;
+                return Task.FromResult(string.Equals(_configuration?.Device?.DeviceId, deviceId, StringComparison.Ordinal) ? _configuration : null);
+            }
             public Task SaveAsync(ApiConfigurationResponse configuration, CancellationToken cancellationToken) { _configuration = configuration; return Task.CompletedTask; }
             public Task ClearAsync(CancellationToken cancellationToken) { Cleared = true; _configuration = null; return Task.CompletedTask; }
         }

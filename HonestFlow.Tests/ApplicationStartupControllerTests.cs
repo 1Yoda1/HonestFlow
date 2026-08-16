@@ -95,6 +95,30 @@ namespace HonestFlow.Tests
             Assert.True(apiSession.ContinuationCleared);
         }
 
+        [Theory]
+        [MemberData(nameof(TransientRegistrationContinuationFailures))]
+        public async Task RegistrationContinuation_TransientRefreshFailureRemainsRetryable(Exception failure)
+        {
+            var apiSession = ContinuationSession(true);
+            apiSession.RefreshException = failure;
+
+            LicenseObservationSnapshot state = await ResumeContinuationAsync(apiSession);
+
+            Assert.NotNull(state);
+            Assert.Equal(LicenseDecision.DeviceNotRegistered, state.Decision);
+            Assert.Equal("REGISTRATION_CONTINUATION", state.TechnicalCode);
+            Assert.Contains("статус заявки", state.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.True(apiSession.RefreshCalled);
+            Assert.False(apiSession.ContinuationCleared);
+        }
+
+        public static object[][] TransientRegistrationContinuationFailures =>
+        [
+            [new HttpRequestException("offline")],
+            [new TaskCanceledException("token timeout")],
+            [new ApiRequestException(System.Net.HttpStatusCode.ServiceUnavailable)]
+        ];
+
         private static CapturingApiSession ContinuationSession(bool? policyEnabled) => new()
         {
             Continuation = new ApiSession { ClientId = "client-1", ClientName = "Point", ExternalDeviceId = "device-1" },
@@ -151,6 +175,7 @@ namespace HonestFlow.Tests
             public string ClientName => Continuation?.ClientName;
             public bool RefreshCalled { get; private set; }
             public bool ContinuationCleared { get; private set; }
+            public Exception RefreshException { get; set; }
 
             public void SetPersistSession(bool persistSession)
             {
@@ -170,6 +195,8 @@ namespace HonestFlow.Tests
             public Task<bool> RefreshSessionAsync(CancellationToken cancellationToken)
             {
                 RefreshCalled = true;
+                if (RefreshException != null)
+                    return Task.FromException<bool>(RefreshException);
                 return Task.FromResult(true);
             }
 
