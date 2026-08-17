@@ -13,6 +13,8 @@ namespace HonestFlow.Tests
         {
             PointStatusResult result = Healthy();
             result.EsmApiStatus = EsmStatusResult.Unavailable();
+            result.EsmApiPort = EsmApiPortProbeResult.Unavailable(51077, "refused");
+            result.Esm = Node(NodeLevel.Error, "esm-orchestrator", "Running");
 
             DiagnosticsSnapshot snapshot = _builder.Create(result);
 

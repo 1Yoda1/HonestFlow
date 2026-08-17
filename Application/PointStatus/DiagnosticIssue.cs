@@ -8,7 +8,9 @@ namespace HonestFlow.Application.PointStatus
     public enum DiagnosticIssueCode
     {
         ESM_NOT_INSTALLED,
+        ESM_SERVICE_MISSING,
         ESM_API_UNAVAILABLE,
+        ESM_REGISTRATION_STATUS_UNAVAILABLE,
         ESM_NOT_REGISTERED,
         ESM_CM_SERVICE_STOPPED,
         ESM_ORCHESTRATOR_STOPPED,
@@ -146,25 +148,41 @@ namespace HonestFlow.Application.PointStatus
             PointStatusResult result = context.Result;
             ServiceSnapshot orchestrator = FindService(result, "esm-orchestrator");
             ServiceSnapshot cm = FindServicePrefix(result, "esm-cm-");
+            bool hasEsmServiceEvidence = result.EsmServiceStatus != null ||
+                result.ServiceSnapshots?.Any(service =>
+                    string.Equals(service.ServiceName, "esm-orchestrator", StringComparison.OrdinalIgnoreCase) ||
+                    service.ServiceName.StartsWith("esm-cm-", StringComparison.OrdinalIgnoreCase)) == true;
 
-            if (orchestrator == null && cm == null)
+            if (string.Equals(result.Esm?.StatusText, "ЕСМ не установлен", StringComparison.Ordinal))
                 Add(issues, Issue(DiagnosticIssueCode.ESM_NOT_INSTALLED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
                     "ТС ПИоТ не установлен", "Компоненты ТС ПИоТ не найдены.", context.Esm.Details, DiagnosticFixKey.StartEsmServices));
-            if (orchestrator != null && !orchestrator.IsRunning)
+            else if (hasEsmServiceEvidence && orchestrator == null)
+                Add(issues, Issue(DiagnosticIssueCode.ESM_SERVICE_MISSING, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
+                    "Служба ТС ПИоТ не найдена", "Не найдена обязательная служба ТС ПИоТ.", context.Esm.Details, DiagnosticFixKey.StartEsmServices));
+            else if (orchestrator != null && !orchestrator.IsRunning)
                 Add(issues, Issue(DiagnosticIssueCode.ESM_ORCHESTRATOR_STOPPED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
                     "Служба ТС ПИоТ остановлена", "Служба ESM Orchestrator не запущена.", context.Esm.Details, DiagnosticFixKey.StartEsmServices,
                     Evidence("Service", orchestrator.ServiceName), Evidence("State", orchestrator.State)));
-            if (cm != null && !cm.IsRunning)
+            else if (result.EsmRegistration == null || result.EsmRegistration.Kind == EsmRegistrationResultKind.Unavailable)
+                Add(issues, Issue(DiagnosticIssueCode.ESM_REGISTRATION_STATUS_UNAVAILABLE, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
+                    "Статус ТС ПИоТ недоступен", "Не удалось получить статус регистрации ТС ПИоТ.", context.Esm.Details,
+                    DiagnosticFixKey.RestartEsm, Evidence("Probe", "instances/info")));
+            else if (result.EsmRegistration.Kind == EsmRegistrationResultKind.NotConfigured)
+                Add(issues, Issue(DiagnosticIssueCode.ESM_NOT_REGISTERED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
+                    "ТС ПИоТ не зарегистрирован", "Экземпляр ТС ПИоТ требует регистрации.", context.Esm.Details));
+            else if (hasEsmServiceEvidence && cm == null)
+                Add(issues, Issue(DiagnosticIssueCode.ESM_SERVICE_MISSING, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
+                    "Служба ТС ПИоТ не найдена", "Не найдена обязательная служба ТС ПИоТ.", context.Esm.Details, DiagnosticFixKey.StartEsmServices));
+            else if (cm != null && !cm.IsRunning)
                 Add(issues, Issue(DiagnosticIssueCode.ESM_CM_SERVICE_STOPPED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
                     "Служба ТС ПИоТ остановлена", "Служба ESM CM не запущена.", context.Esm.Details, DiagnosticFixKey.StartEsmServices,
                     Evidence("Service", cm.ServiceName), Evidence("State", cm.State)));
-            if (result.EsmApiStatus == null || result.EsmApiStatus.Kind == EsmStatusResultKind.Unavailable)
+            else if (result.EsmApiPort?.IsAvailable == false ||
+                (result.EsmApiPort == null &&
+                 (result.EsmApiStatus == null || result.EsmApiStatus.Kind == EsmStatusResultKind.Unavailable)))
                 Add(issues, Issue(DiagnosticIssueCode.ESM_API_UNAVAILABLE, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
                     "ТС ПИоТ недоступен", "Локальный API ТС ПИоТ не отвечает.", context.Esm.Details, DiagnosticFixKey.RestartEsm,
-                    Evidence("Probe", "EsmRest"), Evidence("Endpoint", "http://127.0.0.1:51077")));
-            if (result.EsmRegistration?.Kind == EsmRegistrationResultKind.NotConfigured)
-                Add(issues, Issue(DiagnosticIssueCode.ESM_NOT_REGISTERED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
-                    "ТС ПИоТ не зарегистрирован", "Экземпляр ТС ПИоТ требует регистрации.", context.Esm.Details));
+                    Evidence("Probe", "EsmApiPort"), Evidence("Port", result.EsmApiPort?.Port?.ToString() ?? "not configured")));
 
             AddAtolIssues(issues, context);
             AddLmIssues(issues, context);
@@ -410,13 +428,17 @@ namespace HonestFlow.Application.PointStatus
 
             EsmComponentStatus client = context.Api?.ClientSoftware;
             facts.Add(new DiagnosticFact("Esm.Api", DiagnosticComponent.Esm,
-                context.Result.EsmApiStatus?.Kind == EsmStatusResultKind.Success ? DiagnosticFactState.Success : DiagnosticFactState.Failure,
-                context.Result.EsmApiStatus?.Kind.ToString() ?? "not requested", context.Esm.Details));
+                context.Result.EsmApiPort?.IsAvailable == true ? DiagnosticFactState.Success :
+                context.Result.EsmApiPort == null ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
+                context.Result.EsmApiPort?.IsAvailable == true ? "Available" : "Unavailable", context.Esm.Details));
             facts.Add(new DiagnosticFact("EsmApiPort", DiagnosticComponent.Esm,
-                context.Result.EsmApiStatus?.ApiPort.HasValue == true ? DiagnosticFactState.Success : DiagnosticFactState.Unknown,
-                context.Result.EsmApiStatus?.ApiPort?.ToString() ?? "-"));
+                context.Result.EsmApiPort?.IsAvailable == true ? DiagnosticFactState.Success :
+                context.Result.EsmApiPort == null ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
+                context.Result.EsmApiPort?.Port?.ToString() ?? "-",
+                $"errorCategory={context.Result.EsmApiPort?.ErrorCategory ?? "-"}"));
             facts.Add(new DiagnosticFact("Esm.Registration", DiagnosticComponent.Esm,
-                context.Result.EsmRegistration?.Kind == EsmRegistrationResultKind.Registered ? DiagnosticFactState.Success : DiagnosticFactState.Failure,
+                context.Result.EsmRegistration?.Kind == EsmRegistrationResultKind.Registered ? DiagnosticFactState.Success :
+                context.Result.EsmRegistration == null ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
                 context.Result.EsmRegistration?.Kind.ToString() ?? "unknown"));
             facts.Add(new DiagnosticFact("Kkt.Live", DiagnosticComponent.Kkt,
                 context.EsmKkt.State == DiagnosticConnectionState.Connected ? DiagnosticFactState.Success :

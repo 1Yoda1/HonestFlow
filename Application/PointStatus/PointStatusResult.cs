@@ -12,6 +12,8 @@
         public NodeStatus RuDesktop { get; set; }
         public EsmStatusResult EsmApiStatus { get; set; }
         public EsmRegistrationResult EsmRegistration { get; set; }
+        public NodeStatus EsmServiceStatus { get; set; }
+        public EsmApiPortProbeResult EsmApiPort { get; set; }
         public EsmCashRegisterResult CashRegister { get; set; }
         public NodeStatus KktServiceStatus { get; set; }
         public KktDriverProbeResult KktDriver { get; set; }

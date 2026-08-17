@@ -148,7 +148,8 @@ public sealed class LmDiagnosticsSemanticsTests
             cloudConnectivityProbe: new StubCloud(),
             kktPnpProbe: new StubKktPnp(),
             kktDriverProbe: new StubKktDriver(),
-            kktPortProbe: new StubKktPort());
+            kktPortProbe: new StubKktPort(),
+            esmApiPortProbe: new StubEsmApiPort());
 
         return await service.CheckAsync(
             new IPData { ClientId = "current", Name = "Текущий клиент", Inn = expectedInn },
@@ -217,6 +218,12 @@ public sealed class LmDiagnosticsSemanticsTests
     private sealed class StubCloud : ICloudConnectivityProbe
     {
         public Task<bool> IsAvailableAsync(CancellationToken cancellationToken) => Task.FromResult(true);
+    }
+
+    private sealed class StubEsmApiPort : IEsmApiPortProbe
+    {
+        public Task<EsmApiPortProbeResult> CheckAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(EsmApiPortProbeResult.Available(51077));
     }
 
     private sealed class StubKktPnp : IKktPnpProbe

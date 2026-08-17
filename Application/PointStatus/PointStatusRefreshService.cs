@@ -54,6 +54,17 @@ namespace HonestFlow.Application.PointStatus
                     controllerVersion);
             }
 
+            if (pointStatus.EsmServiceStatus != null || pointStatus.EsmApiPort != null || pointStatus.EsmRegistration != null)
+            {
+                ComponentVersionStatus esmVersion = versionStatuses.FirstOrDefault(status =>
+                    string.Equals(status.ComponentName, "ЕСМ", StringComparison.OrdinalIgnoreCase));
+                pointStatus.Esm = PointStatusService.BuildEsmStatus(
+                    pointStatus.EsmServiceStatus,
+                    pointStatus.EsmApiPort,
+                    pointStatus.EsmRegistration,
+                    esmVersion);
+            }
+
             if (pointStatus.KktServiceStatus != null || pointStatus.KktDriver != null || pointStatus.KktPort4041 != null)
             {
                 ComponentVersionStatus kktDriverVersion = versionStatuses.FirstOrDefault(status =>

@@ -14,6 +14,8 @@ namespace HonestFlow.Tests
         [Fact]
         public async Task CheckAsync_StartsIndependentStatusChecksInParallel()
         {
+            // Release after the original independent probes have all entered; the
+            // registration probe is also required to finish before CheckAsync returns.
             var gate = new ParallelGate(expectedEntrants: 7);
             var esmClient = new StubEsmClient(gate);
             var service = new PointStatusService(
@@ -25,7 +27,10 @@ namespace HonestFlow.Tests
                 cloudConnectivityProbe: new StubCloudProbe(gate),
                 ruDesktopService: new StubRuDesktopProvider(gate),
                 kktPnpProbe: new StubKktPnpProbe(gate),
-                controllerServiceInfoProbe: new StubControllerServiceInfoProbe(gate));
+                controllerServiceInfoProbe: new StubControllerServiceInfoProbe(gate),
+                esmApiPortProbe: new StubEsmApiPortProbe(),
+                kktDriverProbe: new StubKktDriverProbe(),
+                kktPortProbe: new StubKktPortProbe());
 
             Task<PointStatusResult> check = service.CheckAsync(CancellationToken.None);
             await gate.WaitUntilAllEnteredAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -35,8 +40,8 @@ namespace HonestFlow.Tests
             PointStatusResult result = await check.WaitAsync(TimeSpan.FromSeconds(2));
 
             Assert.NotNull(result);
-            Assert.Equal(7, gate.Entrants);
-            Assert.Equal(0, esmClient.RegistrationRequests);
+            Assert.Equal(8, gate.Entrants);
+            Assert.Equal(1, esmClient.RegistrationRequests);
             Assert.Equal("Доступно", result.Cloud.ShortText);
             Assert.DoesNotContain("1", result.Cloud.ShortText);
             Assert.DoesNotContain("1", result.Cloud.Details);
@@ -150,6 +155,24 @@ namespace HonestFlow.Tests
                 await _gate.EnterAsync(cancellationToken);
                 return KktPnpResult.NotDetected();
             }
+        }
+
+        private sealed class StubEsmApiPortProbe : IEsmApiPortProbe
+        {
+            public Task<EsmApiPortProbeResult> CheckAsync(CancellationToken cancellationToken) =>
+                Task.FromResult(EsmApiPortProbeResult.Available(51077));
+        }
+
+        private sealed class StubKktDriverProbe : IKktDriverProbe
+        {
+            public Task<KktDriverProbeResult> CheckAsync(string requiredArchitecture, CancellationToken cancellationToken) =>
+                Task.FromResult(KktDriverProbeResult.Found(requiredArchitecture ?? "x64", "10.10.8.23"));
+        }
+
+        private sealed class StubKktPortProbe : IKktPortProbe
+        {
+            public Task<KktPortProbeResult> CheckAsync(CancellationToken cancellationToken) =>
+                Task.FromResult(KktPortProbeResult.Available());
         }
 
         private sealed class StubRuDesktopProvider : IRuDesktopStatusProvider

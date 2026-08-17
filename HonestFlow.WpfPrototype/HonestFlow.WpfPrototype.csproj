@@ -25,4 +25,8 @@
     <ProjectReference Include="..\HonestFlow.csproj" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
   </ItemGroup>
+  <ItemGroup>
+    <None Remove="Assets\TopologyIcons\*.png" />
+    <Resource Include="Assets\TopologyIcons\*.png" />
+  </ItemGroup>
 </Project>

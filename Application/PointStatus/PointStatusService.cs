@@ -28,6 +28,7 @@ namespace HonestFlow.Application.PointStatus
         private readonly IKktPnpProbe _kktPnpProbe;
         private readonly IKktDriverProbe _kktDriverProbe;
         private readonly IKktPortProbe _kktPortProbe;
+        private readonly IEsmApiPortProbe _esmApiPortProbe;
         public PointStatusService(
             bool remoteConfigLoaded,
             int ipCount,
@@ -40,7 +41,8 @@ namespace HonestFlow.Application.PointStatus
             IKktPnpProbe kktPnpProbe = null,
             IControllerServiceInfoProbe controllerServiceInfoProbe = null,
             IKktDriverProbe kktDriverProbe = null,
-            IKktPortProbe kktPortProbe = null)
+            IKktPortProbe kktPortProbe = null,
+            IEsmApiPortProbe esmApiPortProbe = null)
         {
             _remoteConfigLoaded = remoteConfigLoaded;
             _ipCount = ipCount;
@@ -53,6 +55,7 @@ namespace HonestFlow.Application.PointStatus
             _kktPnpProbe = kktPnpProbe ?? new WindowsKktPnpProbe();
             _kktDriverProbe = kktDriverProbe ?? new KktDriverProbe();
             _kktPortProbe = kktPortProbe ?? new KktPortProbe();
+            _esmApiPortProbe = esmApiPortProbe ?? new EsmApiPortProbe();
         }
 
         public Task<PointStatusResult> CheckAsync(CancellationToken cancellationToken) =>
@@ -76,9 +79,7 @@ namespace HonestFlow.Application.PointStatus
             }
             else
             {
-                // GetStatusAsync already reads /instances/info; reuse that result instead
-                // of issuing the same ESM request again for registration status.
-                esmTask = GetRegistrationFromControllerStatusAsync(controllerTask);
+                esmTask = _esmStatusClient.GetRegistrationStatusAsync(cancellationToken);
             }
             Task<LmDiagnosticProbeResult> lmTask = CheckLmStatusAsync(services, currentClient);
             Task<NodeStatus> cloudTask = CheckCloudStatusAsync(cancellationToken);
@@ -87,6 +88,11 @@ namespace HonestFlow.Application.PointStatus
             Task<KktDriverProbeResult> kktDriverTask = _kktDriverProbe.CheckAsync(currentClient?.Architecture, cancellationToken);
             Task<KktPortProbeResult> kktPortTask = _kktPortProbe.CheckAsync(cancellationToken);
             await Task.WhenAll(controllerTask, controllerServiceInfoTask, kktTask, esmTask, lmTask, cloudTask, ruDesktopTask, kktPnpTask, kktDriverTask, kktPortTask).ConfigureAwait(false);
+            EsmRegistrationResult esmRegistration = await esmTask.ConfigureAwait(false);
+            EsmApiPortProbeResult esmApiPort =
+                esmRegistration?.Kind == EsmRegistrationResultKind.Registered && IsEsmCmServiceRunning(esmService)
+                    ? await _esmApiPortProbe.CheckAsync(cancellationToken).ConfigureAwait(false)
+                    : null;
             LmDiagnosticProbeResult lmProbe = await lmTask.ConfigureAwait(false);
             NodeStatus lmStatus = lmProbe.Status;
             lmStatus = ApplyLmSystemRequirements(lmStatus, LmSystemRequirements.Check());
@@ -97,7 +103,7 @@ namespace HonestFlow.Application.PointStatus
                 Controller = BuildControllerStatus(controllerService, await controllerServiceInfoTask.ConfigureAwait(false), null),
                 ControllerServiceStatus = controllerService,
                 ControllerServiceInfo = await controllerServiceInfoTask.ConfigureAwait(false),
-                Esm = BuildEsmStatus(esmService, esmTask.Result),
+                Esm = BuildEsmStatus(esmService, esmApiPort, esmRegistration, null),
                 Kkt = BuildKktStatus(
                     await kktPnpTask.ConfigureAwait(false),
                     await kktDriverTask.ConfigureAwait(false),
@@ -107,7 +113,9 @@ namespace HonestFlow.Application.PointStatus
                 Cloud = await cloudTask.ConfigureAwait(false),
                 RuDesktop = await ruDesktopTask.ConfigureAwait(false),
                 EsmApiStatus = controllerTask.Result,
-                EsmRegistration = esmTask.Result,
+                EsmRegistration = esmRegistration,
+                EsmServiceStatus = esmService,
+                EsmApiPort = esmApiPort,
                 CashRegister = kktTask.Result,
                 KktServiceStatus = kktService,
                 KktDriver = await kktDriverTask.ConfigureAwait(false),
@@ -136,25 +144,15 @@ namespace HonestFlow.Application.PointStatus
             }
         }
 
-        private static bool AreAllEsmServicesRunning(NodeStatus serviceStatus) =>
-            serviceStatus.Services.Count == 2 && serviceStatus.Services.All(x => x.IsRunning);
-
         private static bool IsEsmOrchestratorRunning(NodeStatus serviceStatus) =>
             serviceStatus.Services.Any(x =>
                 string.Equals(x.ServiceName, "esm-orchestrator", StringComparison.OrdinalIgnoreCase) &&
                 x.IsRunning);
 
-        private static async Task<EsmRegistrationResult> GetRegistrationFromControllerStatusAsync(
-            Task<EsmStatusResult> controllerTask)
-        {
-            EsmStatusResult result = await controllerTask.ConfigureAwait(false);
-            return result?.Kind switch
-            {
-                EsmStatusResultKind.Success => EsmRegistrationResult.Registered(),
-                EsmStatusResultKind.NotConfigured => EsmRegistrationResult.NotConfigured(),
-                _ => EsmRegistrationResult.Unavailable()
-            };
-        }
+        private static bool IsEsmCmServiceRunning(NodeStatus serviceStatus) =>
+            serviceStatus.Services.Any(x =>
+                x.ServiceName.StartsWith("esm-cm-", StringComparison.OrdinalIgnoreCase) &&
+                x.IsRunning);
 
         public static NodeStatus ApplyLmSystemRequirements(
             NodeStatus status,
@@ -187,60 +185,70 @@ namespace HonestFlow.Application.PointStatus
 
         public static NodeStatus BuildEsmStatus(
             NodeStatus serviceStatus,
-            EsmRegistrationResult registration)
+            EsmApiPortProbeResult apiPort,
+            EsmRegistrationResult registration,
+            ComponentVersionStatus version)
         {
-            if (serviceStatus.Services.Count == 0)
-            {
-                return new NodeStatus(
-                    NodeLevel.Error,
-                    "Не установлен",
-                    "Службы esm-orchestrator и esm-cm-* не найдены.\n\nУстановите ЕСМ.",
-                    statusText: "ЕСМ не установлен\nУстановите ЕСМ");
-            }
+            IReadOnlyList<ServiceSnapshot> services = serviceStatus?.Services ?? Array.Empty<ServiceSnapshot>();
+            ServiceSnapshot orchestrator = services.FirstOrDefault(service =>
+                string.Equals(service.ServiceName, "esm-orchestrator", StringComparison.OrdinalIgnoreCase));
+            ServiceSnapshot cm = services.FirstOrDefault(service =>
+                service.ServiceName.StartsWith("esm-cm-", StringComparison.OrdinalIgnoreCase));
 
-            if (serviceStatus.Services.Any(x => !x.IsRunning))
-            {
-                return new NodeStatus(
-                    NodeLevel.Error,
-                    "Службы не запущены",
-                    $"Проверка регистрации ЕСМ не выполнялась.\n{serviceStatus.Details}",
-                    serviceStatus.Services,
-                    "Службы ЕСМ не запущены");
-            }
-
+            if (version?.State == ComponentVersionState.NotInstalled || services.Count == 0)
+                return EsmNode(NodeLevel.Error, "ЕСМ не установлен", services, apiPort, registration, version);
+            if (orchestrator == null)
+                return EsmNode(NodeLevel.Error, "Служба не найдена", services, apiPort, registration, version);
+            if (!orchestrator.IsRunning)
+                return EsmNode(NodeLevel.Error, "Служба остановлена", services, apiPort, registration, version);
             if (registration == null || registration.Kind == EsmRegistrationResultKind.Unavailable)
-            {
-                return new NodeStatus(
-                    NodeLevel.Warning,
-                    "Нет статуса",
-                    "Службы ЕСМ работают, но GET /api/v1/instances/info не ответил.",
-                    statusText: "Состояние регистрации ЕСМ не получено");
-            }
-
+                return EsmNode(NodeLevel.Error, "Статус ЕСМ недоступен", services, apiPort, registration, version);
             if (registration.Kind == EsmRegistrationResultKind.NotConfigured)
-            {
-                return new NodeStatus(
-                    NodeLevel.Warning,
-                    "Не зарегистрирован",
-                    "Службы ЕСМ работают, но экземпляр ЕСМ не зарегистрирован.",
-                    statusText: "ЕСМ не зарегистрирован\nОткройте ЕСМ и нажмите «Зарегистрировать»");
-            }
+                return EsmNode(NodeLevel.Error, "ЕСМ не зарегистрирован", services, apiPort, registration, version);
+            // esm-cm-* is created only after the first successful ESM registration.
+            // Its absence before this point is therefore not a service failure.
+            if (cm == null)
+                return EsmNode(NodeLevel.Error, "Служба не найдена", services, apiPort, registration, version);
+            if (!cm.IsRunning)
+                return EsmNode(NodeLevel.Error, "Служба остановлена", services, apiPort, registration, version);
+            if (apiPort?.IsAvailable != true)
+                return EsmNode(NodeLevel.Error, "ЕСМ недоступен", services, apiPort, registration, version);
+            if (version?.State == ComponentVersionState.UpdateRequired)
+                return EsmNode(NodeLevel.Warning, "Обновите ЕСМ", services, apiPort, registration, version);
 
-            if (!AreAllEsmServicesRunning(serviceStatus))
-            {
-                return new NodeStatus(
-                    NodeLevel.Warning,
-                    "Неполная установка",
-                    "Экземпляр ЕСМ зарегистрирован, но найден не полный набор служб ЕСМ.",
-                    statusText: "Проверьте установку ЕСМ");
-            }
+            return EsmNode(NodeLevel.Ok, "Доступно", services, apiPort, registration, version);
+        }
 
-            return new NodeStatus(
-                NodeLevel.Ok,
-                "Работает",
-                "Службы ЕСМ работают.\nGET /api/v1/instances/info: экземпляр зарегистрирован.",
-                serviceStatus.Services,
-                "ЕСМ зарегистрирован");
+        private static NodeStatus EsmNode(
+            NodeLevel level,
+            string statusText,
+            IReadOnlyList<ServiceSnapshot> services,
+            EsmApiPortProbeResult apiPort,
+            EsmRegistrationResult registration,
+            ComponentVersionStatus version) =>
+            new(level, statusText, BuildEsmDetails(services, apiPort, registration, version), services, statusText);
+
+        private static string BuildEsmDetails(
+            IReadOnlyList<ServiceSnapshot> services,
+            EsmApiPortProbeResult apiPort,
+            EsmRegistrationResult registration,
+            ComponentVersionStatus version)
+        {
+            ServiceSnapshot orchestrator = services.FirstOrDefault(service =>
+                string.Equals(service.ServiceName, "esm-orchestrator", StringComparison.OrdinalIgnoreCase));
+            ServiceSnapshot cm = services.FirstOrDefault(service =>
+                service.ServiceName.StartsWith("esm-cm-", StringComparison.OrdinalIgnoreCase));
+            return $"Installed={version?.State != ComponentVersionState.NotInstalled}; " +
+                   $"InstalledVersion={version?.InstalledVersion ?? "-"}; " +
+                   $"TargetVersion={version?.TargetVersion ?? "-"}; " +
+                   $"VersionMatch={version?.State == ComponentVersionState.Current}; " +
+                   $"Orchestrator={orchestrator?.State ?? "missing"}; " +
+                   $"CmService={cm?.ServiceName ?? "missing"}; " +
+                   $"CmServiceState={cm?.State ?? "missing"}; " +
+                   $"ApiPort={apiPort?.Port?.ToString() ?? "-"}; " +
+                   $"ApiPortAvailable={apiPort?.IsAvailable == true}; " +
+                   $"ApiPortError={apiPort?.ErrorCategory ?? "-"}; " +
+                   $"Registration={registration?.Kind.ToString() ?? "Unknown"}.";
         }
 
         public static NodeStatus BuildKktStatus(

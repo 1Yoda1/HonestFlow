@@ -711,7 +711,7 @@ public partial class MainWindow : Window
         SimpleHelpButton.Visibility = Visibility.Collapsed;
         foreach (Border border in new[] { GismtNodeBorder, EsmNodeBorder, ControllerNodeBorder, LmNodeBorder, KktNodeBorder }) border.BorderBrush = neutral;
         foreach (Ellipse dot in new[] { GismtNodeStatusDot, EsmNodeStatusDot, ControllerNodeStatusDot, LmNodeStatusDot, KktNodeStatusDot }) dot.Fill = neutral;
-        foreach (TextBlock icon in new[] { GismtNodeIcon, EsmNodeIcon, ControllerNodeIcon, LmNodeIcon, KktNodeIcon }) icon.Foreground = neutral;
+        foreach (Border icon in new[] { GismtNodeIcon, EsmNodeIcon, ControllerNodeIcon, LmNodeIcon, KktNodeIcon }) SetTopologyIconBrush(icon, neutral);
         foreach (TextBlock text in new[] { GismtNodeStatusText, EsmNodeStatusText, ControllerNodeStatusText, LmNodeStatusText, KktNodeStatusText }) text.Foreground = neutral;
         foreach (Line line in new[] { CloudEsmLine, EsmControllerLine, ControllerLmLine, EsmKktLine }) line.Stroke = neutral;
         foreach (Border marker in new[] { CloudEsmMarker, EsmControllerMarker, ControllerLmMarker, EsmKktMarker }) marker.Visibility = Visibility.Collapsed;
@@ -728,7 +728,7 @@ public partial class MainWindow : Window
             _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Gismt, "Недоступен"), "ГИС МТ");
         ApplyFrame(
             EsmNodeBorder, EsmNodeIcon, EsmNodeStatusDot, EsmNodeStatusText, _lastDiagnostics.Esm, presentation.EsmFrame,
-            _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Esm, "API недоступен"), "ТС ПИоТ");
+            _lastPointStatus?.Esm?.StatusText ?? _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Esm, "ЕСМ недоступен"), "ТС ПИоТ");
         ApplyFrame(
             ControllerNodeBorder, ControllerNodeIcon, ControllerNodeStatusDot, ControllerNodeStatusText, _lastDiagnostics.Controller, presentation.ControllerFrame,
             _lastPointStatus?.Controller?.StatusText ?? _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Controller, "Контроллер недоступен"), "Локальный контроллер");
@@ -756,7 +756,7 @@ public partial class MainWindow : Window
             : $"{issue.Description}\n{issue.Recommendation}";
     }
 
-    private void ApplyStandaloneFrame(Border border, TextBlock icon, Ellipse statusDot, TextBlock text, DiagnosticComponentFact fact, string status, string componentName)
+    private void ApplyStandaloneFrame(Border border, Border icon, Ellipse statusDot, TextBlock text, DiagnosticComponentFact fact, string status, string componentName)
     {
         TopologyVisualState state = fact?.State switch
         {
@@ -767,7 +767,7 @@ public partial class MainWindow : Window
         Brush color = BrushForNodeState(state);
         border.BorderBrush = color;
         border.ToolTip = _diagnosticPresentation.ComponentDetails(fact, componentName);
-        icon.Foreground = color;
+        SetTopologyIconBrush(icon, color);
         statusDot.Fill = color;
         text.Text = status;
         text.Foreground = color;
@@ -843,7 +843,7 @@ public partial class MainWindow : Window
 
     private void ApplyFrame(
         Border border,
-        TextBlock icon,
+        Border icon,
         Ellipse statusDot,
         TextBlock text,
         DiagnosticComponentFact fact,
@@ -857,8 +857,13 @@ public partial class MainWindow : Window
         border.ToolTip = _diagnosticPresentation.ComponentDetails(fact, componentName);
         text.Text = status;
         text.Foreground = color;
-        icon.Foreground = color;
+        SetTopologyIconBrush(icon, color);
         statusDot.Fill = color;
+    }
+
+    private static void SetTopologyIconBrush(Border icon, Brush brush)
+    {
+        icon.Background = brush;
     }
 
     private static Brush BrushForNodeState(TopologyVisualState state) => state switch

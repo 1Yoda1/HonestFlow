@@ -55,15 +55,7 @@ namespace HonestFlow.Application.PointStatus
             IReadOnlyList<ComponentVersionStatus> versions = versionStatuses ?? Array.Empty<ComponentVersionStatus>();
             EsmStatusDto status = result.EsmApiStatus?.Status;
             EsmStatusDto api = status?.Software?.Data ?? status?.Data?.Software?.Data ?? status?.Data ?? status;
-            DiagnosticComponentFact esm = Component(
-                result.EsmApiStatus?.Kind == EsmStatusResultKind.Success &&
-                result.EsmRegistration?.Kind == EsmRegistrationResultKind.Registered &&
-                result.Esm?.Level != NodeLevel.Error,
-                result.EsmApiStatus == null || result.EsmApiStatus.Kind != EsmStatusResultKind.Success
-                    ? "Локальный API ЕСМ недоступен."
-                    : result.EsmRegistration?.Kind != EsmRegistrationResultKind.Registered
-                        ? "ЕСМ не зарегистрирован."
-                        : result.Esm?.Details);
+            DiagnosticComponentFact esm = FromEsmNode(result.Esm);
             DiagnosticComponentFact kkt = FromKktNode(result.Kkt);
             DiagnosticComponentFact lm = FromLmProbe(result.LmProbe, result.Lm);
             DiagnosticComponentFact controller = FromControllerNode(result.Controller);
@@ -159,6 +151,11 @@ namespace HonestFlow.Application.PointStatus
                 node == null ? DiagnosticState.Unknown : DiagnosticState.Failed,
                 node?.Details);
         private static DiagnosticComponentFact FromKktNode(NodeStatus node) =>
+            new(node?.Level == NodeLevel.Ok ? DiagnosticState.Healthy :
+                node?.Level == NodeLevel.Warning ? DiagnosticState.Unknown :
+                node == null ? DiagnosticState.Unknown : DiagnosticState.Failed,
+                node?.Details);
+        private static DiagnosticComponentFact FromEsmNode(NodeStatus node) =>
             new(node?.Level == NodeLevel.Ok ? DiagnosticState.Healthy :
                 node?.Level == NodeLevel.Warning ? DiagnosticState.Unknown :
                 node == null ? DiagnosticState.Unknown : DiagnosticState.Failed,

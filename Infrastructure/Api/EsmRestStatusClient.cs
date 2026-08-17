@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -212,30 +211,12 @@ namespace HonestFlow.Infrastructure.Api
         }
 
         private int? ReadPort()
-        {
-            try
-            {
-                if (!File.Exists(_settingsPath))
-                    return null;
-
-                var settings = JsonConvert.DeserializeObject<EsmGuiSettings>(File.ReadAllText(_settingsPath));
-                return settings?.Port is > 0 and <= 65535 ? settings.Port : null;
-            }
-            catch (IOException) { return null; }
-            catch (UnauthorizedAccessException) { return null; }
-            catch (JsonException) { return null; }
-        }
+            => EsmLocalApiSettings.TryReadPort(_settingsPath);
 
         public void Dispose()
         {
             if (_ownsClient)
                 _httpClient.Dispose();
-        }
-
-        private sealed class EsmGuiSettings
-        {
-            [JsonProperty("port")]
-            public int? Port { get; set; }
         }
 
         private sealed class EsmInstancesDto
