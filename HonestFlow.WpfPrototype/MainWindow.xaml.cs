@@ -40,6 +40,8 @@ public partial class MainWindow : Window
     private readonly IPData? _client;
     private LicenseObservationSnapshot? _license;
     private readonly CancellationTokenSource _lifetime = new();
+    private CancellationTokenSource? _installationCancellation;
+    private TaskCompletionSource? _installationCompletion;
     private readonly ApplicationStartupController _startupController = new();
     private readonly ILogService _logService = new LogService();
     private readonly ExternalApplicationLauncher _externalLauncher = new();
@@ -218,16 +220,111 @@ public partial class MainWindow : Window
     private async Task InstallAsync(bool reinstall)
     {
         if (_startup == null || _client == null) return;
-        await RunOperationAsync(reinstall ? "Переустанавливаем компоненты…" : "Выполняем установку…", async () =>
+        if (!reinstall)
+        {
+            await InstallAllAsync();
+            return;
+        }
+
+        await RunOperationAsync("Переустанавливаем компоненты…", async () =>
         {
             ComponentInstallationWorkflow workflow = CreateInstallationWorkflow();
-            ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: !reinstall);
+            ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: false);
             if (!readiness.CanContinue) throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired ? "Запустите HonestFlow от имени администратора." : "Не выбрана рабочая точка.");
-            bool result = reinstall
-                ? await workflow.ReinstallAsync(_client, Enum.GetValues<InstallationComponent>())
-                : await workflow.InstallAsync(_client, _lifetime.Token);
+            bool result = await workflow.ReinstallAsync(_client, Enum.GetValues<InstallationComponent>());
             SectionOutput.Text = result ? "Операция завершена успешно." : "Операция завершена без подтверждения успеха. Проверьте журнал.";
         });
+    }
+
+    private async Task InstallAllAsync()
+    {
+        if (_operationRunning || _startup == null || _client == null) return;
+
+        _operationRunning = true;
+        CancellationTokenSource installationCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _installationCancellation = installationCancellation;
+        ShowInstallationProgress();
+        try
+        {
+            ComponentInstallationWorkflow workflow = CreateInstallationWorkflow(showInstallationProgress: true);
+            ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: true);
+            if (!readiness.CanContinue)
+                throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired
+                    ? "Запустите HonestFlow от имени администратора."
+                    : "Не выбрана рабочая точка.");
+
+            bool result = await workflow.InstallAsync(_client, installationCancellation.Token);
+            SectionOutput.Text = result
+                ? "Операция завершена успешно."
+                : "Операция завершена без подтверждения успеха. Проверьте журнал.";
+            if (result)
+                await WaitForInstallationAcknowledgementAsync();
+        }
+        catch (OperationCanceledException) when (installationCancellation.IsCancellationRequested)
+        {
+            SectionOutput.Text = "Обновление компонентов отменено.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogException(ex, "Выполняем установку…", nameof(MainWindow));
+            SectionOutput.Text = ex.Message;
+            SectionDescription.Text = "Не удалось обновить компоненты: " + ex.Message;
+        }
+        finally
+        {
+            _installationCompletion = null;
+            HideInstallationProgress();
+            installationCancellation.Dispose();
+            if (ReferenceEquals(_installationCancellation, installationCancellation))
+                _installationCancellation = null;
+            _operationRunning = false;
+            await LoadComponentVersionsAsync();
+        }
+    }
+
+    private void ShowInstallationProgress()
+    {
+        InstallationProgressBar.Value = 0;
+        InstallationProgressText.Text = "Подготовка…";
+        InstallationCancelButton.Content = "Отменить";
+        InstallationCancelButton.IsEnabled = true;
+        MainWindowInteractiveContent.IsEnabled = false;
+        InstallationBusyOverlay.Visibility = Visibility.Visible;
+        InstallationCancelButton.Focus();
+    }
+
+    private void HideInstallationProgress()
+    {
+        InstallationBusyOverlay.Visibility = Visibility.Collapsed;
+        MainWindowInteractiveContent.IsEnabled = true;
+        InstallationProgressBar.Value = 0;
+        InstallationProgressText.Text = "Подготовка…";
+        InstallationCancelButton.Content = "Отменить";
+        InstallationCancelButton.IsEnabled = true;
+    }
+
+    private void InstallationCancel_Click(object sender, RoutedEventArgs e)
+    {
+        if (_installationCompletion != null)
+        {
+            _installationCompletion.TrySetResult();
+            return;
+        }
+
+        if (_installationCancellation == null || _installationCancellation.IsCancellationRequested) return;
+        InstallationCancelButton.IsEnabled = false;
+        InstallationCancelButton.Content = "Отменяем…";
+        InstallationProgressText.Text = "Отменяем…";
+        _installationCancellation.Cancel();
+    }
+
+    private Task WaitForInstallationAcknowledgementAsync()
+    {
+        _installationCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        InstallationCancelButton.Content = "ОК";
+        InstallationCancelButton.IsEnabled = true;
+        InstallationCancelButton.Focus();
+        return _installationCompletion.Task;
     }
 
     private void PopulateComponentLoadingRows()
@@ -562,10 +659,10 @@ public partial class MainWindow : Window
         });
     }
 
-    private ComponentInstallationWorkflow CreateInstallationWorkflow()
+    private ComponentInstallationWorkflow CreateInstallationWorkflow(bool showInstallationProgress = false)
     {
         if (_startup == null) throw new InvalidOperationException("Стартовая сессия отсутствует.");
-        var service = new InstallationService(_logService, new MainWindowProgress(this), new WpfDialogs(this), CreateLicenseGuard(), _startup.UseRemoteConfigMode);
+        var service = new InstallationService(_logService, new MainWindowProgress(this, showInstallationProgress), new WpfDialogs(this, suppressInformationMessages: showInstallationProgress), CreateLicenseGuard(), _startup.UseRemoteConfigMode);
         return new ComponentInstallationWorkflow(service);
     }
 
@@ -598,7 +695,7 @@ public partial class MainWindow : Window
         QuaternaryActionButton.IsEnabled = enabled;
         FooterHelpButton.IsEnabled = enabled;
         RefreshLicenseButton.IsEnabled = enabled;
-        SimpleFixButton.IsEnabled = enabled;
+        SimpleFixButton.IsEnabled = false;
         RateButton.IsEnabled = enabled && !_ratingSent;
     }
 
@@ -1170,15 +1267,45 @@ public partial class MainWindow : Window
     private sealed class MainWindowProgress : IProgressService
     {
         private readonly MainWindow _window;
-        public MainWindowProgress(MainWindow window) => _window = window;
-        public void SetProgress(int percent, string stepName) => _window.Dispatcher.Invoke(() => _window.SectionOutput.Text = $"{stepName} ({Math.Clamp(percent, 0, 100)}%)");
+        private readonly bool _showInstallationProgress;
+
+        public MainWindowProgress(MainWindow window, bool showInstallationProgress = false)
+        {
+            _window = window;
+            _showInstallationProgress = showInstallationProgress;
+        }
+
+        public void SetProgress(int percent, string stepName) => _window.Dispatcher.Invoke(() =>
+        {
+            int value = Math.Clamp(percent, 0, 100);
+            if (_showInstallationProgress)
+            {
+                if (_window._installationCancellation?.IsCancellationRequested == true) return;
+                _window.InstallationProgressBar.Value = value;
+                _window.InstallationProgressText.Text = $"{stepName} ({value}%)";
+                return;
+            }
+
+            _window.SectionOutput.Text = $"{stepName} ({value}%)";
+        });
     }
 
     private sealed class WpfDialogs : IUserDialogService
     {
         private readonly Window _owner;
-        public WpfDialogs(Window owner) => _owner = owner;
-        public void ShowInformation(string message, string title) => Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+        private readonly bool _suppressInformationMessages;
+
+        public WpfDialogs(Window owner, bool suppressInformationMessages = false)
+        {
+            _owner = owner;
+            _suppressInformationMessages = suppressInformationMessages;
+        }
+
+        public void ShowInformation(string message, string title)
+        {
+            if (!_suppressInformationMessages)
+                Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+        }
         public void ShowWarning(string message, string title) => Show(message, title, MessageBoxButton.OK, MessageBoxImage.Warning);
         public void ShowError(string message, string title) => Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
         public bool Confirm(string message, string title, UserDialogIcon icon = UserDialogIcon.Warning) => Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;

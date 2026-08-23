@@ -55,6 +55,21 @@ namespace HonestFlow.Tests
             Assert.Same(client, installation.InstalledClient);
         }
 
+        [Fact]
+        public async Task InstallAsync_PassesCancellationTokenToInstallationService()
+        {
+            var installation = new StubInstallationService { InstallResult = true };
+            var workflow = new ComponentInstallationWorkflow(
+                installation,
+                () => true,
+                () => new LmSystemRequirementsResult(Array.Empty<string>(), Array.Empty<string>()));
+            using var cancellation = new CancellationTokenSource();
+
+            await workflow.InstallAsync(new IPData(), cancellation.Token);
+
+            Assert.Equal(cancellation.Token, installation.InstallationCancellationToken);
+        }
+
         private static ComponentInstallationWorkflow CreateWorkflow(bool isAdministrator) =>
             new(
                 new StubInstallationService(),
@@ -65,12 +80,14 @@ namespace HonestFlow.Tests
         {
             public bool InstallResult { get; init; }
             public IPData InstalledClient { get; private set; }
+            public CancellationToken InstallationCancellationToken { get; private set; }
 
             public Task<bool> CheckLmAndInstall(
                 IPData selectedIP,
                 CancellationToken cancellationToken = default)
             {
                 InstalledClient = selectedIP;
+                InstallationCancellationToken = cancellationToken;
                 return Task.FromResult(InstallResult);
             }
 
