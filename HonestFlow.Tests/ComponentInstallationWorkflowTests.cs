@@ -70,6 +70,24 @@ namespace HonestFlow.Tests
             Assert.Equal(cancellation.Token, installation.InstallationCancellationToken);
         }
 
+        [Fact]
+        public async Task ReinstallAsync_PassesSelectionAndCancellationTokenToInstallationService()
+        {
+            var installation = new StubInstallationService { ReinstallResult = true };
+            var workflow = new ComponentInstallationWorkflow(
+                installation,
+                () => true,
+                () => new LmSystemRequirementsResult(Array.Empty<string>(), Array.Empty<string>()));
+            using var cancellation = new CancellationTokenSource();
+            InstallationComponent[] selected = { InstallationComponent.LmModule };
+
+            bool result = await workflow.ReinstallAsync(new IPData(), selected, cancellation.Token);
+
+            Assert.True(result);
+            Assert.Equal(cancellation.Token, installation.ReinstallCancellationToken);
+            Assert.Equal(selected, installation.ReinstalledComponents);
+        }
+
         private static ComponentInstallationWorkflow CreateWorkflow(bool isAdministrator) =>
             new(
                 new StubInstallationService(),
@@ -79,8 +97,11 @@ namespace HonestFlow.Tests
         private sealed class StubInstallationService : IInstallationService
         {
             public bool InstallResult { get; init; }
+            public bool ReinstallResult { get; init; }
             public IPData InstalledClient { get; private set; }
             public CancellationToken InstallationCancellationToken { get; private set; }
+            public CancellationToken ReinstallCancellationToken { get; private set; }
+            public IReadOnlyCollection<InstallationComponent> ReinstalledComponents { get; private set; }
 
             public Task<bool> CheckLmAndInstall(
                 IPData selectedIP,
@@ -93,8 +114,13 @@ namespace HonestFlow.Tests
 
             public Task<bool> ReinstallSelectedComponents(
                 IPData selectedIP,
-                IReadOnlyCollection<InstallationComponent> components) =>
-                Task.FromResult(true);
+                IReadOnlyCollection<InstallationComponent> components,
+                CancellationToken cancellationToken = default)
+            {
+                ReinstalledComponents = components;
+                ReinstallCancellationToken = cancellationToken;
+                return Task.FromResult(ReinstallResult);
+            }
         }
     }
 }

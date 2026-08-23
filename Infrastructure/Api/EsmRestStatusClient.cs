@@ -95,7 +95,7 @@ namespace HonestFlow.Infrastructure.Api
                 {
                     // Keep the successfully obtained /status/{id} snapshot.
                 }
-                return EsmStatusResult.Success(status, port);
+                return EsmStatusResult.Success(status, port, id);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {

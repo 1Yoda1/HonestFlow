@@ -97,9 +97,13 @@ namespace HonestFlow.Infrastructure.Installers
             await ReinstallExisting(reason);
         }
 
-        public async Task RestoreDatabaseFromArchive(string archivePath, string installFolder)
+        public async Task RestoreDatabaseFromArchive(
+            string archivePath,
+            string installFolder,
+            Action<int, string> reportProgress = null)
         {
             using var operation = Logger.BeginOperation("Восстановление базы ЛМ ЧЗ", nameof(LmModuleInstaller));
+            _cancellationToken.ThrowIfCancellationRequested();
 
             if (string.IsNullOrWhiteSpace(archivePath) || !File.Exists(archivePath))
                 throw new FileNotFoundException("Не найден архив базы ЛМ ЧЗ", archivePath);
@@ -119,6 +123,7 @@ namespace HonestFlow.Infrastructure.Installers
             bool uninstallWithPromptExecuted = false;
             if (!string.IsNullOrWhiteSpace(guid))
             {
+                reportProgress?.Invoke(55, "ЛМ ЧЗ: удаление текущего модуля");
                 await UninstallWithDatabasePrompt(guid);
                 uninstallWithPromptExecuted = true;
             }
@@ -141,15 +146,24 @@ namespace HonestFlow.Infrastructure.Installers
                     "Для восстановления из архива повторите операцию и нажмите \"Да\" на удаление файлов баз данных и настроек.",
                     "Восстановление базы ЛМ ЧЗ");
 
+                _cancellationToken.ThrowIfCancellationRequested();
+                reportProgress?.Invoke(80, "ЛМ ЧЗ: восстановление установки поверх текущей базы");
                 await InstallCorePreservingRestoredDatabase(installFolder);
+                reportProgress?.Invoke(95, "ЛМ ЧЗ: запуск служб");
                 await StartLmServicesAfterRestore();
                 throw new OperationCanceledException(warning);
             }
 
+            _cancellationToken.ThrowIfCancellationRequested();
+            reportProgress?.Invoke(65, "ЛМ ЧЗ: распаковка резервной базы");
             DeleteRegimeFolderForRestore(installFolder);
             ExtractDatabaseArchive(archivePath, parentFolder, installFolder);
+            _cancellationToken.ThrowIfCancellationRequested();
+            reportProgress?.Invoke(80, "ЛМ ЧЗ: установка модуля");
             await InstallCorePreservingRestoredDatabase(installFolder);
+            reportProgress?.Invoke(90, "ЛМ ЧЗ: проверка установки");
             await VerifyUpdateLmWithSingleReinstall(installFolder);
+            reportProgress?.Invoke(95, "ЛМ ЧЗ: запуск служб");
             await StartLmServicesAfterRestore();
         }
 

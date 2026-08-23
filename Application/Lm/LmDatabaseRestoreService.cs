@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Core;
 using HonestFlow.Infrastructure.Configuration;
@@ -36,11 +37,12 @@ namespace HonestFlow.Application.Lm
             _useRemoteConfigMode = useRemoteConfigMode;
         }
 
-        public async Task<bool> Restore(IPData selectedIP)
+        public async Task<bool> Restore(IPData selectedIP, CancellationToken cancellationToken = default)
         {
             using var audit = Logger.BeginOperation("Восстановление базы ЛМ ЧЗ", nameof(LmDatabaseRestoreService));
             if (selectedIP == null)
                 throw new ArgumentNullException(nameof(selectedIP));
+            cancellationToken.ThrowIfCancellationRequested();
 
             try
             {
@@ -79,7 +81,8 @@ namespace HonestFlow.Application.Lm
                 return false;
             }
 
-            string installerPath = await ResolveLmInstallerPath(selectedIP);
+            _progress.SetProgress(5, "ЛМ ЧЗ: проверка данных восстановления");
+            string installerPath = await ResolveLmInstallerPath(selectedIP, cancellationToken);
             if (string.IsNullOrWhiteSpace(installerPath) || !File.Exists(installerPath))
             {
                 const string message = "Не найден установщик ЛМ ЧЗ для восстановления базы.";
@@ -89,7 +92,8 @@ namespace HonestFlow.Application.Lm
             }
 
             string archiveName = $"Regime_{normalizedInn}.zip";
-            string archivePath = await ResolveDatabaseArchivePath(archiveName);
+            cancellationToken.ThrowIfCancellationRequested();
+            string archivePath = await ResolveDatabaseArchivePath(archiveName, cancellationToken);
             if (string.IsNullOrWhiteSpace(archivePath) || !File.Exists(archivePath))
             {
                 string message = $"База ЛМ ЧЗ не найдена по вашему ИНН: {MaskInn(selectedIP.Inn)}.";
@@ -115,16 +119,19 @@ namespace HonestFlow.Application.Lm
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 _log.LogUser("=== ВОССТАНОВЛЕНИЕ БАЗЫ ЛМ ЧЗ ===");
                 _log.LogDebug($"LM DB restore: inn={MaskInn(selectedIP.Inn)}, archive={archivePath}, installer={installerPath}, installFolder={installFolder}");
 
                 _licenseGuard.Demand(LicenseOperation.RestoreLmDatabase);
 
-                _progress.SetProgress(10, "ЛМ ЧЗ: подготовка восстановления базы");
-                _progress.SetProgress(20, "ЛМ ЧЗ: удаление текущего модуля");
+                _progress.SetProgress(50, "ЛМ ЧЗ: подготовка восстановления базы");
 
-                var installer = new LmModuleInstaller(installerPath, _dialogService);
-                await installer.RestoreDatabaseFromArchive(archivePath, installFolder);
+                var installer = new LmModuleInstaller(installerPath, _dialogService, cancellationToken);
+                await installer.RestoreDatabaseFromArchive(
+                    archivePath,
+                    installFolder,
+                    (percent, step) => _progress.SetProgress(percent, step));
 
                 _progress.SetProgress(100, "ЛМ ЧЗ: база восстановлена");
                 _log.LogUser("База ЛМ ЧЗ восстановлена.");
@@ -143,8 +150,7 @@ namespace HonestFlow.Application.Lm
                 _progress.SetProgress(100, "ЛМ ЧЗ: восстановление базы отменено");
                 _log.LogUser($"Восстановление базы ЛМ ЧЗ отменено: {ex.Message}", true);
                 _log.LogDebug($"Восстановление базы ЛМ ЧЗ отменено: {ex}");
-                _dialogService.ShowWarning(ex.Message, "Восстановление базы ЛМ ЧЗ");
-                return false;
+                throw;
             }
             catch (Exception ex)
             {
@@ -156,8 +162,9 @@ namespace HonestFlow.Application.Lm
             }
         }
 
-        private async Task<string> ResolveDatabaseArchivePath(string archiveName)
+        private async Task<string> ResolveDatabaseArchivePath(string archiveName, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string localPath = Path.Combine(ConfigManager.GetInstallersFolder(), archiveName);
             if (File.Exists(localPath))
             {
@@ -165,13 +172,13 @@ namespace HonestFlow.Application.Lm
                 return localPath;
             }
 
-            _progress.SetProgress(15, $"Скачивание базы ЛМ ЧЗ: {archiveName}");
+            _progress.SetProgress(30, $"Скачивание базы ЛМ ЧЗ: {archiveName}");
             var progress = new Progress<int>(percent =>
             {
-                _progress.SetProgress(15 + percent * 20 / 100, $"Скачивание базы ЛМ ЧЗ: {percent}%");
+                _progress.SetProgress(30 + percent * 15 / 100, $"Скачивание базы ЛМ ЧЗ: {percent}%");
             });
 
-            bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(archiveName, progress);
+            bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(archiveName, progress, cancellationToken);
             if (!downloaded)
                 return null;
 
@@ -180,8 +187,9 @@ namespace HonestFlow.Application.Lm
             return remotePath;
         }
 
-        private async Task<string> ResolveLmInstallerPath(IPData selectedIP)
+        private async Task<string> ResolveLmInstallerPath(IPData selectedIP, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             VersionsData versions = _useRemoteConfigMode
                 ? ConfigManager.LoadRemoteVersions()
                 : ConfigManager.LoadVersions();
@@ -197,10 +205,10 @@ namespace HonestFlow.Application.Lm
             {
                 var progress = new Progress<int>(percent =>
                 {
-                    _progress.SetProgress(35 + percent * 15 / 100, $"Скачивание установщика ЛМ ЧЗ: {percent}%");
+                    _progress.SetProgress(10 + percent * 15 / 100, $"Скачивание установщика ЛМ ЧЗ: {percent}%");
                 });
 
-                bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(fileName, progress);
+                bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(fileName, progress, cancellationToken);
                 if (!downloaded)
                     return null;
 

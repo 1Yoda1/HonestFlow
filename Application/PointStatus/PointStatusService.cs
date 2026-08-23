@@ -29,6 +29,7 @@ namespace HonestFlow.Application.PointStatus
         private readonly IKktDriverProbe _kktDriverProbe;
         private readonly IKktPortProbe _kktPortProbe;
         private readonly IEsmApiPortProbe _esmApiPortProbe;
+        private readonly IGisMtDiagnosticProbe _gisMtDiagnosticProbe;
         public PointStatusService(
             bool remoteConfigLoaded,
             int ipCount,
@@ -42,7 +43,8 @@ namespace HonestFlow.Application.PointStatus
             IControllerServiceInfoProbe controllerServiceInfoProbe = null,
             IKktDriverProbe kktDriverProbe = null,
             IKktPortProbe kktPortProbe = null,
-            IEsmApiPortProbe esmApiPortProbe = null)
+            IEsmApiPortProbe esmApiPortProbe = null,
+            IGisMtDiagnosticProbe gisMtDiagnosticProbe = null)
         {
             _remoteConfigLoaded = remoteConfigLoaded;
             _ipCount = ipCount;
@@ -56,6 +58,7 @@ namespace HonestFlow.Application.PointStatus
             _kktDriverProbe = kktDriverProbe ?? new KktDriverProbe();
             _kktPortProbe = kktPortProbe ?? new KktPortProbe();
             _esmApiPortProbe = esmApiPortProbe ?? new EsmApiPortProbe();
+            _gisMtDiagnosticProbe = gisMtDiagnosticProbe ?? new GisMtDiagnosticProbe();
         }
 
         public Task<PointStatusResult> CheckAsync(CancellationToken cancellationToken) =>
@@ -94,6 +97,9 @@ namespace HonestFlow.Application.PointStatus
                     ? await _esmApiPortProbe.CheckAsync(cancellationToken).ConfigureAwait(false)
                     : null;
             LmDiagnosticProbeResult lmProbe = await lmTask.ConfigureAwait(false);
+            GisMtDiagnosticResult gisMtDiagnostics = await _gisMtDiagnosticProbe
+                .CheckAsync(controllerTask.Result, cancellationToken)
+                .ConfigureAwait(false);
             NodeStatus lmStatus = lmProbe.Status;
             lmStatus = ApplyLmSystemRequirements(lmStatus, LmSystemRequirements.Check());
 
@@ -113,6 +119,7 @@ namespace HonestFlow.Application.PointStatus
                 Cloud = await cloudTask.ConfigureAwait(false),
                 RuDesktop = await ruDesktopTask.ConfigureAwait(false),
                 EsmApiStatus = controllerTask.Result,
+                GisMtDiagnostics = gisMtDiagnostics,
                 EsmRegistration = esmRegistration,
                 EsmServiceStatus = esmService,
                 EsmApiPort = esmApiPort,

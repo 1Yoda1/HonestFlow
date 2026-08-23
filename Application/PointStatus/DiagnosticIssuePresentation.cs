@@ -104,6 +104,11 @@ public sealed class DiagnosticIssuePresentationMapper
         _ => "Нет данных"
     };
 
+    public string GisMtStatus(DiagnosticComponentFact fact) =>
+        !string.IsNullOrWhiteSpace(fact?.Summary)
+            ? fact.Summary
+            : ComponentStatus(fact, "Недоступна");
+
     public string ConnectionStatus(DiagnosticConnectionFact fact) => fact.State switch
     {
         DiagnosticConnectionState.Connected => "Подключено",
@@ -111,12 +116,19 @@ public sealed class DiagnosticIssuePresentationMapper
         _ => "Не проверена"
     };
 
-    public string ComponentDetails(DiagnosticComponentFact fact, string componentName) => fact.State switch
+    public string ComponentDetails(DiagnosticComponentFact fact, string componentName)
     {
-        DiagnosticState.Healthy => $"{componentName}: доступно.",
-        DiagnosticState.Failed => $"{componentName}: требуется проверка.",
-        _ => $"{componentName}: состояние пока не получено."
-    };
+        if (!string.IsNullOrWhiteSpace(fact?.Summary))
+            return string.IsNullOrWhiteSpace(fact.Details)
+                ? fact.Summary
+                : fact.Summary + Environment.NewLine + fact.Details;
+        return fact?.State switch
+        {
+            DiagnosticState.Healthy => $"{componentName}: доступно.",
+            DiagnosticState.Failed => $"{componentName}: требуется проверка.",
+            _ => $"{componentName}: состояние пока не получено."
+        };
+    }
 
     public string ConnectionDetails(DiagnosticConnectionFact fact, string connectionName) => fact.State switch
     {

@@ -11,8 +11,15 @@ namespace HonestFlow.Application.PointStatus
 
     public sealed class DiagnosticComponentFact
     {
-        public DiagnosticComponentFact(DiagnosticState state, string details) { State = state; Details = details ?? string.Empty; }
+        public DiagnosticComponentFact(DiagnosticState state, string details) : this(state, string.Empty, details) { }
+        public DiagnosticComponentFact(DiagnosticState state, string summary, string details)
+        {
+            State = state;
+            Summary = summary ?? string.Empty;
+            Details = details ?? string.Empty;
+        }
         public DiagnosticState State { get; }
+        public string Summary { get; }
         public string Details { get; }
     }
 
@@ -59,9 +66,9 @@ namespace HonestFlow.Application.PointStatus
             DiagnosticComponentFact kkt = FromKktNode(result.Kkt);
             DiagnosticComponentFact lm = FromLmProbe(result.LmProbe, result.Lm);
             DiagnosticComponentFact controller = FromControllerNode(result.Controller);
-            DiagnosticComponentFact gismt = ComponentFromCode(api?.Gismt, "GIS MT");
+            DiagnosticComponentFact gismt = FromGisMt(result.GisMtDiagnostics, api?.Gismt);
 
-            DiagnosticConnectionFact gisLink = FromCode(api?.Gismt, "GIS MT ↔ ЕСМ");
+            DiagnosticConnectionFact gisLink = FromGisMtConnection(result.GisMtDiagnostics, api?.Gismt);
             DiagnosticConnectionFact esmKkt = FromCashRegister(
                 result.EsmApiStatus,
                 result.EsmRegistration,
@@ -178,6 +185,23 @@ namespace HonestFlow.Application.PointStatus
             status?.Code == null ? new(DiagnosticState.Unknown, $"{name}: данные отсутствуют.") :
             status.Code == 0 ? new(DiagnosticState.Healthy, $"{name}: код 0.") :
             new(DiagnosticState.Failed, $"{name}: код {status.Code}. {status.Error} {status.LastConnection}".Trim());
+        private static DiagnosticComponentFact FromGisMt(GisMtDiagnosticResult result, EsmComponentStatus fallback) =>
+            result == null
+                ? ComponentFromCode(fallback, "GIS MT")
+                : new DiagnosticComponentFact(
+                    result.State == GisMtDiagnosticState.Healthy ? DiagnosticState.Healthy :
+                    result.State == GisMtDiagnosticState.Error ? DiagnosticState.Failed : DiagnosticState.Unknown,
+                    result.Summary,
+                    result.Details);
+        private static DiagnosticConnectionFact FromGisMtConnection(GisMtDiagnosticResult result, EsmComponentStatus fallback) =>
+            result == null
+                ? FromCode(fallback, "GIS MT ↔ ЕСМ")
+                : result.State switch
+                {
+                    GisMtDiagnosticState.Healthy => new(DiagnosticConnectionState.Connected, result.Details),
+                    GisMtDiagnosticState.Error => new(DiagnosticConnectionState.Disconnected, result.Details),
+                    _ => Unknown(result.Details)
+                };
         private static DiagnosticConnectionFact FromCode(EsmComponentStatus status, string name) =>
             status?.Code == null ? Unknown($"{name}: данные отсутствуют.") :
             status.Code == 0 ? new(DiagnosticConnectionState.Connected, $"{name}: код 0.") :

@@ -422,8 +422,11 @@ namespace HonestFlow.Application.Diagnostics
                         continue;
                     }
 
-                    target.WriteLine(line);
-                    acceptedLine?.Invoke(line);
+                    string safeLine = string.Equals(group, "ESM", StringComparison.OrdinalIgnoreCase)
+                        ? GisMtDiagnosticProbe.GisMtSecretRedactor.Redact(line)
+                        : line;
+                    target.WriteLine(safeLine);
+                    acceptedLine?.Invoke(safeLine);
                     written++;
 
                     if (timestamp.HasValue)

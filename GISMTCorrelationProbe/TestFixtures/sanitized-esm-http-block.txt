@@ -1,0 +1,18 @@
+2026.07.17 11:24:01.872 DBG
+========== HTTP Request ==========
+Method: POST
+URL: https://cdn03.crpt.ru:19101/api/v4/cdn/codes/check
+Headers:
+Body:
+{ "redacted": true }
+==================================
+========== Время ответа: 61.6819ms ==========
+========== HTTP Response ==========
+Status: 200 OK (200)
+Headers:
+Body:
+{
+  "code": 0,
+  "description": "ok"
+}
+==================================

@@ -188,12 +188,26 @@ namespace HonestFlow.Application.PointStatus
             AddLmIssues(issues, context);
 
             if (!context.GisPathAvailable)
+            {
+                GisMtDiagnosticResult gis = result.GisMtDiagnostics;
+                string title = gis?.State switch
+                {
+                    GisMtDiagnosticState.Unknown => "Состояние ГИС МТ не подтверждено",
+                    GisMtDiagnosticState.Warning => gis.Summary,
+                    _ => gis?.Summary ?? "ГИС МТ недоступна"
+                };
+                string message = gis?.State == GisMtDiagnosticState.Unknown
+                    ? "Не удалось подтвердить состояние ГИС МТ."
+                    : context.LmPathAvailable
+                        ? $"{title}. Проверка выполняется через ЛМ ЧЗ."
+                        : title + ".";
+                DiagnosticEvidence[] gisEvidence = gis?.Evidence?
+                    .Select((value, index) => Evidence("gisMt." + index, value))
+                    .ToArray() ?? new[] { Evidence("gismt.code", context.Api?.Gismt?.Code?.ToString() ?? "missing") };
                 Add(issues, Issue(DiagnosticIssueCode.GIS_MT_UNAVAILABLE, DiagnosticComponent.GisMt,
                     context.LmPathAvailable ? DiagnosticSeverity.Attention : DiagnosticSeverity.WorkImpossible,
-                    "ГИС МТ недоступна", context.LmPathAvailable
-                        ? "ГИС МТ недоступна. Проверка выполняется через ЛМ ЧЗ."
-                        : "ГИС МТ недоступна.", context.Gismt.Details,
-                    evidence: new[] { Evidence("gismt.code", context.Api?.Gismt?.Code?.ToString() ?? "missing") }));
+                    title, message, context.Gismt.Details, evidence: gisEvidence));
+            }
 
             if (!context.LmPathAvailable &&
                 (context.Controller.State != DiagnosticState.Healthy ||
@@ -487,7 +501,8 @@ namespace HonestFlow.Application.PointStatus
             facts.Add(new DiagnosticFact("GisMt", DiagnosticComponent.GisMt,
                 context.Gismt.State == DiagnosticState.Healthy ? DiagnosticFactState.Success :
                 context.Gismt.State == DiagnosticState.Failed ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
-                context.Api?.Gismt?.Code?.ToString() ?? "unknown", context.Gismt.Details));
+                context.Result.GisMtDiagnostics?.State.ToString() ?? context.Api?.Gismt?.Code?.ToString() ?? "unknown",
+                context.Gismt.Details));
             return facts;
         }
 

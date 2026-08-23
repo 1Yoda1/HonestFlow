@@ -1,0 +1,16 @@
+2026.07.17 11:24:02.000 DBG
+========== HTTP Request ==========
+Method: GET
+URL: https://cdn05.crpt.ru:19101/api/v4/cdn/health/check
+==================================
+========== Время ответа: 28.2134ms ==========
+========== HTTP Response ==========
+Status: 200 OK
+Body:
+{
+  "code": 0,
+  "description": "ok"
+}
+==================================
+
+2026.07.17 11:25:00.000 ERR Ошибка выполнения Post запроса на новый API Post "https://cdn06.crpt.ru:19101/api/v4/auth": context deadline exceeded

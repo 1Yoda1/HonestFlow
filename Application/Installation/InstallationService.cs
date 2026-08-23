@@ -114,7 +114,10 @@ namespace HonestFlow.Application.Installation
             }
         }
 
-        public async Task<bool> ReinstallSelectedComponents(IPData selectedIP, IReadOnlyCollection<InstallationComponent> components)
+        public async Task<bool> ReinstallSelectedComponents(
+            IPData selectedIP,
+            IReadOnlyCollection<InstallationComponent> components,
+            CancellationToken cancellationToken = default)
         {
             using var audit = Logger.BeginOperation("Ручная переустановка компонентов", nameof(InstallationService));
             if (selectedIP == null)
@@ -128,6 +131,7 @@ namespace HonestFlow.Application.Installation
                 return false;
 
             _progress.SetProgress(5, "Подготовка ручной переустановки...");
+            cancellationToken.ThrowIfCancellationRequested();
 
             try
             {
@@ -139,7 +143,7 @@ namespace HonestFlow.Application.Installation
                 LogPlan(plan, "ПЛАН РУЧНОЙ ПЕРЕУСТАНОВКИ");
 
                 _progress.SetProgress(15, "Подготовка установщиков...");
-                if (!await ResolveInstallerPaths(plan, selectedIP, effectiveVersions))
+                if (!await ResolveInstallerPaths(plan, selectedIP, effectiveVersions, cancellationToken))
                     return false;
 
                 _progress.SetProgress(70, "Ручная переустановка компонентов...");
@@ -148,7 +152,8 @@ namespace HonestFlow.Application.Installation
                     plan,
                     selectedIP,
                     effectiveVersions,
-                    "РУЧНАЯ ПЕРЕУСТАНОВКА");
+                    "РУЧНАЯ ПЕРЕУСТАНОВКА",
+                    cancellationToken);
 
                 _progress.SetProgress(100, success ? "Ручная переустановка завершена" : "Ручная переустановка завершена с ошибками");
 
@@ -163,6 +168,12 @@ namespace HonestFlow.Application.Installation
                 }
 
                 return success;
+            }
+            catch (OperationCanceledException)
+            {
+                _progress.SetProgress(100, "Ручная переустановка отменена");
+                _log.LogUser("Ручная переустановка отменена оператором", true);
+                throw;
             }
             catch (Exception ex)
             {

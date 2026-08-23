@@ -15,6 +15,9 @@ namespace HonestFlow.Application.Installation
         Task<bool> CheckLmAndInstall(IPData selectedIP, CancellationToken cancellationToken = default);
 
         /// <summary>Принудительно переустановить выбранные компоненты</summary>
-        Task<bool> ReinstallSelectedComponents(IPData selectedIP, IReadOnlyCollection<InstallationComponent> components);
+        Task<bool> ReinstallSelectedComponents(
+            IPData selectedIP,
+            IReadOnlyCollection<InstallationComponent> components,
+            CancellationToken cancellationToken = default);
     }
 }

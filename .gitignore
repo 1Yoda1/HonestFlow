@@ -389,3 +389,5 @@ licenses.json.sig
 /publish-honestflow/
 /.codex-build/
 /.codex-server-obj/
+/GoNetworkProbe/.codex-build/
+/GoNetworkProbe/.codex-go-cache/

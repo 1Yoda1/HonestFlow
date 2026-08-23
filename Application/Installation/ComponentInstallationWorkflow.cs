@@ -46,8 +46,9 @@ namespace HonestFlow.Application.Installation
 
         public Task<bool> ReinstallAsync(
             IPData selectedClient,
-            IReadOnlyCollection<InstallationComponent> components) =>
-            _installationService.ReinstallSelectedComponents(selectedClient, components);
+            IReadOnlyCollection<InstallationComponent> components,
+            CancellationToken cancellationToken = default) =>
+            _installationService.ReinstallSelectedComponents(selectedClient, components, cancellationToken);
     }
 
     public enum ComponentOperationReadinessStatus

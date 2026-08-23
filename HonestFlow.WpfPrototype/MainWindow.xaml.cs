@@ -1,11 +1,9 @@
 using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
-using System.ServiceProcess;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -226,49 +224,84 @@ public partial class MainWindow : Window
             return;
         }
 
-        await RunOperationAsync("Переустанавливаем компоненты…", async () =>
-        {
-            ComponentInstallationWorkflow workflow = CreateInstallationWorkflow();
-            ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: false);
-            if (!readiness.CanContinue) throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired ? "Запустите HonestFlow от имени администратора." : "Не выбрана рабочая точка.");
-            bool result = await workflow.ReinstallAsync(_client, Enum.GetValues<InstallationComponent>());
-            SectionOutput.Text = result ? "Операция завершена успешно." : "Операция завершена без подтверждения успеха. Проверьте журнал.";
-        });
+        await RunInstallationOperationAsync(
+            "Переустановка компонентов",
+            "Подготовка переустановки…",
+            async cancellationToken =>
+            {
+                ComponentInstallationWorkflow workflow = CreateInstallationWorkflow(showInstallationProgress: true);
+                ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: false);
+                if (!readiness.CanContinue) throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired ? "Запустите HonestFlow от имени администратора." : "Не выбрана рабочая точка.");
+                return await workflow.ReinstallAsync(
+                    _client,
+                    Enum.GetValues<InstallationComponent>(),
+                    cancellationToken);
+            },
+            "Компоненты переустановлены.",
+            "Переустановка не завершена. Проверьте журнал.",
+            "Переустановка отменена.");
     }
 
     private async Task InstallAllAsync()
     {
-        if (_operationRunning || _startup == null || _client == null) return;
+        if (_startup == null || _client == null) return;
+        await RunInstallationOperationAsync(
+            "Обновление компонентов",
+            "Подготовка обновления…",
+            async cancellationToken =>
+            {
+                ComponentInstallationWorkflow workflow = CreateInstallationWorkflow(showInstallationProgress: true);
+                ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: true);
+                if (!readiness.CanContinue)
+                    throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired
+                        ? "Запустите HonestFlow от имени администратора."
+                        : "Не выбрана рабочая точка.");
+                return await workflow.InstallAsync(_client, cancellationToken);
+            },
+            "Обновление компонентов завершено.",
+            "Обновление завершено без подтверждения успеха. Проверьте журнал.",
+            "Обновление компонентов отменено.");
+    }
+
+    private async Task RunInstallationOperationAsync(
+        string title,
+        string initialStatus,
+        Func<CancellationToken, Task<bool>> operation,
+        string successStatus,
+        string failureStatus,
+        string cancelledStatus)
+    {
+        if (_operationRunning) return;
 
         _operationRunning = true;
-        CancellationTokenSource installationCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        CancellationTokenSource installationCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _installationCancellation = installationCancellation;
-        ShowInstallationProgress();
+        ShowInstallationProgress(title, initialStatus);
+        string finalStatus;
         try
         {
-            ComponentInstallationWorkflow workflow = CreateInstallationWorkflow(showInstallationProgress: true);
-            ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: true);
-            if (!readiness.CanContinue)
-                throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired
-                    ? "Запустите HonestFlow от имени администратора."
-                    : "Не выбрана рабочая точка.");
-
-            bool result = await workflow.InstallAsync(_client, installationCancellation.Token);
-            SectionOutput.Text = result
-                ? "Операция завершена успешно."
-                : "Операция завершена без подтверждения успеха. Проверьте журнал.";
-            if (result)
-                await WaitForInstallationAcknowledgementAsync();
+            bool result = await operation(installationCancellation.Token);
+            finalStatus = result ? successStatus : failureStatus;
+            if (result) InstallationProgressBar.Value = 100;
         }
         catch (OperationCanceledException) when (installationCancellation.IsCancellationRequested)
         {
-            SectionOutput.Text = "Обновление компонентов отменено.";
+            finalStatus = cancelledStatus;
         }
         catch (Exception ex)
         {
-            Logger.LogException(ex, "Выполняем установку…", nameof(MainWindow));
-            SectionOutput.Text = ex.Message;
-            SectionDescription.Text = "Не удалось обновить компоненты: " + ex.Message;
+            Logger.LogException(ex, title, nameof(MainWindow));
+            finalStatus = ex.Message;
+        }
+
+        try
+        {
+            SectionOutput.Text = finalStatus;
+            InstallationProgressText.Text = finalStatus;
+            await RefreshAfterComponentOperationAsync();
+            if (!_lifetime.IsCancellationRequested)
+                await WaitForInstallationAcknowledgementAsync();
         }
         finally
         {
@@ -278,14 +311,20 @@ public partial class MainWindow : Window
             if (ReferenceEquals(_installationCancellation, installationCancellation))
                 _installationCancellation = null;
             _operationRunning = false;
-            await LoadComponentVersionsAsync();
         }
     }
 
-    private void ShowInstallationProgress()
+    private async Task RefreshAfterComponentOperationAsync()
     {
+        await LoadComponentVersionsAsync();
+        await RefreshTopologyAsync(allowDuringOperation: true);
+    }
+
+    private void ShowInstallationProgress(string title, string initialStatus)
+    {
+        InstallationProgressTitle.Text = title;
         InstallationProgressBar.Value = 0;
-        InstallationProgressText.Text = "Подготовка…";
+        InstallationProgressText.Text = initialStatus;
         InstallationCancelButton.Content = "Отменить";
         InstallationCancelButton.IsEnabled = true;
         MainWindowInteractiveContent.IsEnabled = false;
@@ -297,6 +336,7 @@ public partial class MainWindow : Window
     {
         InstallationBusyOverlay.Visibility = Visibility.Collapsed;
         MainWindowInteractiveContent.IsEnabled = true;
+        InstallationProgressTitle.Text = "Обновление компонентов";
         InstallationProgressBar.Value = 0;
         InstallationProgressText.Text = "Подготовка…";
         InstallationCancelButton.Content = "Отменить";
@@ -393,17 +433,23 @@ public partial class MainWindow : Window
     private async void UpdateComponent_Click(object sender, RoutedEventArgs e)
     {
         if (_client == null || sender is not Button { Tag: InstallationComponent component }) return;
-        await RunOperationAsync($"Переустанавливаем {ComponentDisplayName(component)}…", async () =>
-        {
-            ComponentInstallationWorkflow workflow = CreateInstallationWorkflow();
-            ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: false);
-            if (!readiness.CanContinue)
-                throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired
-                    ? "Запустите HonestFlow от имени администратора."
-                    : "Не выбрана рабочая точка.");
-            await workflow.ReinstallAsync(_client, new[] { component });
-        });
-        await LoadComponentVersionsAsync();
+        string componentName = ComponentDisplayName(component);
+        await RunInstallationOperationAsync(
+            $"Переустановка: {componentName}",
+            $"Подготовка переустановки {componentName}…",
+            async cancellationToken =>
+            {
+                ComponentInstallationWorkflow workflow = CreateInstallationWorkflow(showInstallationProgress: true);
+                ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: false);
+                if (!readiness.CanContinue)
+                    throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired
+                        ? "Запустите HonestFlow от имени администратора."
+                        : "Не выбрана рабочая точка.");
+                return await workflow.ReinstallAsync(_client, new[] { component }, cancellationToken);
+            },
+            $"{componentName} переустановлен.",
+            $"Переустановка {componentName} не завершена. Проверьте журнал.",
+            $"Переустановка {componentName} отменена.");
     }
 
     private async Task ReinstallSelectedAsync()
@@ -411,17 +457,22 @@ public partial class MainWindow : Window
         if (_client == null) return;
         InstallationComponent[]? selected = SelectComponents();
         if (selected == null || selected.Length == 0) return;
-        await RunOperationAsync("Переустанавливаем выбранные компоненты…", async () =>
-        {
-            ComponentInstallationWorkflow workflow = CreateInstallationWorkflow();
-            ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: false);
-            if (!readiness.CanContinue)
-                throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired
-                    ? "Запустите HonestFlow от имени администратора."
-                    : "Не выбрана рабочая точка.");
-            bool result = await workflow.ReinstallAsync(_client, selected);
-            SectionOutput.Text = result ? "Выбранные компоненты переустановлены." : "Переустановка не завершена. Проверьте журнал.";
-        });
+        await RunInstallationOperationAsync(
+            "Переустановка компонентов",
+            "Подготовка выбранных компонентов…",
+            async cancellationToken =>
+            {
+                ComponentInstallationWorkflow workflow = CreateInstallationWorkflow(showInstallationProgress: true);
+                ComponentOperationReadiness readiness = workflow.CheckReadiness(_client, checkLmRequirements: false);
+                if (!readiness.CanContinue)
+                    throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired
+                        ? "Запустите HonestFlow от имени администратора."
+                        : "Не выбрана рабочая точка.");
+                return await workflow.ReinstallAsync(_client, selected, cancellationToken);
+            },
+            "Выбранные компоненты переустановлены.",
+            "Переустановка не завершена. Проверьте журнал.",
+            "Переустановка отменена.");
     }
 
     private InstallationComponent[]? SelectComponents()
@@ -509,15 +560,21 @@ public partial class MainWindow : Window
     private async Task RestoreLmDatabaseAsync()
     {
         if (_startup == null || _client == null) return;
-        await RunOperationAsync("Восстанавливаем базу ЛМ ЧЗ…", async () =>
-        {
-            var progress = new MainWindowProgress(this);
-            var dialogs = new WpfDialogs(this);
-            ILicenseOperationGuard guard = CreateLicenseGuard();
-            var service = new LmDatabaseRestoreService(_logService, progress, dialogs, guard, _startup.UseRemoteConfigMode);
-            bool result = await service.Restore(_client);
-            SectionOutput.Text = result ? "База ЛМ ЧЗ восстановлена." : "Восстановление не завершено.";
-        });
+        await RunInstallationOperationAsync(
+            "Восстановление ЛМ ЧЗ",
+            "Проверка резервной базы…",
+            async cancellationToken =>
+            {
+                var progress = new MainWindowProgress(this, showInstallationProgress: true);
+                var dialogs = new WpfDialogs(this, suppressInformationMessages: true);
+                ILicenseOperationGuard guard = CreateLicenseGuard();
+                var service = new LmDatabaseRestoreService(
+                    _logService, progress, dialogs, guard, _startup.UseRemoteConfigMode);
+                return await service.Restore(_client, cancellationToken);
+            },
+            "База ЛМ ЧЗ восстановлена.",
+            "Восстановление ЛМ ЧЗ не завершено. Проверьте журнал.",
+            "Восстановление ЛМ ЧЗ отменено.");
     }
 
     private async Task RefreshLicenseAsync()
@@ -746,9 +803,9 @@ public partial class MainWindow : Window
         SimpleViewButton.Foreground = BrushFrom("#111827");
     }
 
-    private async Task RefreshTopologyAsync()
+    private async Task RefreshTopologyAsync(bool allowDuringOperation = false)
     {
-        if (_pointStatusRefresh == null || _client == null || _operationRunning) return;
+        if (_pointStatusRefresh == null || _client == null || (_operationRunning && !allowDuringOperation)) return;
         RefreshTopologyButton.IsEnabled = false;
         try
         {
@@ -822,7 +879,7 @@ public partial class MainWindow : Window
 
         ApplyStandaloneFrame(
             GismtNodeBorder, GismtNodeIcon, GismtNodeStatusDot, GismtNodeStatusText, _lastDiagnostics.Gismt,
-            _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Gismt, "Недоступен"), "ГИС МТ");
+            _diagnosticPresentation.GisMtStatus(_lastDiagnostics.Gismt), "ГИС МТ");
         ApplyFrame(
             EsmNodeBorder, EsmNodeIcon, EsmNodeStatusDot, EsmNodeStatusText, _lastDiagnostics.Esm, presentation.EsmFrame,
             _lastPointStatus?.Esm?.StatusText ?? _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Esm, "ЕСМ недоступен"), "ТС ПИоТ");
@@ -1037,66 +1094,61 @@ public partial class MainWindow : Window
     private async Task ControlServiceFromButtonAsync(object sender, ServiceAction action)
     {
         if (sender is not Button { Tag: string serviceName } || serviceName.EndsWith("*", StringComparison.Ordinal)) return;
+        if (_operationRunning) return;
         if (action == ServiceAction.Stop && MessageBox.Show(this,
                 $"Остановить службу {serviceName}? Работа связанного компонента будет прервана.",
                 "Остановка службы", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
+        _operationRunning = true;
+        ServiceToolsGrid.IsEnabled = false;
+        SectionDescription.Text = $"{ServiceActionText(action)} службу «{serviceName}»…";
         try
         {
-            CreateLicenseGuard().Demand(HonestFlow.Models.Licensing.LicenseOperation.ManageServices);
-            await ControlServiceAsync(serviceName, action);
-            await RefreshServiceToolsAsync();
-        }
-        catch (InvalidOperationException ex)
-        {
-            await HandleUnavailableServiceAsync(serviceName, ex);
-        }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == 1060)
-        {
-            await HandleUnavailableServiceAsync(serviceName, ex);
-        }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
-        {
-            Logger.LogException(ex, $"Service access denied: {serviceName}", nameof(MainWindow));
-            MessageBox.Show(this,
-                $"Недостаточно прав для управления службой «{serviceName}». Запустите HonestFlow от имени администратора.",
-                "Управление службой", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        catch (Exception ex) { ShowToolError(ex); }
-    }
-
-    private async Task HandleUnavailableServiceAsync(string serviceName, Exception ex)
-    {
-        Logger.LogException(ex, $"Service unavailable: {serviceName}", nameof(MainWindow));
-        await RefreshServiceToolsAsync();
-        MessageBox.Show(this,
-            $"Служба «{serviceName}» не найдена или больше недоступна. Список служб обновлён.",
-            "Управление службой", MessageBoxButton.OK, MessageBoxImage.Information);
-    }
-
-    private static async Task ControlServiceAsync(string serviceName, ServiceAction action)
-    {
-        using var service = new ServiceController(serviceName);
-        service.Refresh();
-        if (action is ServiceAction.Stop or ServiceAction.Restart && service.Status != ServiceControllerStatus.Stopped)
-        {
-            service.Stop();
-            await Task.Run(() => service.WaitForStatus(
-                ServiceControllerStatus.Stopped,
-                TimeSpan.FromSeconds(30)));
-        }
-
-        if (action is ServiceAction.Start or ServiceAction.Restart)
-        {
-            service.Refresh();
-            if (service.Status != ServiceControllerStatus.Running)
+            var serviceControl = new WindowsServiceControlService(CreateLicenseGuard());
+            switch (action)
             {
-                service.Start();
-                await Task.Run(() => service.WaitForStatus(
-                    ServiceControllerStatus.Running,
-                    TimeSpan.FromSeconds(30)));
+                case ServiceAction.Start:
+                    await serviceControl.StartServiceAsync(serviceName,
+                        HonestFlow.Models.Licensing.LicenseOperation.ManageServices, _lifetime.Token);
+                    break;
+                case ServiceAction.Stop:
+                    await serviceControl.StopServiceAsync(serviceName,
+                        HonestFlow.Models.Licensing.LicenseOperation.ManageServices, _lifetime.Token);
+                    break;
+                case ServiceAction.Restart:
+                    await serviceControl.RestartServiceAsync(serviceName,
+                        HonestFlow.Models.Licensing.LicenseOperation.ManageServices, _lifetime.Token);
+                    break;
             }
+            await RefreshServiceToolsAsync();
+            SectionDescription.Text = $"Служба «{serviceName}»: состояние обновлено.";
+        }
+        catch (WindowsServiceControlException ex)
+        {
+            Logger.LogException(ex, $"Service control failed: {serviceName}", nameof(MainWindow));
+            await RefreshServiceToolsAsync();
+            SectionDescription.Text = ex.Message;
+            MessageBox.Show(this, ex.Message, "Управление службой", MessageBoxButton.OK,
+                ex.Failure == WindowsServiceControlFailure.AccessDenied
+                    ? MessageBoxImage.Warning
+                    : MessageBoxImage.Information);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { ShowToolError(ex); }
+        finally
+        {
+            ServiceToolsGrid.IsEnabled = true;
+            _operationRunning = false;
         }
     }
+
+    private static string ServiceActionText(ServiceAction action) => action switch
+    {
+        ServiceAction.Start => "Запускаем",
+        ServiceAction.Stop => "Останавливаем",
+        ServiceAction.Restart => "Перезапускаем",
+        _ => "Обновляем"
+    };
 
     private void OpenKktDataFolder_Click(object sender, RoutedEventArgs e) =>
         OpenFolder(System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ATOL", "drivers10"));

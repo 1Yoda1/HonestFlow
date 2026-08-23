@@ -11,6 +11,7 @@
         public NodeStatus Cloud { get; set; }
         public NodeStatus RuDesktop { get; set; }
         public EsmStatusResult EsmApiStatus { get; set; }
+        public GisMtDiagnosticResult GisMtDiagnostics { get; set; }
         public EsmRegistrationResult EsmRegistration { get; set; }
         public NodeStatus EsmServiceStatus { get; set; }
         public EsmApiPortProbeResult EsmApiPort { get; set; }

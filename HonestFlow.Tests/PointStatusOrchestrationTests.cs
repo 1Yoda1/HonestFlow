@@ -30,7 +30,8 @@ namespace HonestFlow.Tests
                 controllerServiceInfoProbe: new StubControllerServiceInfoProbe(gate),
                 esmApiPortProbe: new StubEsmApiPortProbe(),
                 kktDriverProbe: new StubKktDriverProbe(),
-                kktPortProbe: new StubKktPortProbe());
+                kktPortProbe: new StubKktPortProbe(),
+                gisMtDiagnosticProbe: new StubGisMtProbe());
 
             Task<PointStatusResult> check = service.CheckAsync(CancellationToken.None);
             await gate.WaitUntilAllEnteredAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -45,6 +46,7 @@ namespace HonestFlow.Tests
             Assert.Equal("Доступно", result.Cloud.ShortText);
             Assert.DoesNotContain("1", result.Cloud.ShortText);
             Assert.DoesNotContain("1", result.Cloud.Details);
+            Assert.Equal(GisMtDiagnosticState.Healthy, result.GisMtDiagnostics.State);
         }
 
         [Fact]
@@ -173,6 +175,17 @@ namespace HonestFlow.Tests
         {
             public Task<KktPortProbeResult> CheckAsync(CancellationToken cancellationToken) =>
                 Task.FromResult(KktPortProbeResult.Available());
+        }
+
+        private sealed class StubGisMtProbe : IGisMtDiagnosticProbe
+        {
+            public Task<GisMtDiagnosticResult> CheckAsync(EsmStatusResult localRestStatus, CancellationToken cancellationToken) =>
+                Task.FromResult(new GisMtDiagnosticResult
+                {
+                    State = GisMtDiagnosticState.Healthy,
+                    Summary = "Работает",
+                    Details = "Synthetic GIS MT evidence"
+                });
         }
 
         private sealed class StubRuDesktopProvider : IRuDesktopStatusProvider

@@ -463,7 +463,8 @@
                 BorderThickness="1"
                 CornerRadius="14">
           <StackPanel>
-            <TextBlock Text="Обновление компонентов"
+            <TextBlock x:Name="InstallationProgressTitle"
+                       Text="Обновление компонентов"
                        FontSize="23"
                        FontWeight="SemiBold"
                        HorizontalAlignment="Center"/>

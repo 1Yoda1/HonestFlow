@@ -76,6 +76,24 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public void DedicatedGisMtDiagnostics_OverridesLegacyRestCodeAndCarriesShortSummary()
+        {
+            PointStatusResult result = Healthy();
+            result.GisMtDiagnostics = new GisMtDiagnosticResult
+            {
+                State = GisMtDiagnosticState.Error,
+                Summary = "Ошибка регистрации в ГИС МТ",
+                Details = "Последняя ошибка: Ошибка регистрации в ГИС МТ"
+            };
+
+            DiagnosticsSnapshot snapshot = _builder.Create(result);
+
+            Assert.Equal(DiagnosticState.Failed, snapshot.Gismt.State);
+            Assert.Equal("Ошибка регистрации в ГИС МТ", snapshot.Gismt.Summary);
+            Assert.Equal(DiagnosticConnectionState.Disconnected, snapshot.GismtToEsm.State);
+        }
+
+        [Fact]
         public void NestedDataEnvelope_IsUsedForGismtFact()
         {
             PointStatusResult result = Healthy();
