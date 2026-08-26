@@ -11,28 +11,40 @@ namespace HonestFlow.Application.PointStatus
 
     public sealed class KktDriverProbeResult
     {
-        private KktDriverProbeResult(string requiredArchitecture, bool driverFound, string installedVersion, string errorCategory)
+        private KktDriverProbeResult(string requiredArchitecture, bool x86DriverFound, bool x64DriverFound, string installedVersion, string errorCategory)
         {
-            RequiredArchitecture = NormalizeArchitecture(requiredArchitecture);
-            DriverFound = driverFound;
+            ExpectedArchitecture = NormalizeArchitecture(requiredArchitecture);
+            X86DriverFound = x86DriverFound;
+            X64DriverFound = x64DriverFound;
+            DriverFound = ExpectedArchitecture == "x86" ? X86DriverFound : X64DriverFound;
             InstalledVersion = installedVersion;
             ErrorCategory = errorCategory;
         }
 
-        public string RequiredArchitecture { get; }
+        public string ExpectedArchitecture { get; }
+        public string RequiredArchitecture => ExpectedArchitecture;
+        public bool X86DriverFound { get; }
+        public bool X64DriverFound { get; }
         public bool DriverFound { get; }
+        public bool HasArchitectureMismatch => IsAvailable && !DriverFound && (X86DriverFound || X64DriverFound);
         public string InstalledVersion { get; }
         public string ErrorCategory { get; }
         public bool IsAvailable => string.IsNullOrWhiteSpace(ErrorCategory);
 
-        public static KktDriverProbeResult Found(string requiredArchitecture, string installedVersion) =>
-            new(requiredArchitecture, true, installedVersion, null);
+        public static KktDriverProbeResult Found(string requiredArchitecture, string installedVersion)
+        {
+            string expected = NormalizeArchitecture(requiredArchitecture);
+            return new(expected, expected == "x86", expected == "x64", installedVersion, null);
+        }
 
         public static KktDriverProbeResult NotFound(string requiredArchitecture) =>
-            new(requiredArchitecture, false, null, null);
+            new(requiredArchitecture, false, false, null, null);
+
+        public static KktDriverProbeResult ArchitectureMismatch(string requiredArchitecture, string installedArchitecture, string installedVersion) =>
+            new(requiredArchitecture, installedArchitecture == "x86", installedArchitecture == "x64", installedVersion, null);
 
         public static KktDriverProbeResult Unavailable(string requiredArchitecture, string errorCategory) =>
-            new(requiredArchitecture, false, null, errorCategory);
+            new(requiredArchitecture, false, false, null, errorCategory);
 
         public bool IsAtLeast(string version) =>
             TryParseVersion(InstalledVersion, out Version installed) &&

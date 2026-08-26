@@ -39,7 +39,7 @@ public sealed class LmDiagnosticsSemanticsTests
         Assert.Equal(DiagnosticSeverity.Attention, issue.Severity);
         Assert.Equal("ИНН ЛМ ЧЗ не соответствует клиенту", issue.Title);
         Assert.Equal("ЛМ ЧЗ настроен на другой ИНН.", issue.UserMessage);
-        Assert.Null(issue.SuggestedFix);
+        Assert.Equal(DiagnosticFixKey.ConfirmLmClientMismatch, issue.SuggestedFix);
         Assert.Contains(issue.Evidence, item => item.Key == "actualLmInn" && item.Value == "7707****93");
         Assert.Contains(issue.Evidence, item => item.Key == "expectedClientInn" && item.Value == "7812****78");
         Assert.DoesNotContain("7707083893", string.Join(";", issue.Evidence.Select(item => item.Value)));
@@ -50,14 +50,14 @@ public sealed class LmDiagnosticsSemanticsTests
     }
 
     [Fact]
-    public async Task ReadyLm_WithoutActualInn_StaysAvailableAndCreatesMissingIssue()
+    public async Task ReadyLm_WithoutActualInn_StaysAvailableWithoutUserIssue()
     {
         PointStatusResult result = await CheckAsync(null, "7707083893");
         DiagnosticsSnapshot snapshot = Build(result);
 
         Assert.Equal(LmDiagnosticProbeState.Available, result.LmProbe.State);
         Assert.True(result.LmProbe.HealthAvailable);
-        Assert.Contains(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_INN_MISSING);
+        Assert.DoesNotContain(snapshot.Issues, IsInnIssue);
         Assert.DoesNotContain(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_API_UNAVAILABLE);
     }
 
@@ -111,18 +111,20 @@ public sealed class LmDiagnosticsSemanticsTests
     }
 
     [Fact]
-    public async Task NonReadyRuntime_UsesNotReadyIssueInsteadOfApiUnavailable()
+    public async Task UnknownRuntime_UsesUnknownStatusIssueInsteadOfApiUnavailable()
     {
         PointStatusResult result = await CheckAsync("7707083893", "7707083893", runtimeStatus: "failure");
         DiagnosticsSnapshot snapshot = Build(result);
 
         Assert.Equal(LmDiagnosticProbeState.Failure, result.LmProbe.State);
-        Assert.Contains(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_NOT_READY);
+        DiagnosticIssue issue = Assert.Single(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_STATUS_UNKNOWN);
+        Assert.Equal(DiagnosticSeverity.UnableToVerify, issue.Severity);
+        Assert.Null(issue.SuggestedFix);
         Assert.DoesNotContain(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_API_UNAVAILABLE);
     }
 
     private static bool IsInnIssue(DiagnosticIssue issue) =>
-        issue.Code is DiagnosticIssueCode.LM_INN_MISMATCH or DiagnosticIssueCode.LM_INN_MISSING;
+        issue.Code is DiagnosticIssueCode.LM_INN_MISMATCH;
 
     private static DiagnosticsSnapshot Build(PointStatusResult result)
     {

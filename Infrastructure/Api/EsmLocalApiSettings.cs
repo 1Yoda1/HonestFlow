@@ -6,6 +6,11 @@ namespace HonestFlow.Infrastructure.Api
 {
     internal static class EsmLocalApiSettings
     {
+        internal const int DefaultPort = 51077;
+
+        public static int ResolvePort(string settingsPath) =>
+            TryReadPort(settingsPath) ?? DefaultPort;
+
         public static int? TryReadPort(string settingsPath)
         {
             try

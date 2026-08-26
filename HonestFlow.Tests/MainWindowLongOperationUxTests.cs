@@ -20,6 +20,18 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public void UpdateAll_RegistersTsPiotAfterSuccessfulComponentInstallation()
+        {
+            string source = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+            string installAll = Segment(source, "private async Task InstallAllAsync", "private async Task RunInstallationOperationAsync");
+
+            Assert.Contains("InstallAndRegisterTsPiotAsync", installAll);
+            Assert.Contains("FormatInstallationCompletionStatus", installAll);
+            Assert.Contains("new TsPiotRegistrationWorkflow", source);
+            Assert.Contains("new EsmTsPiotRegistrationClient", source);
+        }
+
+        [Fact]
         public void SharedPresentation_BlocksParallelStart_EndsWithAcknowledgementAndReleasesBusyState()
         {
             string source = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
@@ -72,6 +84,34 @@ namespace HonestFlow.Tests
             Assert.Contains("new WindowsServiceControlService", control);
             Assert.Contains("await RefreshServiceToolsAsync();", control);
             Assert.DoesNotContain("new ServiceController", control);
+        }
+
+        [Fact]
+        public void AutoFixButton_UsesRealWorkflowWithBusyStateAndConfirmationContinuation()
+        {
+            string source = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+            string autoFix = Segment(source,
+                "public async Task StartAutoFixAsync()",
+                "private AutoFixWorkflow CreateAutoFixWorkflow()");
+            string composition = Segment(source,
+                "private AutoFixWorkflow CreateAutoFixWorkflow()",
+                "private void SetAutoFixProgress");
+            string xaml = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml"));
+            string sharedComposition = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "WpfAutoFixComposition.cs"));
+
+            Assert.Contains("if (_operationRunning || _autoFixWorkflow == null) return;", autoFix);
+            Assert.Contains("_operationRunning = true;", autoFix);
+            Assert.Contains("_operationRunning = false;", autoFix);
+            Assert.Contains("_autoFixWorkflow.RunAsync", autoFix);
+            Assert.Contains("_autoFixWorkflow.ContinueAsync", autoFix);
+            Assert.Contains("ApplyPointStatusRefresh", autoFix);
+            Assert.Contains("WpfAutoFixComposition.Create", composition);
+            Assert.Contains("new AutoFixPlanner()", sharedComposition);
+            Assert.Contains("new AutoFixExecutor(actions)", sharedComposition);
+            Assert.Contains("x:Name=\"SimpleFixButton\"", xaml);
+            Assert.Contains("x:Name=\"DetailedFixButton\"", xaml);
+            Assert.Contains("x:Name=\"AutoFixHistoryList\"", xaml);
+            Assert.Equal(2, xaml.Split("Click=\"SimpleFix_Click\"").Length - 1);
         }
 
         private static string Segment(string source, string startMarker, string endMarker)

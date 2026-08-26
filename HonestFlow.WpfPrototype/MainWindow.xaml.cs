@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -29,6 +30,7 @@ using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Models;
+using HonestFlow.Models.Licensing;
 
 namespace HonestFlow.WpfPrototype;
 
@@ -49,6 +51,7 @@ public partial class MainWindow : Window
     private readonly TopologyPresentationService _topologyPresentation = new();
     private readonly DiagnosticIssuePresentationMapper _diagnosticPresentation = new();
     private PointStatusRefreshService? _pointStatusRefresh;
+    private AutoFixWorkflow? _autoFixWorkflow;
     private PointStatusResult? _lastPointStatus;
     private DiagnosticsSnapshot? _lastDiagnostics;
     private ComponentVersionStatusService? _componentVersionStatusService;
@@ -95,6 +98,7 @@ public partial class MainWindow : Window
             _componentVersionStatusService,
             new PointStatusReportBuilder(),
             _logService);
+        _autoFixWorkflow = CreateAutoFixWorkflow();
         _logTimer.Tick += (_, _) => UpdateLiveLog();
         LicenseObservationSnapshotStore.Instance.SnapshotChanged += LicenseSnapshotChanged;
         Loaded += async (_, _) =>
@@ -245,6 +249,7 @@ public partial class MainWindow : Window
     private async Task InstallAllAsync()
     {
         if (_startup == null || _client == null) return;
+        ComponentInstallationCompletionResult? completion = null;
         await RunInstallationOperationAsync(
             "Обновление компонентов",
             "Подготовка обновления…",
@@ -256,11 +261,16 @@ public partial class MainWindow : Window
                     throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired
                         ? "Запустите HonestFlow от имени администратора."
                         : "Не выбрана рабочая точка.");
-                return await workflow.InstallAsync(_client, cancellationToken);
+                InstallationOptions? options = ResolveInstallationOptions(readiness.SystemRequirements);
+                if (options == null)
+                    return false;
+                completion = await workflow.InstallAndRegisterTsPiotAsync(_client, cancellationToken, options);
+                return completion.ComponentsInstalled;
             },
             "Обновление компонентов завершено.",
             "Обновление завершено без подтверждения успеха. Проверьте журнал.",
-            "Обновление компонентов отменено.");
+            "Обновление компонентов отменено.",
+            () => FormatInstallationCompletionStatus(completion));
     }
 
     private async Task RunInstallationOperationAsync(
@@ -269,7 +279,8 @@ public partial class MainWindow : Window
         Func<CancellationToken, Task<bool>> operation,
         string successStatus,
         string failureStatus,
-        string cancelledStatus)
+        string cancelledStatus,
+        Func<string>? successStatusFactory = null)
     {
         if (_operationRunning) return;
 
@@ -282,7 +293,7 @@ public partial class MainWindow : Window
         try
         {
             bool result = await operation(installationCancellation.Token);
-            finalStatus = result ? successStatus : failureStatus;
+            finalStatus = result ? successStatusFactory?.Invoke() ?? successStatus : failureStatus;
             if (result) InstallationProgressBar.Value = 100;
         }
         catch (OperationCanceledException) when (installationCancellation.IsCancellationRequested)
@@ -314,6 +325,36 @@ public partial class MainWindow : Window
         }
     }
 
+    private InstallationOptions? ResolveInstallationOptions(LmSystemRequirementsResult? requirements)
+    {
+        if (requirements?.MeetsMinimum != false)
+            return InstallationOptions.Default;
+
+        string warnings = string.Join(Environment.NewLine, requirements.MinimumWarnings.Select(item => "• " + item));
+        MessageBoxResult choice = MessageBox.Show(this,
+            "Минимальные системные требования ЛМ ЧЗ не соблюдены:\n\n" + warnings +
+            "\n\nДа — продолжить полную установку.\nНет — пропустить ЛМ ЧЗ и Контроллер.\nОтмена — не начинать установку.",
+            "Требования ЛМ ЧЗ", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+        return choice switch
+        {
+            MessageBoxResult.Yes => InstallationOptions.Default,
+            MessageBoxResult.No => new InstallationOptions { SkipLmStack = true },
+            _ => null
+        };
+    }
+
+    private static string FormatInstallationCompletionStatus(ComponentInstallationCompletionResult? completion)
+    {
+        return completion?.TsPiotRegistration?.Status switch
+        {
+            TsPiotRegistrationStatus.Success => "Компоненты установлены. ТС ПИоТ автоматически зарегистрирован.",
+            TsPiotRegistrationStatus.EsmUnavailable => "Компоненты установлены. Автоматическая регистрация ТС ПИоТ не выполнена: ЕСМ недоступен.",
+            TsPiotRegistrationStatus.KktNotDetected => "Компоненты установлены. Автоматическая регистрация ТС ПИоТ не выполнена: ККТ не обнаружена.",
+            TsPiotRegistrationStatus.RegistrationFailed => "Компоненты установлены. Автоматическая регистрация ТС ПИоТ не выполнена.",
+            _ => "Компоненты установлены."
+        };
+    }
+
     private async Task RefreshAfterComponentOperationAsync()
     {
         await LoadComponentVersionsAsync();
@@ -324,7 +365,10 @@ public partial class MainWindow : Window
     {
         InstallationProgressTitle.Text = title;
         InstallationProgressBar.Value = 0;
+        InstallationProgressBar.IsIndeterminate = false;
         InstallationProgressText.Text = initialStatus;
+        AutoFixHistoryList.ItemsSource = null;
+        AutoFixHistoryPanel.Visibility = Visibility.Collapsed;
         InstallationCancelButton.Content = "Отменить";
         InstallationCancelButton.IsEnabled = true;
         MainWindowInteractiveContent.IsEnabled = false;
@@ -338,7 +382,10 @@ public partial class MainWindow : Window
         MainWindowInteractiveContent.IsEnabled = true;
         InstallationProgressTitle.Text = "Обновление компонентов";
         InstallationProgressBar.Value = 0;
+        InstallationProgressBar.IsIndeterminate = false;
         InstallationProgressText.Text = "Подготовка…";
+        AutoFixHistoryList.ItemsSource = null;
+        AutoFixHistoryPanel.Visibility = Visibility.Collapsed;
         InstallationCancelButton.Content = "Отменить";
         InstallationCancelButton.IsEnabled = true;
     }
@@ -720,7 +767,11 @@ public partial class MainWindow : Window
     {
         if (_startup == null) throw new InvalidOperationException("Стартовая сессия отсутствует.");
         var service = new InstallationService(_logService, new MainWindowProgress(this, showInstallationProgress), new WpfDialogs(this, suppressInformationMessages: showInstallationProgress), CreateLicenseGuard(), _startup.UseRemoteConfigMode);
-        return new ComponentInstallationWorkflow(service);
+        var registration = new TsPiotRegistrationWorkflow(
+            new EsmTsPiotRegistrationClient(),
+            new EsmApiPortProbe(),
+            _logService);
+        return new ComponentInstallationWorkflow(service, Utils.IsAdministrator, LmSystemRequirements.Check, registration);
     }
 
     private ILicenseOperationGuard CreateLicenseGuard() => new LicenseOperationGuard(new LicenseAccessPolicy(
@@ -752,7 +803,9 @@ public partial class MainWindow : Window
         QuaternaryActionButton.IsEnabled = enabled;
         FooterHelpButton.IsEnabled = enabled;
         RefreshLicenseButton.IsEnabled = enabled;
-        SimpleFixButton.IsEnabled = false;
+        bool canAutoFix = enabled && _lastDiagnostics?.Issues.Any(issue => issue.SuggestedFix.HasValue) == true;
+        SimpleFixButton.IsEnabled = canAutoFix;
+        DetailedFixButton.IsEnabled = canAutoFix;
         RateButton.IsEnabled = enabled && !_ratingSent;
     }
 
@@ -773,8 +826,87 @@ public partial class MainWindow : Window
 
     public async Task StartAutoFixAsync()
     {
-        ComponentsNav_Click(ComponentsNavButton, new RoutedEventArgs());
-        await InstallAsync(reinstall: false);
+        if (_operationRunning || _autoFixWorkflow == null) return;
+
+        _operationRunning = true;
+        CancellationTokenSource autoFixCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _installationCancellation = autoFixCancellation;
+        SetActionsEnabled(false);
+        RefreshTopologyButton.IsEnabled = false;
+        ShowInstallationProgress("Автоматическое исправление", "Проверяем состояние…");
+        InstallationProgressBar.IsIndeterminate = true;
+        try
+        {
+            AutoFixResult result = await _autoFixWorkflow.RunAsync(SetAutoFixProgress, autoFixCancellation.Token);
+            while (result.Status == AutoFixStatus.RequiresConfirmation && result.Continuation != null)
+            {
+                bool confirmed = MessageBox.Show(this,
+                    $"ЛМ ЧЗ настроен для другой организации.\n\nВы точно работаете под «{_client?.Name ?? "текущий клиент"}» на этом рабочем месте?\n\n" +
+                    "При подтверждении будет переустановлен только ЛМ ЧЗ.",
+                    "Подтверждение организации ЛМ ЧЗ",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) == MessageBoxResult.Yes;
+                result = await _autoFixWorkflow.ContinueAsync(
+                    result.Continuation, confirmed, SetAutoFixProgress, autoFixCancellation.Token);
+            }
+
+            if (result.State?.Refresh != null)
+                ApplyPointStatusRefresh(result.State.Refresh);
+            string finalMessage = WpfAutoFixComposition.ResultMessage(result);
+            SectionOutput.Text = finalMessage;
+            InstallationProgressText.Text = finalMessage;
+            InstallationProgressBar.IsIndeterminate = false;
+            InstallationProgressBar.Value = result.Status is AutoFixStatus.Success or AutoFixStatus.NoFixNeeded ? 100 : 0;
+            if (!_lifetime.IsCancellationRequested)
+                await WaitForInstallationAcknowledgementAsync();
+        }
+        catch (OperationCanceledException) when (autoFixCancellation.IsCancellationRequested)
+        {
+            SectionOutput.Text = "Автоматическое исправление отменено.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogException(ex, "WPF AutoFix failed", nameof(MainWindow));
+            SectionOutput.Text = "Не удалось выполнить автоматическое исправление: " + ex.Message;
+        }
+        finally
+        {
+            _installationCompletion = null;
+            HideInstallationProgress();
+            autoFixCancellation.Dispose();
+            if (ReferenceEquals(_installationCancellation, autoFixCancellation))
+                _installationCancellation = null;
+            _operationRunning = false;
+            RefreshTopologyButton.IsEnabled = true;
+            SetActionsEnabled(true);
+        }
+    }
+
+    private AutoFixWorkflow CreateAutoFixWorkflow()
+    {
+        if (_startup == null || _client == null || _pointStatusRefresh == null)
+            throw new InvalidOperationException("AutoFix нельзя создать до завершения запуска приложения.");
+        return WpfAutoFixComposition.Create(
+            this,
+            _startup,
+            _client,
+            _logService,
+            _pointStatusRefresh,
+            new MainWindowProgress(this, showInstallationProgress: true),
+            ResolveInstallationOptions,
+            CreateLicenseGuard,
+            ApplyPointStatusRefresh);
+    }
+
+    private void SetAutoFixProgress(AutoFixProgress progress)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            SectionOutput.Text = progress.CurrentStep;
+            InstallationProgressText.Text = progress.CurrentStep;
+            AutoFixHistoryList.ItemsSource = WpfAutoFixComposition.HistoryLines(progress.History);
+            AutoFixHistoryPanel.Visibility = progress.History.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        });
     }
 
     private void ShowSimpleView()
@@ -851,6 +983,9 @@ public partial class MainWindow : Window
         LastCheckText.Text = checkedAt;
         SimpleLastCheckText.Text = $"Последняя проверка: {checkedAt}";
         SectionOutput.Text = "Проверка связей завершена.";
+        bool canAutoFix = !_operationRunning && refresh.Diagnostics.Issues.Any(issue => issue.SuggestedFix.HasValue);
+        SimpleFixButton.IsEnabled = canAutoFix;
+        DetailedFixButton.IsEnabled = canAutoFix;
     }
 
     private void SetTopologyChecking()
@@ -992,6 +1127,8 @@ public partial class MainWindow : Window
         SimpleStatusTitle.Text = title;
         SimpleStatusDescription.Text = description;
         SimpleFixButton.Visibility = showFix ? Visibility.Visible : Visibility.Collapsed;
+        SimpleFixButton.IsEnabled = showFix && !_operationRunning && _lastDiagnostics?.Issues.Any(issue => issue.SuggestedFix.HasValue) == true;
+        DetailedFixButton.IsEnabled = !_operationRunning && _lastDiagnostics?.Issues.Any(issue => issue.SuggestedFix.HasValue) == true;
         SimpleHelpButton.Visibility = showHelp ? Visibility.Visible : Visibility.Collapsed;
     }
 

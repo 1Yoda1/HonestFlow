@@ -57,6 +57,7 @@ namespace HonestFlow.Application.Installation
 
         public async Task<bool> CheckLmAndInstall(
             IPData selectedIP,
+            InstallationOptions options = null,
             CancellationToken cancellationToken = default)
         {
             using var audit = Logger.BeginOperation("Проверка и установка компонентов", nameof(InstallationService));
@@ -68,20 +69,26 @@ namespace HonestFlow.Application.Installation
                 _licenseGuard.Demand(LicenseOperation.InstallComponents);
                 _progress.SetProgress(6, "Загрузка конфигурации версий...");
                 var versions = LoadVersions();
-                string expectedLmVersion = EnsureLmVersionConfigured(versions);
+                options ??= InstallationOptions.Default;
+                string expectedLmVersion = options.SkipLmStack ? null : EnsureLmVersionConfigured(versions);
 
                 _log.LogDebug($"Ожидаемая версия ЛМ ЧЗ: {expectedLmVersion}");
 
                 _progress.SetProgress(8, "Проверка статуса ЛМ ЧЗ...");
-                var lmCheck = await _lmValidator.CheckLmStatus(expectedLmVersion);
-                var status = lmCheck.ApiStatus;
+                var lmCheck = options.SkipLmStack ? null : await _lmValidator.CheckLmStatus(expectedLmVersion);
+                var status = lmCheck?.ApiStatus;
 
-                _log.LogUser($"ЛМ ЧЗ: {lmCheck.DisplayStatus}");
-                _log.LogDebug(
-                    $"ЛМ ЧЗ audit: installed={lmCheck.IsPhysicallyInstalled}, " +
-                    $"physicalVersion={lmCheck.PhysicalVersion ?? "не определена"}, " +
-                    $"runtime={lmCheck.RuntimeStatus}, diagnostics={lmCheck.DiagnosticStatus}, " +
-                    $"needsInstall={lmCheck.NeedsInstall}, needsInitialize={lmCheck.NeedsInitialize}");
+                if (lmCheck != null)
+                {
+                    _log.LogUser($"ЛМ ЧЗ: {lmCheck.DisplayStatus}");
+                    _log.LogDebug(
+                        $"ЛМ ЧЗ audit: installed={lmCheck.IsPhysicallyInstalled}, " +
+                        $"physicalVersion={lmCheck.PhysicalVersion ?? "не определена"}, " +
+                        $"runtime={lmCheck.RuntimeStatus}, diagnostics={lmCheck.DiagnosticStatus}, " +
+                        $"needsInstall={lmCheck.NeedsInstall}, needsInitialize={lmCheck.NeedsInitialize}");
+                }
+                else
+                    _log.LogUser("ЛМ ЧЗ и Контроллер пропущены по выбору пользователя.");
 
                 bool forceLmInstall = false;
                 string lmPlanReason = null;
@@ -91,14 +98,24 @@ namespace HonestFlow.Application.Installation
                     !string.IsNullOrEmpty(status.Inn) &&
                     status.Inn != selectedIP.Inn)
                 {
-                    forceLmInstall = true;
-                lmPlanReason = $"INN mismatch: в ЛМ {status.Inn}, ожидается {selectedIP.Inn}";
+                    string clientName = string.IsNullOrWhiteSpace(selectedIP.Name) ? "текущего клиента" : selectedIP.Name;
+                    bool confirmed = _dialogService.Confirm(
+                        $"ЛМ ЧЗ настроен для другой организации.\n\nВы точно работаете под «{clientName}» на этом рабочем месте?\n\n" +
+                        "При подтверждении ЛМ ЧЗ будет переустановлен.",
+                        "Конфликт организации ЛМ ЧЗ",
+                        UserDialogIcon.Warning);
+                    if (!confirmed)
+                    {
+                        _log.LogUser("Переустановка ЛМ ЧЗ отменена пользователем: организация не подтверждена.");
+                        return false;
+                    }
 
-                    _log.LogUser($"ИНН ЛМ ЧЗ не совпадает: в ЛМ {status.Inn}, нужно {selectedIP.Inn}", true);
-                    _log.LogDebug($"ЛМ ЧЗ будет передан в ветку forced reinstall из-за INN mismatch. {lmPlanReason}");
+                    forceLmInstall = true;
+                    lmPlanReason = "Организация текущего клиента подтверждена пользователем.";
+                    _log.LogUser("Организация текущего клиента подтверждена. ЛМ ЧЗ будет переустановлен.");
                 }
 
-                return await PerformInstallation(selectedIP, versions, lmCheck, forceLmInstall, lmPlanReason, cancellationToken);
+                return await PerformInstallation(selectedIP, versions, lmCheck, forceLmInstall, lmPlanReason, options, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -216,12 +233,13 @@ namespace HonestFlow.Application.Installation
             LmValidationResult precheckedLm,
             bool forceLmInstall,
             string lmPlanReason,
+            InstallationOptions options,
             CancellationToken cancellationToken)
         {
             var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
             _progress.SetProgress(10, "Формирование плана установки...");
             cancellationToken.ThrowIfCancellationRequested();
-            var plan = await BuildInstallationPlan(selectedIP, effectiveVersions, precheckedLm, forceLmInstall, lmPlanReason);
+            var plan = await BuildInstallationPlan(selectedIP, effectiveVersions, precheckedLm, forceLmInstall, lmPlanReason, options);
             _progress.SetProgress(12, "Проверка версий и компонентов...");
 
             LogPlan(plan, "ПЛАН УСТАНОВКИ");
@@ -267,17 +285,24 @@ namespace HonestFlow.Application.Installation
             VersionsData versions,
             LmValidationResult precheckedLm,
             bool forceLmInstall,
-            string lmPlanReason)
+            string lmPlanReason,
+            InstallationOptions options)
         {
             var plan = new InstallationPlan();
             var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
-            string expectedLmVersion = EnsureLmVersionConfigured(effectiveVersions);
+            options ??= InstallationOptions.Default;
+            string expectedLmVersion = options.SkipLmStack ? null : EnsureLmVersionConfigured(effectiveVersions);
 
             bool needLmInstall;
             bool needLmInitialize = false;
             string lmStatusText;
 
-            if (forceLmInstall)
+            if (options.SkipLmStack)
+            {
+                needLmInstall = false;
+                lmStatusText = "пропущен по выбору пользователя";
+            }
+            else if (forceLmInstall)
             {
                 needLmInstall = true;
                 lmStatusText = lmPlanReason ?? "требуется переустановка ЛМ ЧЗ";
@@ -343,13 +368,13 @@ namespace HonestFlow.Application.Installation
                 ExpectedVersion = effectiveVersions?.ESM
             });
 
-            bool needControllerInstall = _versionChecker.NeedControllerInstall(effectiveVersions?.Controller);
+            bool needControllerInstall = !options.SkipLmStack && _versionChecker.NeedControllerInstall(effectiveVersions?.Controller);
             plan.Items.Add(new ComponentPlanItem
             {
                 Component = InstallationComponent.Controller,
                 DisplayName = "Контроллер",
                 NeedInstall = needControllerInstall,
-                StatusText = needControllerInstall ? "требуется установка" : "OK",
+                StatusText = options.SkipLmStack ? "пропущен по выбору пользователя" : needControllerInstall ? "требуется установка" : "OK",
                 ExpectedVersion = effectiveVersions?.Controller
             });
 

@@ -48,7 +48,8 @@ namespace HonestFlow.Application.PointStatus
 
         public Task ExecuteServiceActionAsync(
             ServiceActionPlan plan,
-            LicenseOperation operation)
+            LicenseOperation operation,
+            CancellationToken cancellationToken = default)
         {
             if (plan == null)
                 throw new ArgumentNullException(nameof(plan));
@@ -56,8 +57,24 @@ namespace HonestFlow.Application.PointStatus
                 throw new InvalidOperationException("Для управления службами нужны права администратора.");
 
             return plan.ShouldStart
-                ? _serviceControlService.StartStoppedServicesAsync(plan.Status.Services, operation)
-                : _serviceControlService.RestartServicesAsync(plan.Status.Services, operation);
+                ? _serviceControlService.StartStoppedServicesAsync(plan.Status.Services, operation, cancellationToken)
+                : _serviceControlService.RestartServicesAsync(plan.Status.Services, operation, cancellationToken);
+        }
+
+        public Task RestartServicesAsync(NodeStatus status, LicenseOperation operation, CancellationToken cancellationToken = default)
+        {
+            if (status?.Services == null || status.Services.Count == 0)
+                throw new InvalidOperationException("Не найдены службы для перезапуска.");
+            if (!_isAdministrator())
+                throw new InvalidOperationException("Для управления службами нужны права администратора.");
+            return _serviceControlService.RestartServicesAsync(status.Services, operation, cancellationToken);
+        }
+
+        public Task RestartServiceAsync(string serviceName, LicenseOperation operation, CancellationToken cancellationToken = default)
+        {
+            if (!_isAdministrator())
+                throw new InvalidOperationException("Для управления службами нужны права администратора.");
+            return _serviceControlService.RestartServiceAsync(serviceName, operation, cancellationToken);
         }
 
         public async Task RecoverLmServicesAsync(

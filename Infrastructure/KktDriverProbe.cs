@@ -29,10 +29,20 @@ namespace HonestFlow.Infrastructure
         {
             cancellationToken.ThrowIfCancellationRequested();
             string architecture = KktDriverProbeResult.NormalizeArchitecture(requiredArchitecture);
-            string path = architecture == "x86" ? _x86Path : _x64Path;
             try
             {
-                if (!File.Exists(path))
+                bool x86Found = File.Exists(_x86Path);
+                bool x64Found = File.Exists(_x64Path);
+                string path = architecture == "x86" ? _x86Path : _x64Path;
+                bool expectedFound = architecture == "x86" ? x86Found : x64Found;
+                if (!expectedFound && (x86Found || x64Found))
+                {
+                    string otherPath = x86Found ? _x86Path : _x64Path;
+                    string otherArchitecture = x86Found ? "x86" : "x64";
+                    return Task.FromResult(KktDriverProbeResult.ArchitectureMismatch(architecture, otherArchitecture,
+                        FileVersionInfo.GetVersionInfo(otherPath).FileVersion));
+                }
+                if (!expectedFound)
                     return Task.FromResult(KktDriverProbeResult.NotFound(architecture));
 
                 string version = FileVersionInfo.GetVersionInfo(path).FileVersion;

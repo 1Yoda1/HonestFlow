@@ -20,15 +20,14 @@ namespace HonestFlow.Application.PointStatus
         KKT_NOT_DETECTED,
         KKT_NOT_VISIBLE_TO_ESM,
         KKT_SERVICE_MISSING,
-        KKT_PORT_UNAVAILABLE,
         LM_NOT_INSTALLED,
         LM_API_UNAVAILABLE,
-        LM_NOT_READY,
         LM_SYNC_ERROR,
         LM_NOT_CONFIGURED,
         LM_INITIALIZING,
         LM_INN_MISMATCH,
-        LM_INN_MISSING,
+        ATOL_DRIVER_ARCHITECTURE_MISMATCH,
+        LM_STATUS_UNKNOWN,
         LM_CONTROLLER_DISCONNECTED,
         GIS_MT_UNAVAILABLE,
         MARKING_CHANNEL_UNAVAILABLE,
@@ -52,13 +51,16 @@ namespace HonestFlow.Application.PointStatus
 
     public enum DiagnosticFixKey
     {
+        RunSmartInstallation,
         RestartEsm,
         StartEsmServices,
-        StartAtolGrpcService,
+        RegisterTsPiot,
+        StartKktServices,
         RestartLm,
         RepairLmSync,
         InitializeLm,
-        RepairKktConnection
+        ConfirmLmClientMismatch,
+        RestartLmController
     }
 
     public enum DiagnosticFactState { Success, Failure, Unknown }
@@ -155,10 +157,10 @@ namespace HonestFlow.Application.PointStatus
 
             if (string.Equals(result.Esm?.StatusText, "ЕСМ не установлен", StringComparison.Ordinal))
                 Add(issues, Issue(DiagnosticIssueCode.ESM_NOT_INSTALLED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
-                    "ТС ПИоТ не установлен", "Компоненты ТС ПИоТ не найдены.", context.Esm.Details, DiagnosticFixKey.StartEsmServices));
+                    "ТС ПИоТ не установлен", "Компоненты ТС ПИоТ не найдены.", context.Esm.Details, DiagnosticFixKey.RunSmartInstallation));
             else if (hasEsmServiceEvidence && orchestrator == null)
                 Add(issues, Issue(DiagnosticIssueCode.ESM_SERVICE_MISSING, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
-                    "Служба ТС ПИоТ не найдена", "Не найдена обязательная служба ТС ПИоТ.", context.Esm.Details, DiagnosticFixKey.StartEsmServices));
+                    "Служба ТС ПИоТ не найдена", "Не найдена обязательная служба ТС ПИоТ.", context.Esm.Details, DiagnosticFixKey.RunSmartInstallation));
             else if (orchestrator != null && !orchestrator.IsRunning)
                 Add(issues, Issue(DiagnosticIssueCode.ESM_ORCHESTRATOR_STOPPED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
                     "Служба ТС ПИоТ остановлена", "Служба ESM Orchestrator не запущена.", context.Esm.Details, DiagnosticFixKey.StartEsmServices,
@@ -169,10 +171,10 @@ namespace HonestFlow.Application.PointStatus
                     DiagnosticFixKey.RestartEsm, Evidence("Probe", "instances/info")));
             else if (result.EsmRegistration.Kind == EsmRegistrationResultKind.NotConfigured)
                 Add(issues, Issue(DiagnosticIssueCode.ESM_NOT_REGISTERED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
-                    "ТС ПИоТ не зарегистрирован", "Экземпляр ТС ПИоТ требует регистрации.", context.Esm.Details));
+                    "ТС ПИоТ не зарегистрирован", "Экземпляр ТС ПИоТ требует регистрации.", context.Esm.Details, DiagnosticFixKey.RegisterTsPiot));
             else if (hasEsmServiceEvidence && cm == null)
                 Add(issues, Issue(DiagnosticIssueCode.ESM_SERVICE_MISSING, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
-                    "Служба ТС ПИоТ не найдена", "Не найдена обязательная служба ТС ПИоТ.", context.Esm.Details, DiagnosticFixKey.StartEsmServices));
+                    "Служба ТС ПИоТ не найдена", "Не найдена обязательная служба ТС ПИоТ.", context.Esm.Details, DiagnosticFixKey.RunSmartInstallation));
             else if (cm != null && !cm.IsRunning)
                 Add(issues, Issue(DiagnosticIssueCode.ESM_CM_SERVICE_STOPPED, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
                     "Служба ТС ПИоТ остановлена", "Служба ESM CM не запущена.", context.Esm.Details, DiagnosticFixKey.StartEsmServices,
@@ -209,14 +211,21 @@ namespace HonestFlow.Application.PointStatus
                     title, message, context.Gismt.Details, evidence: gisEvidence));
             }
 
-            if (!context.LmPathAvailable &&
+            ServiceSnapshot controllerService = FindService(result, "esm-lm-controller");
+            if (!context.LmPathAvailable && controllerService == null)
+                Add(issues, Issue(DiagnosticIssueCode.LM_CONTROLLER_DISCONNECTED, DiagnosticComponent.Controller,
+                    context.GisPathAvailable ? DiagnosticSeverity.Attention : DiagnosticSeverity.WorkImpossible,
+                    "Контроллер ЛМ ЧЗ не установлен", "Не найдена служба локального контроллера ЛМ ЧЗ.", context.Controller.Details,
+                    DiagnosticFixKey.RunSmartInstallation));
+            else if (!context.LmPathAvailable &&
                 (context.Controller.State != DiagnosticState.Healthy ||
                  context.EsmController.State != DiagnosticConnectionState.Connected ||
                  context.LmConnection.State != DiagnosticConnectionState.Connected))
                 Add(issues, Issue(DiagnosticIssueCode.LM_CONTROLLER_DISCONNECTED, DiagnosticComponent.Controller,
                     context.GisPathAvailable ? DiagnosticSeverity.Attention : DiagnosticSeverity.WorkImpossible,
                     "Контроллер не видит ЛМ ЧЗ", "Контроллер не видит ЛМ ЧЗ.",
-                    context.EsmController.Details + Environment.NewLine + context.LmConnection.Details));
+                    context.EsmController.Details + Environment.NewLine + context.LmConnection.Details,
+                    DiagnosticFixKey.RestartLmController));
 
             if (!context.GisPathAvailable && !context.LmPathAvailable)
                 Add(issues, Issue(DiagnosticIssueCode.MARKING_CHANNEL_UNAVAILABLE, DiagnosticComponent.MarkingChannel,
@@ -229,11 +238,11 @@ namespace HonestFlow.Application.PointStatus
                 if (version.State == ComponentVersionState.BelowMinimum)
                     Add(issues, Issue(DiagnosticIssueCode.COMPONENT_VERSION_BELOW_MINIMUM, DiagnosticComponent.ComponentVersion,
                         DiagnosticSeverity.WorkImpossible, "Версия компонента не поддерживается",
-                        $"Версия компонента «{version.ComponentName}» ниже минимально поддерживаемой.", VersionEvidence(version)));
+                        $"Версия компонента «{version.ComponentName}» ниже минимально поддерживаемой.", VersionEvidence(version), DiagnosticFixKey.RunSmartInstallation));
                 else if (version.State == ComponentVersionState.UpdateRequired)
                     Add(issues, Issue(DiagnosticIssueCode.COMPONENT_TARGET_VERSION_MISMATCH, DiagnosticComponent.ComponentVersion,
                         DiagnosticSeverity.Attention, "Доступно обновление компонента",
-                        $"Для компонента «{version.ComponentName}» настроена другая версия.", VersionEvidence(version)));
+                        $"Для компонента «{version.ComponentName}» настроена другая версия.", VersionEvidence(version), DiagnosticFixKey.RunSmartInstallation));
             }
 
             return issues;
@@ -249,18 +258,22 @@ namespace HonestFlow.Application.PointStatus
             bool driverTooOld = driver != null
                 ? driver.DriverFound && (!driver.HasKnownVersion || !driver.IsAtLeast(ComponentVersionRequirements.MinimumSupportedAtolDriver))
                 : !driverMissing && !IsLegacyAtolSupported(context.Result.AtolDriverVersion);
-            if (driverMissing)
+            if (driver?.HasArchitectureMismatch == true)
+                Add(issues, Issue(DiagnosticIssueCode.ATOL_DRIVER_ARCHITECTURE_MISMATCH, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
+                    "Разрядность драйвера ККТ не соответствует", "На ПК установлен драйвер АТОЛ другой разрядности, чем требуется для текущего клиента.", context.Kkt.Details,
+                    DiagnosticFixKey.RunSmartInstallation, Evidence("ExpectedArchitecture", driver.ExpectedArchitecture)));
+            else if (driverMissing)
                 Add(issues, Issue(DiagnosticIssueCode.ATOL_DRIVER_MISSING, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
                     "Драйвер ККТ не установлен", "Драйвер АТОЛ не найден.", context.Kkt.Details,
-                    evidence: new[] { Evidence("Architecture", driver?.RequiredArchitecture ?? "unknown") }));
+                    DiagnosticFixKey.RunSmartInstallation, Evidence("Architecture", driver?.ExpectedArchitecture ?? "unknown")));
             else if (driverTooOld)
                 Add(issues, Issue(DiagnosticIssueCode.ATOL_DRIVER_TOO_OLD, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
                     "Версия драйвера ККТ не поддерживается", "Обновите драйвер АТОЛ.", context.Kkt.Details,
-                    evidence: new[] { Evidence("Architecture", driver?.RequiredArchitecture ?? "unknown"), Evidence("Version", driver?.InstalledVersion ?? context.Result.AtolDriverVersion ?? "unknown") }));
+                    DiagnosticFixKey.RunSmartInstallation, Evidence("Architecture", driver?.ExpectedArchitecture ?? "unknown"), Evidence("Version", driver?.InstalledVersion ?? context.Result.AtolDriverVersion ?? "unknown")));
 
             if (context.Result.KktPnP?.Kind == KktPnpResultKind.NotDetected)
                 Add(issues, Issue(DiagnosticIssueCode.KKT_NOT_DETECTED, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
-                    "ККТ не обнаружена", "ККТ физически не подключена.", context.Kkt.Details,
+                    "Windows не видит ККТ", "Windows не обнаружила подключённую кассу. Проверьте питание ККТ, USB/COM-подключение и повторите проверку.", context.Kkt.Details,
                     evidence: new[] { Evidence("PnP", "NotDetected") }));
 
             IReadOnlyList<ServiceSnapshot> services = context.Result.KktServiceStatus?.Services ?? AllServices(context.Result).ToArray();
@@ -271,31 +284,32 @@ namespace HonestFlow.Application.PointStatus
                 if (missingService != null)
                     Add(issues, Issue(DiagnosticIssueCode.KKT_SERVICE_MISSING, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
                         "Служба ККТ не найдена", "Не найдена обязательная служба ККТ.", context.Kkt.Details,
-                        DiagnosticFixKey.StartAtolGrpcService, Evidence("Service", missingService), Evidence("State", "missing")));
+                        DiagnosticFixKey.RunSmartInstallation, Evidence("Service", missingService), Evidence("State", "missing")));
             }
             ServiceSnapshot stoppedService = services.FirstOrDefault(service =>
                 RequiredKktServices.Contains(service.ServiceName, StringComparer.OrdinalIgnoreCase) && !service.IsRunning);
             if (stoppedService != null)
                 Add(issues, Issue(DiagnosticIssueCode.ATOL_GRPC_SERVICE_STOPPED, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
                     "Служба ККТ остановлена", "Служба ККТ не запущена.", context.Kkt.Details,
-                    DiagnosticFixKey.StartAtolGrpcService,
+                    DiagnosticFixKey.StartKktServices,
                     Evidence("Service", stoppedService.ServiceName), Evidence("State", stoppedService.State)));
 
-            if (context.Result.KktPort4041?.IsAvailable == false)
-                Add(issues, Issue(DiagnosticIssueCode.KKT_PORT_UNAVAILABLE, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
-                    "Порт ККТ не найден", "Локальный порт ККТ 4041 недоступен.", context.Kkt.Details,
-                    evidence: new[] { Evidence("Endpoint", "127.0.0.1:4041"), Evidence("Error", context.Result.KktPort4041.ErrorCategory ?? "unknown") }));
-
-            if (context.EsmKkt.State == DiagnosticConnectionState.Disconnected)
+            if (context.EsmKkt.State == DiagnosticConnectionState.Disconnected &&
+                context.Esm.State == DiagnosticState.Healthy &&
+                context.Result.KktPnP?.Kind == KktPnpResultKind.Detected &&
+                driver?.DriverFound == true &&
+                RequiredKktServices.All(name => services.Any(service => string.Equals(service.ServiceName, name, StringComparison.OrdinalIgnoreCase) && service.IsRunning)) &&
+                context.Result.EsmRegistration?.Kind == EsmRegistrationResultKind.Registered &&
+                context.Result.EsmApiPort?.IsAvailable != false &&
+                context.Result.EsmApiStatus?.Kind == EsmStatusResultKind.Success)
                 Add(issues, Issue(DiagnosticIssueCode.KKT_NOT_VISIBLE_TO_ESM, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
-                    "ТС ПИоТ не видит ККТ", "ТС ПИоТ не видит ККТ.", context.EsmKkt.Details,
-                    DiagnosticFixKey.RepairKktConnection));
+                    "ТС ПИоТ не видит ККТ", "Касса обнаружена Windows, драйвер и необходимые службы работают, но ТС ПИоТ её не видит. Перезапустите товароучётную систему и проверьте её подключение к ТС ПИоТ.", context.EsmKkt.Details));
 
             if (context.Kkt.State == DiagnosticState.Failed &&
                 !issues.Any(issue => issue.Component == DiagnosticComponent.Kkt && issue.Severity == DiagnosticSeverity.WorkImpossible))
                 Add(issues, Issue(DiagnosticIssueCode.ATOL_GRPC_SERVICE_STOPPED, DiagnosticComponent.Kkt, DiagnosticSeverity.WorkImpossible,
                     "Служба ККТ остановлена", "Служба ККТ не запущена.", context.Kkt.Details,
-                    DiagnosticFixKey.StartAtolGrpcService));
+                    DiagnosticFixKey.StartKktServices));
         }
 
         private static void AddLmIssues(List<DiagnosticIssue> issues, DiagnosticEvaluationContext context)
@@ -309,7 +323,7 @@ namespace HonestFlow.Application.PointStatus
             DiagnosticIssue issue = state switch
             {
                 LmDiagnosticProbeState.NotInstalled => Issue(DiagnosticIssueCode.LM_NOT_INSTALLED, DiagnosticComponent.Lm, severity,
-                    "ЛМ ЧЗ не установлен", "ЛМ ЧЗ не найден.", context.Lm.Details),
+                    "ЛМ ЧЗ не установлен", "ЛМ ЧЗ не найден.", context.Lm.Details, DiagnosticFixKey.RunSmartInstallation),
                 LmDiagnosticProbeState.SyncError => Issue(DiagnosticIssueCode.LM_SYNC_ERROR, DiagnosticComponent.Lm, severity,
                     "Ошибка синхронизации ЛМ ЧЗ", "ЛМ ЧЗ недоступен. Проверка выполняется через ГИС МТ.", context.Lm.Details, DiagnosticFixKey.RepairLmSync),
                 LmDiagnosticProbeState.NotConfigured => Issue(DiagnosticIssueCode.LM_NOT_CONFIGURED, DiagnosticComponent.Lm, severity,
@@ -320,8 +334,9 @@ namespace HonestFlow.Application.PointStatus
                     "ЛМ ЧЗ недоступен", context.GisPathAvailable
                         ? "ЛМ ЧЗ недоступен. Проверка выполняется через ГИС МТ."
                         : "API ЛМ ЧЗ не отвечает.", context.Lm.Details, DiagnosticFixKey.RestartLm),
-                _ => Issue(DiagnosticIssueCode.LM_NOT_READY, DiagnosticComponent.Lm, severity,
-                    "ЛМ ЧЗ не готов", "ЛМ ЧЗ отвечает, но ещё не готов к работе.", context.Lm.Details)
+                _ => Issue(DiagnosticIssueCode.LM_STATUS_UNKNOWN, DiagnosticComponent.Lm, DiagnosticSeverity.UnableToVerify,
+                    "Статус ЛМ ЧЗ неизвестен", "ЛМ ЧЗ вернул неизвестный статус. Повторите проверку позже.", context.Lm.Details,
+                    evidence: new[] { Evidence("lm.runtimeStatus", context.Result.LmProbe?.RuntimeStatus ?? "unknown") })
             };
             Add(issues, issue);
         }
@@ -341,11 +356,7 @@ namespace HonestFlow.Application.PointStatus
             if (probe.InnComparison == LmInnComparisonState.Mismatch)
                 Add(issues, Issue(DiagnosticIssueCode.LM_INN_MISMATCH, DiagnosticComponent.Lm, DiagnosticSeverity.Attention,
                     "ИНН ЛМ ЧЗ не соответствует клиенту", "ЛМ ЧЗ настроен на другой ИНН.",
-                    probe.InnComparisonDetails, evidence: evidence));
-            else if (probe.InnComparison == LmInnComparisonState.Missing)
-                Add(issues, Issue(DiagnosticIssueCode.LM_INN_MISSING, DiagnosticComponent.Lm, DiagnosticSeverity.Attention,
-                    "ИНН ЛМ ЧЗ не определён", "Не удалось определить ИНН ЛМ ЧЗ.",
-                    probe.InnComparisonDetails, evidence: evidence));
+                    probe.InnComparisonDetails, DiagnosticFixKey.ConfirmLmClientMismatch, evidence: evidence));
         }
 
         private static DiagnosticIssue Issue(

@@ -74,14 +74,17 @@ public sealed class CompactWorkplacePresentationTests
     }
 
     [Fact]
-    public void CompactActions_ConfirmAutoFixAndReuseExistingFullMainWindow()
+    public void CompactActions_ConfirmAndRunSharedAutoFixWorkflowLocally()
     {
         string compactCode = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "CompactMainWindow.xaml.cs"));
         string fullCode = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
 
         Assert.Contains("MessageBoxButton.YesNo", compactCode);
+        Assert.Contains("WpfAutoFixComposition.Create", compactCode);
+        Assert.Contains("_autoFixWorkflow.RunAsync", compactCode);
+        Assert.Contains("CompactAutoFixOverlay", File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "CompactMainWindow.xaml")));
         Assert.Contains("new MainWindow(_session.Startup, _client, _license)", compactCode);
-        Assert.Contains("await fullWindow.StartAutoFixAsync()", compactCode);
+        Assert.DoesNotContain("fullWindow.StartAutoFixAsync", compactCode);
         Assert.Contains("WindowState = WindowState.Maximized", compactCode);
         Assert.Contains("FullWindow_Closed", compactCode);
         Assert.Contains("await StartVisibleWorkAsync()", compactCode);

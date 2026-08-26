@@ -144,11 +144,14 @@ public sealed class DiagnosticIssuePresentationMapper
     {
         DiagnosticFixKey.RestartEsm => "Перезапустите ТС ПИоТ или выполните автоматическое восстановление.",
         DiagnosticFixKey.StartEsmServices => "Запустите службы ТС ПИоТ или выполните автоматическое восстановление.",
-        DiagnosticFixKey.StartAtolGrpcService => "Запустите службу ККТ или выполните автоматическое восстановление.",
+        DiagnosticFixKey.StartKktServices => "Запустите службы ККТ или выполните автоматическое восстановление.",
         DiagnosticFixKey.RestartLm => "Перезапустите ЛМ ЧЗ или выполните автоматическое восстановление.",
         DiagnosticFixKey.RepairLmSync => "Проверьте синхронизацию ЛМ ЧЗ.",
         DiagnosticFixKey.InitializeLm => "Выполните настройку ЛМ ЧЗ.",
-        DiagnosticFixKey.RepairKktConnection => "Проверьте подключение ККТ к ТС ПИоТ.",
+        DiagnosticFixKey.RunSmartInstallation => "Выполните умную установку компонентов.",
+        DiagnosticFixKey.RegisterTsPiot => "Зарегистрируйте ТС ПИоТ.",
+        DiagnosticFixKey.ConfirmLmClientMismatch => "Подтвердите организацию перед переустановкой ЛМ ЧЗ.",
+        DiagnosticFixKey.RestartLmController => "Перезапустите службу локального контроллера ЛМ ЧЗ.",
         _ => string.Empty
     };
 }

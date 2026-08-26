@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using HonestFlow.Application.Installation;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Application.Lm;
+using HonestFlow.Application.Core;
+using HonestFlow.Application.PointStatus;
 using HonestFlow.Models;
 using Xunit;
 
@@ -71,6 +73,22 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task InstallAsync_PassesSkipLmStackOptionToInstallationService()
+        {
+            var installation = new StubInstallationService { InstallResult = true };
+            var workflow = new ComponentInstallationWorkflow(
+                installation,
+                () => true,
+                () => new LmSystemRequirementsResult(Array.Empty<string>(), Array.Empty<string>()));
+            var options = new InstallationOptions { SkipLmStack = true };
+
+            await workflow.InstallAsync(new IPData(), CancellationToken.None, options);
+
+            Assert.Same(options, installation.Options);
+            Assert.True(installation.Options.SkipLmStack);
+        }
+
+        [Fact]
         public async Task ReinstallAsync_PassesSelectionAndCancellationTokenToInstallationService()
         {
             var installation = new StubInstallationService { ReinstallResult = true };
@@ -88,6 +106,47 @@ namespace HonestFlow.Tests
             Assert.Equal(selected, installation.ReinstalledComponents);
         }
 
+        [Fact]
+        public async Task InstallAndRegisterTsPiotAsync_SeparatesSuccessfulInstallationFromRegistrationFailure()
+        {
+            var installation = new StubInstallationService { InstallResult = true };
+            var workflow = new ComponentInstallationWorkflow(
+                installation,
+                () => true,
+                () => new LmSystemRequirementsResult(Array.Empty<string>(), Array.Empty<string>()),
+                RegistrationWorkflow(TsPiotRegistrationResult.KktNotDetected()));
+
+            ComponentInstallationCompletionResult result = await workflow.InstallAndRegisterTsPiotAsync(
+                new IPData(), CancellationToken.None);
+
+            Assert.True(result.ComponentsInstalled);
+            Assert.Equal(TsPiotRegistrationStatus.KktNotDetected, result.TsPiotRegistration.Status);
+        }
+
+        [Fact]
+        public async Task InstallAndRegisterTsPiotAsync_DoesNotRegisterWhenInstallationFails()
+        {
+            var registrationClient = new StubRegistrationClient(TsPiotRegistrationResult.Success());
+            var workflow = new ComponentInstallationWorkflow(
+                new StubInstallationService { InstallResult = false },
+                () => true,
+                () => new LmSystemRequirementsResult(Array.Empty<string>(), Array.Empty<string>()),
+                RegistrationWorkflow(registrationClient));
+
+            ComponentInstallationCompletionResult result = await workflow.InstallAndRegisterTsPiotAsync(
+                new IPData(), CancellationToken.None);
+
+            Assert.False(result.ComponentsInstalled);
+            Assert.Null(result.TsPiotRegistration);
+            Assert.False(registrationClient.Called);
+        }
+
+        private static TsPiotRegistrationWorkflow RegistrationWorkflow(TsPiotRegistrationResult result) =>
+            RegistrationWorkflow(new StubRegistrationClient(result));
+
+        private static TsPiotRegistrationWorkflow RegistrationWorkflow(StubRegistrationClient client) =>
+            new(client, new StubPortProbe(), new StubLog());
+
         private static ComponentInstallationWorkflow CreateWorkflow(bool isAdministrator) =>
             new(
                 new StubInstallationService(),
@@ -99,15 +158,18 @@ namespace HonestFlow.Tests
             public bool InstallResult { get; init; }
             public bool ReinstallResult { get; init; }
             public IPData InstalledClient { get; private set; }
+            public InstallationOptions Options { get; private set; }
             public CancellationToken InstallationCancellationToken { get; private set; }
             public CancellationToken ReinstallCancellationToken { get; private set; }
             public IReadOnlyCollection<InstallationComponent> ReinstalledComponents { get; private set; }
 
             public Task<bool> CheckLmAndInstall(
                 IPData selectedIP,
+                InstallationOptions options = null,
                 CancellationToken cancellationToken = default)
             {
                 InstalledClient = selectedIP;
+                Options = options;
                 InstallationCancellationToken = cancellationToken;
                 return Task.FromResult(InstallResult);
             }
@@ -121,6 +183,31 @@ namespace HonestFlow.Tests
                 ReinstallCancellationToken = cancellationToken;
                 return Task.FromResult(ReinstallResult);
             }
+        }
+
+        private sealed class StubRegistrationClient : IEsmTsPiotRegistrationClient
+        {
+            private readonly TsPiotRegistrationResult _result;
+            public StubRegistrationClient(TsPiotRegistrationResult result) => _result = result;
+            public bool Called { get; private set; }
+            public Task<TsPiotRegistrationResult> RegisterAsync(CancellationToken cancellationToken)
+            {
+                Called = true;
+                return Task.FromResult(_result);
+            }
+        }
+
+        private sealed class StubPortProbe : IEsmApiPortProbe
+        {
+            public Task<EsmApiPortProbeResult> CheckAsync(CancellationToken cancellationToken) =>
+                Task.FromResult(EsmApiPortProbeResult.Available(51888));
+        }
+
+        private sealed class StubLog : ILogService
+        {
+            public void LogUser(string message, bool isError = false) { }
+            public void LogDebug(string message) { }
+            public string GetUserLog() => string.Empty;
         }
     }
 }

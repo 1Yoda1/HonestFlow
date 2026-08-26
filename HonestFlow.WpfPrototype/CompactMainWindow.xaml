@@ -138,5 +138,32 @@
     </StackPanel>
 
     <TextBlock Grid.Row="6" x:Name="OperationText" Foreground="#657083" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+
+    <Grid x:Name="CompactAutoFixOverlay" Grid.RowSpan="7" Panel.ZIndex="100" Background="#F2F4F6FA" Visibility="Collapsed">
+      <Border Padding="24" VerticalAlignment="Center" Background="White" BorderBrush="#DDE3EC" BorderThickness="1" CornerRadius="14">
+        <StackPanel>
+          <TextBlock Text="Автоматическое исправление" FontSize="20" FontWeight="SemiBold" TextAlignment="Center"/>
+          <ProgressBar x:Name="CompactAutoFixProgressBar" Height="12" Minimum="0" Maximum="100" Margin="0,22,0,0" IsIndeterminate="True"/>
+          <TextBlock x:Name="CompactAutoFixCurrentText" Text="Проверяем состояние…" Margin="0,14,0,0" Foreground="#596579"
+                     FontSize="14" LineHeight="21" TextAlignment="Center" TextWrapping="Wrap"/>
+          <StackPanel x:Name="CompactAutoFixHistoryPanel" Margin="0,18,0,0" Visibility="Collapsed">
+            <TextBlock Text="Выполненные шаги" Foreground="#526079" FontSize="12" FontWeight="SemiBold"/>
+            <Border Margin="0,7,0,0" Padding="10,7" Background="#F6F8FB" CornerRadius="8">
+              <ScrollViewer MaxHeight="130" VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="CompactAutoFixHistoryList">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding}" Margin="0,3" Foreground="#16875A" FontSize="12" TextWrapping="Wrap"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Border>
+          </StackPanel>
+          <Button x:Name="CompactAutoFixCancelButton" Content="Отменить" Height="42" Width="150" Margin="0,22,0,0"
+                  HorizontalAlignment="Center" Style="{StaticResource CompactSecondaryButton}" Click="CompactAutoFixCancel_Click"/>
+        </StackPanel>
+      </Border>
+    </Grid>
   </Grid>
 </Window>

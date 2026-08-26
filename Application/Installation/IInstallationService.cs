@@ -12,7 +12,7 @@ namespace HonestFlow.Application.Installation
     public interface IInstallationService
     {
         /// <summary>Проверить ЛМ ЧЗ и выполнить установку при необходимости</summary>
-        Task<bool> CheckLmAndInstall(IPData selectedIP, CancellationToken cancellationToken = default);
+        Task<bool> CheckLmAndInstall(IPData selectedIP, InstallationOptions options = null, CancellationToken cancellationToken = default);
 
         /// <summary>Принудительно переустановить выбранные компоненты</summary>
         Task<bool> ReinstallSelectedComponents(

@@ -174,8 +174,8 @@ namespace HonestFlow.Application.Lm
 
                 bool shouldReinstall = _dialogService.Confirm(
                     $"ЛМ ЧЗ уже инициализирован на другой ИНН.\n\n" +
-                    $"В ЛМ: {actualStatus.Inn}\n" +
-                    $"Ожидается: {expectedInn}\n\n" +
+                    $"В ЛМ: {MaskInnForUi(actualStatus.Inn)}\n" +
+                    $"Ожидается: {MaskInnForUi(expectedInn)}\n\n" +
                     "Удалить текущий ЛМ ЧЗ и установить заново?",
                     "Конфликт ИНН ЛМ ЧЗ",
                     UserDialogIcon.Warning);

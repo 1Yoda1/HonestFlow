@@ -1,17 +1,21 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using HonestFlow.Application.Bootstrap;
+using HonestFlow.Application.Core;
 using HonestFlow.Application.DeviceIdentity;
 using HonestFlow.Application.Installation;
 using HonestFlow.Application.Licensing;
+using HonestFlow.Application.Lm;
 using HonestFlow.Application.PointStatus;
 using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Api;
 using HonestFlow.Infrastructure.DeviceIdentity;
+using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Models;
 using HonestFlow.Models.Licensing;
 
@@ -24,14 +28,18 @@ public partial class CompactMainWindow : Window
     private LicenseObservationSnapshot? _license;
     private readonly ApplicationStartupController _startupController = new();
     private readonly PointStatusRefreshService _pointStatusRefresh;
+    private readonly AutoFixWorkflow _autoFixWorkflow;
     private readonly ApiServerConnectivityProbe? _apiServerConnectivityProbe;
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationTokenSource? _visibleLifetime;
     private DiagnosticsSnapshot? _lastDiagnostics;
+    private HonestFlowCloudStatus _lastCloudStatus = HonestFlowCloudStatus.Unknown;
     private string? _deviceId;
     private MainWindow? _fullWindow;
     private bool _operationRunning;
     private bool _returningToStartup;
+    private CancellationTokenSource? _autoFixCancellation;
+    private TaskCompletionSource? _autoFixCompletion;
 
     public CompactMainWindow(ApplicationStartupSession session, IPData client, LicenseObservationSnapshot? license)
     {
@@ -51,6 +59,16 @@ public partial class CompactMainWindow : Window
             new ComponentVersionStatusService(_session.LogService),
             new PointStatusReportBuilder(),
             _session.LogService);
+        _autoFixWorkflow = WpfAutoFixComposition.Create(
+            this,
+            _session.Startup,
+            _client,
+            _session.LogService,
+            _pointStatusRefresh,
+            new CompactAutoFixProgress(this),
+            ResolveInstallationOptions,
+            CreateLicenseGuard,
+            ApplyAutoFixRefresh);
         if (_session.Startup.AuthService is IApiSessionProvider apiSessionProvider)
             _apiServerConnectivityProbe = new ApiServerConnectivityProbe(apiSessionProvider.ApiSessionService);
 
@@ -105,9 +123,10 @@ public partial class CompactMainWindow : Window
 
             PointStatusRefreshResult refresh = await refreshTask;
             _lastDiagnostics = refresh.Diagnostics;
+            _lastCloudStatus = await cloudStatusTask;
             ApplyPresentation(CompactWorkplacePresentation.Create(
                 refresh.Diagnostics,
-                await cloudStatusTask));
+                _lastCloudStatus));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -165,7 +184,7 @@ public partial class CompactMainWindow : Window
         if (confirmation != MessageBoxResult.Yes)
             return;
 
-        await OpenFullWindowAsync(startAutoFix: true);
+        await RunAutoFixAsync();
     }
 
     private async void Help_Click(object sender, RoutedEventArgs e)
@@ -179,9 +198,9 @@ public partial class CompactMainWindow : Window
         });
     }
 
-    private async void OpenFull_Click(object sender, RoutedEventArgs e) => await OpenFullWindowAsync(startAutoFix: false);
+    private async void OpenFull_Click(object sender, RoutedEventArgs e) => await OpenFullWindowAsync();
 
-    private async Task OpenFullWindowAsync(bool startAutoFix)
+    private async Task OpenFullWindowAsync()
     {
         if (_fullWindow is not null || _returningToStartup)
             return;
@@ -197,8 +216,139 @@ public partial class CompactMainWindow : Window
         fullWindow.Closed += FullWindow_Closed;
         System.Windows.Application.Current.MainWindow = fullWindow;
         fullWindow.Show();
-        if (startAutoFix)
-            await fullWindow.StartAutoFixAsync();
+        await Task.CompletedTask;
+    }
+
+    private async Task RunAutoFixAsync()
+    {
+        if (_operationRunning) return;
+        _operationRunning = true;
+        AutoFixButton.IsEnabled = HelpButton.IsEnabled = OpenFullButton.IsEnabled = false;
+        _autoFixCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        ShowAutoFixProgress();
+        try
+        {
+            AutoFixResult result = await _autoFixWorkflow.RunAsync(SetAutoFixProgress, _autoFixCancellation.Token);
+            while (result.Status == AutoFixStatus.RequiresConfirmation && result.Continuation != null)
+            {
+                bool confirmed = MessageBox.Show(this,
+                    $"ЛМ ЧЗ настроен для другой организации.\n\nВы точно работаете под «{_client.Name ?? "текущий клиент"}» на этом рабочем месте?\n\n" +
+                    "При подтверждении будет переустановлен только ЛМ ЧЗ.",
+                    "Подтверждение организации ЛМ ЧЗ",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning) == MessageBoxResult.Yes;
+                result = await _autoFixWorkflow.ContinueAsync(
+                    result.Continuation, confirmed, SetAutoFixProgress, _autoFixCancellation.Token);
+            }
+
+            string finalMessage = WpfAutoFixComposition.ResultMessage(result);
+            OperationText.Text = finalMessage;
+            CompactAutoFixCurrentText.Text = finalMessage;
+            CompactAutoFixProgressBar.IsIndeterminate = false;
+            CompactAutoFixProgressBar.Value = result.Status is AutoFixStatus.Success or AutoFixStatus.NoFixNeeded ? 100 : 0;
+            if (!_lifetime.IsCancellationRequested)
+                await WaitForAutoFixAcknowledgementAsync();
+        }
+        catch (OperationCanceledException) when (_autoFixCancellation.IsCancellationRequested)
+        {
+            OperationText.Text = "Автоматическое исправление отменено.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogException(ex, "WPF compact AutoFix failed", nameof(CompactMainWindow));
+            OperationText.Text = "Не удалось выполнить автоматическое исправление: " + ex.Message;
+        }
+        finally
+        {
+            _autoFixCompletion = null;
+            HideAutoFixProgress();
+            _autoFixCancellation.Dispose();
+            _autoFixCancellation = null;
+            _operationRunning = false;
+            AutoFixButton.IsEnabled = HelpButton.IsEnabled = OpenFullButton.IsEnabled = true;
+        }
+    }
+
+    private void ApplyAutoFixRefresh(PointStatusRefreshResult refresh)
+    {
+        _lastDiagnostics = refresh.Diagnostics;
+        ApplyPresentation(CompactWorkplacePresentation.Create(refresh.Diagnostics, _lastCloudStatus));
+    }
+
+    private InstallationOptions? ResolveInstallationOptions(LmSystemRequirementsResult? requirements)
+    {
+        if (requirements?.MeetsMinimum != false)
+            return InstallationOptions.Default;
+        string warnings = string.Join(Environment.NewLine, requirements.MinimumWarnings.Select(item => "• " + item));
+        MessageBoxResult choice = MessageBox.Show(this,
+            "Минимальные системные требования ЛМ ЧЗ не соблюдены:\n\n" + warnings +
+            "\n\nДа — продолжить полную установку.\nНет — пропустить ЛМ ЧЗ и Контроллер.\nОтмена — не начинать установку.",
+            "Требования ЛМ ЧЗ", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+        return choice switch
+        {
+            MessageBoxResult.Yes => InstallationOptions.Default,
+            MessageBoxResult.No => new InstallationOptions { SkipLmStack = true },
+            _ => null
+        };
+    }
+
+    private ILicenseOperationGuard CreateLicenseGuard() => new LicenseOperationGuard(new LicenseAccessPolicy(
+        LicenseRuntimeConfiguration.FromEnvironment().EnforcementMode,
+        LicenseObservationSnapshotStore.Instance,
+        () => _client.ClientId));
+
+    private void ShowAutoFixProgress()
+    {
+        CompactAutoFixProgressBar.IsIndeterminate = true;
+        CompactAutoFixProgressBar.Value = 0;
+        CompactAutoFixCurrentText.Text = "Проверяем состояние…";
+        CompactAutoFixHistoryList.ItemsSource = null;
+        CompactAutoFixHistoryPanel.Visibility = Visibility.Collapsed;
+        CompactAutoFixCancelButton.Content = "Отменить";
+        CompactAutoFixCancelButton.IsEnabled = true;
+        CompactAutoFixOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void HideAutoFixProgress()
+    {
+        CompactAutoFixOverlay.Visibility = Visibility.Collapsed;
+        CompactAutoFixProgressBar.IsIndeterminate = false;
+        CompactAutoFixHistoryList.ItemsSource = null;
+        CompactAutoFixHistoryPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void SetAutoFixProgress(AutoFixProgress progress)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            CompactAutoFixProgressBar.IsIndeterminate = true;
+            CompactAutoFixCurrentText.Text = progress.CurrentStep;
+            CompactAutoFixHistoryList.ItemsSource = WpfAutoFixComposition.HistoryLines(progress.History);
+            CompactAutoFixHistoryPanel.Visibility = progress.History.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        });
+    }
+
+    private void CompactAutoFixCancel_Click(object sender, RoutedEventArgs e)
+    {
+        if (_autoFixCompletion != null)
+        {
+            _autoFixCompletion.TrySetResult();
+            return;
+        }
+        if (_autoFixCancellation == null || _autoFixCancellation.IsCancellationRequested) return;
+        CompactAutoFixCancelButton.IsEnabled = false;
+        CompactAutoFixCancelButton.Content = "Отменяем…";
+        CompactAutoFixCurrentText.Text = "Отменяем…";
+        _autoFixCancellation.Cancel();
+    }
+
+    private Task WaitForAutoFixAcknowledgementAsync()
+    {
+        _autoFixCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CompactAutoFixCancelButton.Content = "ОК";
+        CompactAutoFixCancelButton.IsEnabled = true;
+        CompactAutoFixCancelButton.Focus();
+        return _autoFixCompletion.Task;
     }
 
     private async void FullWindow_Closed(object? sender, EventArgs e)
@@ -276,6 +426,21 @@ public partial class CompactMainWindow : Window
         System.Windows.Application.Current.MainWindow = startup;
         startup.Show();
         Close();
+    }
+
+    private sealed class CompactAutoFixProgress : IProgressService
+    {
+        private readonly CompactMainWindow _window;
+        public CompactAutoFixProgress(CompactMainWindow window) => _window = window;
+
+        public void SetProgress(int percent, string stepName) => _window.Dispatcher.Invoke(() =>
+        {
+            _window.CompactAutoFixProgressBar.IsIndeterminate = false;
+            _window.CompactAutoFixProgressBar.Value = Math.Clamp(percent, 0, 100);
+            _window.CompactAutoFixCurrentText.Text = string.IsNullOrWhiteSpace(stepName)
+                ? "Выполняем исправление…"
+                : stepName;
+        });
     }
 
     protected override void OnClosed(EventArgs e)

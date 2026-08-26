@@ -56,13 +56,14 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void EmptyCashRegister_MakesEsmKktDisconnected_WorkImpossible()
+        public void EmptyCashRegister_WithoutConfirmedKktPrerequisites_DoesNotCreateUserIssue()
         {
             PointStatusResult result = Healthy();
             result.CashRegister = EsmCashRegisterResult.Disconnected();
             DiagnosticsSnapshot snapshot = _builder.Create(result);
             Assert.Equal(DiagnosticConnectionState.Disconnected, snapshot.EsmToKkt.State);
-            Assert.Equal(WorkState.WorkImpossible, snapshot.WorkState);
+            Assert.Equal(WorkState.Ready, snapshot.WorkState);
+            Assert.DoesNotContain(snapshot.Issues, issue => issue.Code == DiagnosticIssueCode.KKT_NOT_VISIBLE_TO_ESM);
         }
 
         [Fact]
@@ -335,11 +336,22 @@ namespace HonestFlow.Tests
             PointStatusResult result = Healthy();
             result.CashRegister = EsmCashRegisterResult.Disconnected();
             result.KktPnP = KktPnpResult.Detected("ATOL 30F");
+            result.KktDriver = KktDriverProbeResult.Found("x64", "10.10.8.23");
+            result.KktServiceStatus = new NodeStatus(
+                NodeLevel.Ok,
+                "Ok",
+                "services running",
+                new[]
+                {
+                    new ServiceSnapshot("uem-agent", "Running"),
+                    new ServiceSnapshot("uem-updater", "Running"),
+                    new ServiceSnapshot("atol-grpc-service", "Running")
+                });
 
             DiagnosticsSnapshot snapshot = _builder.Create(result);
 
             Assert.Equal(WorkState.WorkImpossible, snapshot.WorkState);
-            Assert.Contains("ТС ПИоТ не видит ККТ.", snapshot.UserMessages);
+            Assert.Contains(snapshot.UserMessages, message => message.Contains("Касса обнаружена Windows"));
         }
 
         [Fact]
@@ -352,7 +364,7 @@ namespace HonestFlow.Tests
             DiagnosticsSnapshot snapshot = _builder.Create(result);
 
             Assert.Equal(WorkState.WorkImpossible, snapshot.WorkState);
-            Assert.Contains("ККТ физически не подключена.", snapshot.UserMessages);
+            Assert.Contains(snapshot.UserMessages, message => message.Contains("Windows не обнаружила подключённую кассу."));
         }
 
         [Theory]

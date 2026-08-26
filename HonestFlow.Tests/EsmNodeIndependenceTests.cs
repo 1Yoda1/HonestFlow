@@ -49,6 +49,28 @@ namespace HonestFlow.Tests
             }
         }
 
+        [Fact]
+        public async Task PortProbe_UsesFallbackPortWhenSettingsAreAbsent()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            int fallbackPort = ((IPEndPoint)listener.LocalEndpoint).Port;
+            string missingSettings = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+            try
+            {
+                var probe = new EsmApiPortProbe(missingSettings, TimeSpan.FromSeconds(1), fallbackPort);
+
+                EsmApiPortProbeResult result = await probe.CheckAsync(CancellationToken.None);
+
+                Assert.True(result.IsAvailable);
+                Assert.Equal(fallbackPort, result.Port);
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
         private static PointStatusResult Healthy() => new()
         {
             Esm = new NodeStatus(NodeLevel.Ok, "Доступно", "ESM component only"),

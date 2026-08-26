@@ -44,7 +44,43 @@ namespace HonestFlow.Tests
                 .Single(item => item.Code == DiagnosticIssueCode.ATOL_GRPC_SERVICE_STOPPED);
 
             Assert.Equal(DiagnosticSeverity.WorkImpossible, issue.Severity);
-            Assert.Equal(DiagnosticFixKey.StartAtolGrpcService, issue.SuggestedFix);
+            Assert.Equal(DiagnosticFixKey.StartKktServices, issue.SuggestedFix);
+        }
+
+        [Fact]
+        public void WrongAtolArchitecture_ProducesMismatchAndSmartInstallationFix()
+        {
+            PointStatusResult result = Healthy();
+            result.KktDriver = KktDriverProbeResult.ArchitectureMismatch("x86", "x64", "10.10.8.23");
+
+            DiagnosticIssue issue = _builder.Create(result).Issues
+                .Single(item => item.Code == DiagnosticIssueCode.ATOL_DRIVER_ARCHITECTURE_MISMATCH);
+
+            Assert.Equal(DiagnosticFixKey.RunSmartInstallation, issue.SuggestedFix);
+            Assert.Contains(issue.Evidence, item => item.Key == "ExpectedArchitecture" && item.Value == "x86");
+        }
+
+        [Fact]
+        public void WindowsNotDetectingKkt_HasAccurateMessageAndNoAutomaticFix()
+        {
+            PointStatusResult result = Healthy();
+            result.KktPnP = KktPnpResult.NotDetected();
+
+            DiagnosticIssue issue = _builder.Create(result).Issues
+                .Single(item => item.Code == DiagnosticIssueCode.KKT_NOT_DETECTED);
+
+            Assert.Equal("Windows не видит ККТ", issue.Title);
+            Assert.Contains("Windows не обнаружила", issue.UserMessage);
+            Assert.Null(issue.SuggestedFix);
+        }
+
+        [Fact]
+        public void UnavailableKktPort_DoesNotCreateUserIssue()
+        {
+            PointStatusResult result = Healthy();
+            result.KktPort4041 = KktPortProbeResult.Unavailable("refused");
+
+            Assert.DoesNotContain(_builder.Create(result).Issues, issue => issue.Code.ToString() == "KKT_PORT_UNAVAILABLE");
         }
 
         [Fact]

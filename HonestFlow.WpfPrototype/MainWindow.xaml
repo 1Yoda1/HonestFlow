@@ -264,7 +264,7 @@
                     <TextBlock x:Name="SimpleStatusDescription" Text="Пожалуйста, подождите. HonestFlow проверяет готовность кассы и маркировки." Foreground="{StaticResource Muted}" FontSize="17" LineHeight="26" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" Margin="0,13,0,0"/>
                     <TextBlock x:Name="SimpleLastCheckText" Text="Последняя проверка: ещё не выполнялась" Foreground="#7A8496" FontSize="14" HorizontalAlignment="Center" Margin="0,20,0,0"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,28,0,0">
-                      <Button x:Name="SimpleFixButton" Style="{StaticResource PrimaryButton}" Content="Исправить автоматически" Margin="0,0,10,0" Visibility="Collapsed" IsEnabled="False" ToolTip="Временно недоступно" ToolTipService.ShowOnDisabled="True" Click="SimpleFix_Click"/>
+                      <Button x:Name="SimpleFixButton" Style="{StaticResource PrimaryButton}" Content="Исправить автоматически" Margin="0,0,10,0" Visibility="Collapsed" IsEnabled="False" Click="SimpleFix_Click"/>
                       <Button Style="{StaticResource OutlineButton}" Content="Показать подробности" Margin="0,0,10,0" Click="DetailedView_Click"/>
                       <Button x:Name="SimpleHelpButton" Style="{StaticResource OutlineButton}" Foreground="#B8182D" BorderBrush="#E8AEB8" Content="Запросить помощь" Visibility="Collapsed" Click="RequestHelp_Click"/>
                     </StackPanel>
@@ -339,7 +339,7 @@
                     <TextBlock x:Name="DetailedProblemReasons" Foreground="#182033" FontSize="14" LineHeight="20" TextWrapping="Wrap" Margin="0,7,0,0"/>
                   </StackPanel>
                   <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                    <Button Style="{StaticResource PrimaryButton}" Content="✧  Исправить автоматически" Margin="0,0,0,9" IsEnabled="False" ToolTip="Временно недоступно" ToolTipService.ShowOnDisabled="True"/>
+                    <Button x:Name="DetailedFixButton" Style="{StaticResource PrimaryButton}" Content="✧  Исправить автоматически" Margin="0,0,0,9" IsEnabled="False" Click="SimpleFix_Click"/>
                     <Button Style="{StaticResource OutlineButton}" Content="Исправить вручную      ⌄"/>
                   </StackPanel>
                 </Grid>
@@ -481,6 +481,20 @@
                        FontSize="15"
                        TextAlignment="Center"
                        TextWrapping="Wrap"/>
+            <StackPanel x:Name="AutoFixHistoryPanel" Margin="0,20,0,0" Visibility="Collapsed">
+              <TextBlock Text="Выполненные шаги" FontSize="13" FontWeight="SemiBold" Foreground="#526079"/>
+              <Border Margin="0,8,0,0" Padding="12,8" Background="#F6F8FB" CornerRadius="8">
+                <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                  <ItemsControl x:Name="AutoFixHistoryList">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding}" Margin="0,4" FontSize="13" Foreground="#16875A" TextWrapping="Wrap"/>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </Border>
+            </StackPanel>
             <Button x:Name="InstallationCancelButton"
                     Style="{StaticResource OutlineButton}"
                     Content="Отменить"
