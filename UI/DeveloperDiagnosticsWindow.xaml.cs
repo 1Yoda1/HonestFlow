@@ -4,7 +4,7 @@ using System.Threading;
 using System.Windows;
 using HonestFlow.Application.PointStatus;
 
-namespace HonestFlow.WpfPrototype;
+namespace HonestFlow.UI;
 
 public partial class DeveloperDiagnosticsWindow : Window
 {

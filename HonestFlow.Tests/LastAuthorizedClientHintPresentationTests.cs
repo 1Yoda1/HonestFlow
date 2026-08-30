@@ -82,8 +82,8 @@ namespace HonestFlow.Tests
 
         private static string SourcePath(string fileName) => Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory,
-            "..", "..", "..", "..",
-            "HonestFlow.WpfPrototype",
+            "..", "..", "..", "..", "..",
+            "UI",
             fileName));
     }
 }

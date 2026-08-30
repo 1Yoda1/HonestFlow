@@ -1,4 +1,4 @@
-<Window x:Class="HonestFlow.WpfPrototype.CompactMainWindow"
+<Window x:Class="HonestFlow.UI.CompactMainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="HonestFlow" Width="540" SizeToContent="Height"

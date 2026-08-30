@@ -2,6 +2,5 @@
   <Project Path="HonestFlow.csproj" />
   <Project Path="HonestFlow.LicenseSigning/HonestFlow.LicenseSigning.csproj" />
   <Project Path="HonestFlow.Tests/HonestFlow.Tests.csproj" />
-  <Project Path="HonestFlow.WpfPrototype/HonestFlow.WpfPrototype.csproj" />
   <Project Path="GISMTCorrelationProbe/GISMTCorrelationProbe.csproj" />
 </Solution>

@@ -32,7 +32,7 @@ using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Models;
 using HonestFlow.Models.Licensing;
 
-namespace HonestFlow.WpfPrototype;
+namespace HonestFlow.UI;
 
 public partial class MainWindow : Window
 {
@@ -265,7 +265,7 @@ public partial class MainWindow : Window
                 if (options == null)
                     return false;
                 completion = await workflow.InstallAndRegisterTsPiotAsync(_client, cancellationToken, options);
-                return completion.ComponentsInstalled;
+                return completion.IsSuccessful;
             },
             "Обновление компонентов завершено.",
             "Обновление завершено без подтверждения успеха. Проверьте журнал.",
@@ -293,7 +293,7 @@ public partial class MainWindow : Window
         try
         {
             bool result = await operation(installationCancellation.Token);
-            finalStatus = result ? successStatusFactory?.Invoke() ?? successStatus : failureStatus;
+            finalStatus = successStatusFactory?.Invoke() ?? (result ? successStatus : failureStatus);
             if (result) InstallationProgressBar.Value = 100;
         }
         catch (OperationCanceledException) when (installationCancellation.IsCancellationRequested)
@@ -345,6 +345,8 @@ public partial class MainWindow : Window
 
     private static string FormatInstallationCompletionStatus(ComponentInstallationCompletionResult? completion)
     {
+        if (completion?.KktBootstrap != null)
+            return completion.KktBootstrap.Message;
         return completion?.TsPiotRegistration?.Status switch
         {
             TsPiotRegistrationStatus.Success => "Компоненты установлены. ТС ПИоТ автоматически зарегистрирован.",
@@ -766,12 +768,29 @@ public partial class MainWindow : Window
     private ComponentInstallationWorkflow CreateInstallationWorkflow(bool showInstallationProgress = false)
     {
         if (_startup == null) throw new InvalidOperationException("Стартовая сессия отсутствует.");
-        var service = new InstallationService(_logService, new MainWindowProgress(this, showInstallationProgress), new WpfDialogs(this, suppressInformationMessages: showInstallationProgress), CreateLicenseGuard(), _startup.UseRemoteConfigMode);
+        var progress = new MainWindowProgress(this, showInstallationProgress);
+        var service = new InstallationService(_logService, progress, new WpfDialogs(this, suppressInformationMessages: showInstallationProgress), CreateLicenseGuard(), _startup.UseRemoteConfigMode);
         var registration = new TsPiotRegistrationWorkflow(
             new EsmTsPiotRegistrationClient(),
             new EsmApiPortProbe(),
             _logService);
-        return new ComponentInstallationWorkflow(service, Utils.IsAdministrator, LmSystemRequirements.Check, registration);
+        KktBootstrapWorkflow? bootstrap = _pointStatusRefresh == null || _client == null
+            ? null
+            : WpfKktBootstrapComposition.Create(
+                this,
+                _startup,
+                _client,
+                registration,
+                _pointStatusRefresh,
+                progress,
+                CreateLicenseGuard,
+                ApplyPointStatusRefresh);
+        return new ComponentInstallationWorkflow(
+            service,
+            Utils.IsAdministrator,
+            LmSystemRequirements.Check,
+            registration,
+            bootstrap);
     }
 
     private ILicenseOperationGuard CreateLicenseGuard() => new LicenseOperationGuard(new LicenseAccessPolicy(

@@ -13,7 +13,7 @@ public sealed class MainWindowTopologyStatusDotContractTests
     {
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
-        XDocument document = XDocument.Load(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml"));
+        XDocument document = XDocument.Load(ProjectFile("UI", "MainWindow.xaml"));
 
         string[] expectedNames =
         {
@@ -31,7 +31,7 @@ public sealed class MainWindowTopologyStatusDotContractTests
     [Fact]
     public void DetailedTopology_StatusDotsFollowComponentPresentationState()
     {
-        string code = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+        string code = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
 
         Assert.Equal(2, code.Split("statusDot.Fill = color;").Length - 1);
         Assert.Contains("TopologyVisualState.Healthy => BrushFrom(\"#0E9F6E\")", code);
@@ -48,6 +48,21 @@ public sealed class MainWindowTopologyStatusDotContractTests
         }
     }
 
+    [Fact]
+    public void DetailedTopology_IconsUseApplicationRootResourcesAfterWindowMove()
+    {
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XDocument document = XDocument.Load(ProjectFile("UI", "MainWindow.xaml"));
+
+        string[] imageSources = document.Descendants(presentation + "ImageBrush")
+            .Select(brush => (string)brush.Attribute("ImageSource"))
+            .Where(source => source is not null)
+            .ToArray();
+
+        Assert.Equal(5, imageSources.Length);
+        Assert.All(imageSources, source => Assert.StartsWith("/Assets/TopologyIcons/", source));
+    }
+
     private static string ProjectFile(params string[] parts) => Path.GetFullPath(Path.Combine(
-        new[] { AppContext.BaseDirectory, "..", "..", "..", ".." }.Concat(parts).ToArray()));
+        new[] { AppContext.BaseDirectory, "..", "..", "..", "..", ".." }.Concat(parts).ToArray()));
 }

@@ -135,6 +135,33 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public void DedicatedGisMtDiagnostics_AreSplitIntoSeparateDeveloperFacts()
+        {
+            PointStatusResult result = Healthy();
+            result.GisMtDiagnostics = new GisMtDiagnosticResult
+            {
+                State = GisMtDiagnosticState.Healthy,
+                Summary = "Работает",
+                ConfiguredCdnCount = 2,
+                ConfiguredCdns = new[] { "cdn01.crpt.ru:19101", "cdn02.crpt.ru:19101" },
+                CachedCdnCount = 2,
+                AvailableCdnCount = 2,
+                CdnTransportState = GisMtEvidenceState.Healthy,
+                ApplicationExchangeState = GisMtEvidenceState.Healthy,
+                ControlledChannelState = GisMtEvidenceState.Healthy,
+                LastControlledChannelSuccessUtc = DateTimeOffset.UtcNow
+            };
+
+            DiagnosticsSnapshot snapshot = _builder.Create(result);
+
+            Assert.Contains(snapshot.Facts, fact => fact.Key == "GisMt.ControlledChannel" && fact.State == DiagnosticFactState.Success);
+            Assert.Contains(snapshot.Facts, fact => fact.Key == "GisMt.CdnTransport");
+            Assert.Contains(snapshot.Facts, fact => fact.Key == "GisMt.ApplicationExchange");
+            Assert.Contains(snapshot.Facts, fact => fact.Key == "GisMt.CdnConfiguration");
+            Assert.Contains(snapshot.Facts, fact => fact.Key == "GisMt.CdnCache");
+        }
+
+        [Fact]
         public void ClientSoftwareMetadata_RemainsAvailableInDeveloperFacts()
         {
             PointStatusResult result = Healthy();
@@ -191,7 +218,7 @@ namespace HonestFlow.Tests
         {
             XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
             XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
-            XDocument main = XDocument.Load(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml"));
+            XDocument main = XDocument.Load(ProjectFile("UI", "MainWindow.xaml"));
             XElement button = main.Descendants(presentation + "Button")
                 .Single(element => (string)element.Attribute(xaml + "Name") == "DeveloperDiagnosticsButton");
             Assert.Equal("Visible", (string)button.Attribute("Visibility"));
@@ -199,7 +226,7 @@ namespace HonestFlow.Tests
             Assert.DoesNotContain("Товароучётная", main.ToString());
             Assert.DoesNotContain("Accounting", main.ToString());
 
-            XDocument debug = XDocument.Load(ProjectFile("HonestFlow.WpfPrototype", "DeveloperDiagnosticsWindow.xaml"));
+            XDocument debug = XDocument.Load(ProjectFile("UI", "DeveloperDiagnosticsWindow.xaml"));
             string[] headers = debug.Descendants(presentation + "DataGridTextColumn")
                 .Select(column => (string)column.Attribute("Header"))
                 .ToArray();
@@ -207,7 +234,7 @@ namespace HonestFlow.Tests
             Assert.Contains("TechnicalDetails", headers);
             Assert.Contains("Evidence", headers);
 
-            string mainCode = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+            string mainCode = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
             Assert.Contains("new DeveloperDiagnosticsSession(_lastDiagnostics", mainCode);
             Assert.Contains("_pointStatusRefresh.RefreshAsync", mainCode);
         }
@@ -245,6 +272,6 @@ namespace HonestFlow.Tests
         private static NodeStatus Node(NodeLevel level, params ServiceSnapshot[] services) =>
             new(level, level.ToString(), string.Join(";", services.Select(service => service.ServiceName + "=" + service.State)), services);
         private static string ProjectFile(params string[] parts) => Path.GetFullPath(Path.Combine(
-            new[] { AppContext.BaseDirectory, "..", "..", "..", ".." }.Concat(parts).ToArray()));
+            new[] { AppContext.BaseDirectory, "..", "..", "..", "..", ".." }.Concat(parts).ToArray()));
     }
 }

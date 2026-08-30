@@ -3,7 +3,7 @@ using System.Threading;
 using System.Windows;
 using HonestFlow.Infrastructure;
 
-namespace HonestFlow.WpfPrototype;
+namespace HonestFlow;
 
 public partial class App : System.Windows.Application
 {

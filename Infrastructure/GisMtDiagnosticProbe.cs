@@ -70,12 +70,19 @@ namespace HonestFlow.Infrastructure
             bool freshTransportEvidence = IsFresh(log.CdnTransportEvidenceUtc, now);
             bool freshApplicationEvidence = IsFresh(log.ApplicationEvidenceUtc, now);
             bool freshControlledChannelEvidence = IsFresh(log.ControlledChannelEvidenceUtc, now);
+            bool controlledChannelReady = freshControlledChannelEvidence &&
+                                          log.ControlledChannelState == GisMtEvidenceState.Healthy;
             bool transportErrorIsCurrent = freshTransportEvidence &&
                 log.CdnTransportState == GisMtEvidenceState.Error &&
-                (!restTimestamp.HasValue || log.CdnTransportEvidenceUtc >= restTimestamp);
+                (!restTimestamp.HasValue || log.CdnTransportEvidenceUtc >= restTimestamp) &&
+                (!controlledChannelReady || log.CdnTransportEvidenceUtc > log.ControlledChannelEvidenceUtc);
             bool applicationErrorIsCurrent = freshApplicationEvidence &&
                 log.ApplicationExchangeState == GisMtEvidenceState.Error &&
-                (!restTimestamp.HasValue || log.ApplicationEvidenceUtc >= restTimestamp);
+                (!restTimestamp.HasValue || log.ApplicationEvidenceUtc >= restTimestamp) &&
+                (!controlledChannelReady || log.ApplicationEvidenceUtc > log.ControlledChannelEvidenceUtc);
+            bool restErrorIsCurrent = rest?.Code.HasValue == true && rest.Code.Value != 0 &&
+                                      (!controlledChannelReady ||
+                                       (restTimestamp.HasValue && restTimestamp > log.ControlledChannelEvidenceUtc));
             bool allCachedBlocked = cache.Count > 0 && cache.AvailableCount == 0;
             bool mismatch = !string.IsNullOrWhiteSpace(log.LogicalCdn) &&
                             !string.IsNullOrWhiteSpace(log.ActualCdn) &&
@@ -85,13 +92,7 @@ namespace HonestFlow.Infrastructure
             GisMtErrorKind errorKind = GisMtErrorKind.None;
             string summary;
 
-            if (!config.FileFound || !config.HasGisMtSection || config.CdnHosts.Count == 0)
-            {
-                state = GisMtDiagnosticState.Error;
-                errorKind = GisMtErrorKind.Configuration;
-                summary = "Не получена конфигурация CDN";
-            }
-            else if (transportErrorIsCurrent)
+            if (transportErrorIsCurrent)
             {
                 state = GisMtDiagnosticState.Error;
                 errorKind = GisMtErrorKind.Connectivity;
@@ -105,13 +106,24 @@ namespace HonestFlow.Infrastructure
                     : log.ApplicationErrorKind;
                 summary = SummaryFor(errorKind);
             }
-            else if (rest?.Code.HasValue == true && rest.Code.Value != 0)
+            else if (restErrorIsCurrent)
             {
                 errorKind = ClassifyError(rest.Error);
                 state = errorKind == GisMtErrorKind.ControlledChannel
                     ? GisMtDiagnosticState.Warning
                     : GisMtDiagnosticState.Error;
                 summary = SummaryFor(errorKind);
+            }
+            else if (controlledChannelReady)
+            {
+                state = GisMtDiagnosticState.Healthy;
+                summary = "Работает";
+            }
+            else if (!config.FileFound || !config.HasGisMtSection || config.CdnHosts.Count == 0)
+            {
+                state = GisMtDiagnosticState.Error;
+                errorKind = GisMtErrorKind.Configuration;
+                summary = "Не получена конфигурация CDN";
             }
             else if (allCachedBlocked)
             {
@@ -208,6 +220,7 @@ namespace HonestFlow.Infrastructure
                 LastApplicationError = GisMtSecretRedactor.Redact(log.LastApplicationError),
                 LastApplicationErrorKind = log.ApplicationErrorKind,
                 ControlledChannelState = freshControlledChannelEvidence ? log.ControlledChannelState : GisMtEvidenceState.Unknown,
+                LastControlledChannelSuccessUtc = log.LastControlledChannelSuccessUtc,
                 LastControlledChannelErrorUtc = log.LastControlledChannelErrorUtc,
                 LastControlledChannelError = GisMtSecretRedactor.Redact(log.LastControlledChannelError),
                 EvidenceTimestampUtc = Max(restTimestamp, log.LatestTimestampUtc, cache.LastCheckedUtc),
@@ -533,6 +546,7 @@ namespace HonestFlow.Infrastructure
             public GisMtErrorKind ApplicationErrorKind { get; init; }
             public GisMtEvidenceState ControlledChannelState { get; init; }
             public DateTimeOffset? ControlledChannelEvidenceUtc { get; init; }
+            public DateTimeOffset? LastControlledChannelSuccessUtc { get; init; }
             public DateTimeOffset? LastControlledChannelErrorUtc { get; init; }
             public string LastControlledChannelError { get; init; }
             public DateTimeOffset? LatestTimestampUtc { get; init; }
@@ -575,6 +589,7 @@ namespace HonestFlow.Infrastructure
                 GisMtErrorKind applicationErrorKind = GisMtErrorKind.None;
                 GisMtEvidenceState controlledChannelState = GisMtEvidenceState.Unknown;
                 DateTimeOffset? controlledChannelEvidenceUtc = null;
+                DateTimeOffset? controlledChannelSuccessUtc = null;
                 DateTimeOffset? controlledChannelErrorUtc = null;
                 string controlledChannelError = null;
 
@@ -632,12 +647,14 @@ namespace HonestFlow.Infrastructure
                         controlledChannelErrorUtc = currentTimestamp;
                         controlledChannelError = ControlledChannelErrorSummary(line);
                     }
-                    else if (currentTimestamp.HasValue && IsNewest(currentTimestamp, controlledChannelEvidenceUtc) && Contains(line,
-                        "кк установлен/переустановлен",
-                        "кк установлен в ходе приоритизации"))
+                    else if (currentTimestamp.HasValue && IsNewest(currentTimestamp, controlledChannelEvidenceUtc) &&
+                             (IsControlledChannelReady(line) || Contains(line,
+                                 "кк установлен/переустановлен",
+                                 "кк установлен в ходе приоритизации")))
                     {
                         controlledChannelState = GisMtEvidenceState.Healthy;
                         controlledChannelEvidenceUtc = currentTimestamp;
+                        controlledChannelSuccessUtc = currentTimestamp;
                     }
 
                     if (currentTimestamp.HasValue && IsNewest(currentTimestamp, applicationEvidenceUtc) &&
@@ -717,6 +734,7 @@ namespace HonestFlow.Infrastructure
                     ApplicationErrorKind = applicationErrorKind,
                     ControlledChannelState = controlledChannelState,
                     ControlledChannelEvidenceUtc = controlledChannelEvidenceUtc,
+                    LastControlledChannelSuccessUtc = controlledChannelSuccessUtc,
                     LastControlledChannelErrorUtc = controlledChannelErrorUtc,
                     LastControlledChannelError = controlledChannelError,
                     LatestTimestampUtc = latest,
@@ -741,6 +759,10 @@ namespace HonestFlow.Infrastructure
                     ? message.Groups["message"].Value.Trim()
                     : SummaryFor(GisMtErrorKind.ControlledChannel);
             }
+
+            private static bool IsControlledChannelReady(string line) =>
+                Regex.IsMatch(line ?? string.Empty, @"\bcontrolled\s*channel\s*[:=]\s*ready\b|\bcontrolledchannel\s*[:=]\s*ready\b",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
             private static bool IsNewest(DateTimeOffset? candidate, DateTimeOffset? current) =>
                 candidate.HasValue && (!current.HasValue || candidate.Value >= current.Value);

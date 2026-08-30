@@ -3,7 +3,7 @@ using System.Threading;
 using System.Windows;
 using HonestFlow.Application.Installation;
 
-namespace HonestFlow.WpfPrototype;
+namespace HonestFlow.UI;
 
 public partial class ServiceAccessDialog : Window
 {

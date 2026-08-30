@@ -17,7 +17,7 @@ using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Models;
 using HonestFlow.Models.Licensing;
 
-namespace HonestFlow.WpfPrototype;
+namespace HonestFlow.UI;
 
 internal static class WpfAutoFixComposition
 {
@@ -43,11 +43,21 @@ internal static class WpfAutoFixComposition
             new EsmTsPiotRegistrationClient(),
             new EsmApiPortProbe(),
             logService);
+        var bootstrap = WpfKktBootstrapComposition.Create(
+            owner,
+            startup,
+            client,
+            registration,
+            pointStatusRefresh,
+            installationProgress,
+            createLicenseGuard,
+            applyRefresh);
         var installation = new ComponentInstallationWorkflow(
             installationService,
             Utils.IsAdministrator,
             LmSystemRequirements.Check,
-            registration);
+            registration,
+            bootstrap);
         var pointRepair = new PointRepairWorkflow(
             new WindowsServiceControlService(createLicenseGuard()),
             new LicensedLmInitializationService(createLicenseGuard()));
@@ -66,7 +76,7 @@ internal static class WpfAutoFixComposition
                 if (options == null) throw new OperationCanceledException(token);
                 ComponentInstallationCompletionResult completion =
                     await installation.InstallAndRegisterTsPiotAsync(client, token, options);
-                return completion.ComponentsInstalled;
+                return completion.IsSuccessful;
             },
             [DiagnosticFixKey.StartEsmServices] = (state, _, token) =>
                 ExecuteServiceActionAsync(pointRepair, state.PointStatus.EsmServiceStatus ?? state.PointStatus.Esm, token),

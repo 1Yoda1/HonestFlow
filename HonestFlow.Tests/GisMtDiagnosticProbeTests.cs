@@ -216,6 +216,35 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task FreshControlledChannelReady_IsThePrimaryPositiveEvidence()
+        {
+            using var fixture = new Fixture();
+            fixture.WriteLog(fixture.Timestamp + " INF ControlledChannel = ready");
+
+            GisMtDiagnosticResult result = await fixture.Probe().CheckAsync(Rest(7), CancellationToken.None);
+
+            Assert.Equal(GisMtDiagnosticState.Healthy, result.State);
+            Assert.Equal("Работает", result.Summary);
+            Assert.Equal(GisMtEvidenceState.Healthy, result.ControlledChannelState);
+            Assert.Equal(fixture.Now, result.LastControlledChannelSuccessUtc);
+        }
+
+        [Fact]
+        public async Task NewerApplicationFailure_OverridesEarlierControlledChannelReady()
+        {
+            using var fixture = new Fixture();
+            fixture.WriteConfig();
+            fixture.WriteLog(string.Join(Environment.NewLine,
+                fixture.At(-5, "INF ControlledChannel = ready"),
+                fixture.At(-4, "ERR Ошибка регистрации в ГИС МТ")));
+
+            GisMtDiagnosticResult result = await fixture.Probe().CheckAsync(Rest(null), CancellationToken.None);
+
+            Assert.Equal(GisMtDiagnosticState.Error, result.State);
+            Assert.Equal("Ошибка регистрации в ГИС МТ", result.Summary);
+        }
+
+        [Fact]
         public async Task OlderTransportFailure_IsSupersededByNewerAuthHttpResponse()
         {
             using var fixture = new Fixture();

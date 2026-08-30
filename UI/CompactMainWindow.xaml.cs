@@ -19,7 +19,7 @@ using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Models;
 using HonestFlow.Models.Licensing;
 
-namespace HonestFlow.WpfPrototype;
+namespace HonestFlow.UI;
 
 public partial class CompactMainWindow : Window
 {

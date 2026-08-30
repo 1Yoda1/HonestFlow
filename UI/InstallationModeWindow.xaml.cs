@@ -12,7 +12,7 @@ using HonestFlow.Infrastructure.Api;
 using HonestFlow.Infrastructure.Dialogs;
 using HonestFlow.Models;
 
-namespace HonestFlow.WpfPrototype;
+namespace HonestFlow.UI;
 
 public partial class InstallationModeWindow : Window
 {

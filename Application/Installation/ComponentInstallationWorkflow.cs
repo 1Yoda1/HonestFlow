@@ -15,6 +15,7 @@ namespace HonestFlow.Application.Installation
         private readonly Func<bool> _isAdministrator;
         private readonly Func<LmSystemRequirementsResult> _checkSystemRequirements;
         private readonly TsPiotRegistrationWorkflow _tsPiotRegistrationWorkflow;
+        private readonly KktBootstrapWorkflow _kktBootstrapWorkflow;
 
         public ComponentInstallationWorkflow(IInstallationService installationService)
             : this(installationService, Utils.IsAdministrator, LmSystemRequirements.Check)
@@ -25,12 +26,14 @@ namespace HonestFlow.Application.Installation
             IInstallationService installationService,
             Func<bool> isAdministrator,
             Func<LmSystemRequirementsResult> checkSystemRequirements,
-            TsPiotRegistrationWorkflow tsPiotRegistrationWorkflow = null)
+            TsPiotRegistrationWorkflow tsPiotRegistrationWorkflow = null,
+            KktBootstrapWorkflow kktBootstrapWorkflow = null)
         {
             _installationService = installationService ?? throw new ArgumentNullException(nameof(installationService));
             _isAdministrator = isAdministrator ?? throw new ArgumentNullException(nameof(isAdministrator));
             _checkSystemRequirements = checkSystemRequirements ?? throw new ArgumentNullException(nameof(checkSystemRequirements));
             _tsPiotRegistrationWorkflow = tsPiotRegistrationWorkflow;
+            _kktBootstrapWorkflow = kktBootstrapWorkflow;
         }
 
         public ComponentOperationReadiness CheckReadiness(IPData selectedClient, bool checkLmRequirements)
@@ -55,6 +58,14 @@ namespace HonestFlow.Application.Installation
             bool installed = await InstallAsync(selectedClient, cancellationToken, options).ConfigureAwait(false);
             if (!installed)
                 return ComponentInstallationCompletionResult.InstallationFailed();
+
+            if (_kktBootstrapWorkflow != null)
+            {
+                KktBootstrapResult bootstrap = await _kktBootstrapWorkflow
+                    .RunAsync(selectedClient, cancellationToken)
+                    .ConfigureAwait(false);
+                return ComponentInstallationCompletionResult.InstalledWithBootstrap(bootstrap);
+            }
 
             if (_tsPiotRegistrationWorkflow == null)
                 return ComponentInstallationCompletionResult.Installed(null);

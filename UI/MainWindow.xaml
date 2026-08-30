@@ -1,4 +1,4 @@
-<Window x:Class="HonestFlow.WpfPrototype.MainWindow"
+<Window x:Class="HonestFlow.UI.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="HonestFlow"
@@ -18,15 +18,15 @@
     <SolidColorBrush x:Key="Green" Color="#0E9F6E"/>
     <SolidColorBrush x:Key="Red" Color="#D91532"/>
 
-    <ImageBrush x:Key="GismtTopologyIconMask" ImageSource="Assets/TopologyIcons/gismt.png"
+    <ImageBrush x:Key="GismtTopologyIconMask" ImageSource="/Assets/TopologyIcons/gismt.png"
                 Viewbox="148,152,964,924" ViewboxUnits="Absolute" Stretch="Uniform"/>
-    <ImageBrush x:Key="EsmTopologyIconMask" ImageSource="Assets/TopologyIcons/esm-mask.png"
+    <ImageBrush x:Key="EsmTopologyIconMask" ImageSource="/Assets/TopologyIcons/esm-mask.png"
                 Viewbox="36,48,1168,1172" ViewboxUnits="Absolute" Stretch="Uniform"/>
-    <ImageBrush x:Key="ControllerTopologyIconMask" ImageSource="Assets/TopologyIcons/controller.png"
+    <ImageBrush x:Key="ControllerTopologyIconMask" ImageSource="/Assets/TopologyIcons/controller.png"
                 Viewbox="260,280,736,712" ViewboxUnits="Absolute" Stretch="Uniform"/>
-    <ImageBrush x:Key="LmTopologyIconMask" ImageSource="Assets/TopologyIcons/lm.png"
+    <ImageBrush x:Key="LmTopologyIconMask" ImageSource="/Assets/TopologyIcons/lm.png"
                 Viewbox="160,92,1024,1052" ViewboxUnits="Absolute" Stretch="Uniform"/>
-    <ImageBrush x:Key="KktTopologyIconMask" ImageSource="Assets/TopologyIcons/kkt.png"
+    <ImageBrush x:Key="KktTopologyIconMask" ImageSource="/Assets/TopologyIcons/kkt.png"
                 Viewbox="60,132,1144,1004" ViewboxUnits="Absolute" Stretch="Uniform"/>
 
     <Style x:Key="TopButton" TargetType="Button">

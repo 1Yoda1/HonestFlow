@@ -14,11 +14,11 @@ Purpose: production workplace client, startup/authentication, configuration, lic
 
 ### UI architecture (preserve these rules)
 
-HonestFlow 3.0 is a WPF application. Its production startup path is:
+HonestFlow 3.0 is a WPF application. The sole production project is the root `HonestFlow.csproj`; its startup path is:
 
-`HonestFlow.WpfPrototype/App.xaml` → `StartupWindow.xaml` → `MainWindow`.
+`App.xaml` → `UI/StartupWindow.xaml` → `UI/MainWindow`.
 
-`HonestFlow.WpfPrototype` is a historical project name; it is the current production WPF project and must not be renamed without an explicit task.
+The legacy WinForms sources are retained for fallback/reference only and are excluded from the production WPF compilation.
 
 The WinForms project and root `Program.cs` startup remain legacy/fallback code. Do not add new HonestFlow 3.0 user-facing features to WinForms unless the user explicitly requests a legacy implementation.
 
@@ -26,7 +26,8 @@ New UI features belong in the WPF startup and main-window flow. Shared applicati
 
 ### Important paths
 
-- Entry point/UI: `HonestFlow.WpfPrototype/App.xaml`, `App.xaml.cs`, `StartupWindow.xaml*`, `MainWindow.xaml*`.
+- Entry point: root `App.xaml`, `App.xaml.cs`; WPF windows/composition: `UI/`.
+- Topology icons: `Assets/TopologyIcons/` (WPF resources).
 - Use cases/workflows: `Application/`; startup orchestration is in `Application/Bootstrap/`, auth in `Application/Auth/`, licensing and registration in `Application/Licensing/`.
 - API clients/session: `Infrastructure/Api/` (`ApiAuthService`, `ApiSessionService`, registration status provider).
 - License/configuration infrastructure: `Infrastructure/Licensing/`, `Infrastructure/Configuration/`.
@@ -160,8 +161,8 @@ Schema initialization/update is in `Data/DatabaseSchema.cs`; integration tests u
 
 | Task | Start here |
 | --- | --- |
-| HonestFlow startup/login/restricted UI | `HonestFlow.WpfPrototype/StartupWindow.xaml*`, `Application/Bootstrap/`, `Infrastructure/Api/` |
-| HonestFlow main UI | `HonestFlow.WpfPrototype/MainWindow.xaml*` |
+| HonestFlow startup/login/restricted UI | `UI/StartupWindow.xaml*`, `Application/Bootstrap/`, `Infrastructure/Api/` |
+| HonestFlow main UI | `UI/MainWindow.xaml*` |
 | Device registration client flow | `Application/Licensing/DeviceRegistration*`, `Infrastructure/Licensing/ApiDeviceRegistrationRequestSender.cs`, `Infrastructure/Api/ApiDeviceRegistrationStatusProvider.cs` |
 | License decision/download/cache | `Application/Licensing/`, `Infrastructure/Licensing/`, `Infrastructure/Configuration/` |
 | HonestDesk startup stability | `HonestDesk/App.xaml.cs`, `MainWindow.xaml.cs`, `Services/AppLogger.cs`, `SettingsService.cs`, `StateService.cs` |

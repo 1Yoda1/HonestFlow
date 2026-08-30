@@ -44,7 +44,7 @@ public sealed class CompactWorkplacePresentationTests
     [Fact]
     public void CompactUi_HasSmallScreenContractAndNoTechnicalViews()
     {
-        string xaml = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "CompactMainWindow.xaml"));
+        string xaml = File.ReadAllText(ProjectFile("UI", "CompactMainWindow.xaml"));
 
         Assert.Contains("Width=\"540\"", xaml);
         Assert.Contains("MaxWidth=\"560\"", xaml);
@@ -65,7 +65,7 @@ public sealed class CompactWorkplacePresentationTests
     [Fact]
     public void CompactCloud_UsesAuthorizedHonestFlowApiConfigurationRequest()
     {
-        string compactCode = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "CompactMainWindow.xaml.cs"));
+        string compactCode = File.ReadAllText(ProjectFile("UI", "CompactMainWindow.xaml.cs"));
         string probeCode = File.ReadAllText(ProjectFile("Infrastructure", "Api", "ApiServerConnectivityProbe.cs"));
 
         Assert.Contains("ApiServerConnectivityProbe", compactCode);
@@ -76,13 +76,13 @@ public sealed class CompactWorkplacePresentationTests
     [Fact]
     public void CompactActions_ConfirmAndRunSharedAutoFixWorkflowLocally()
     {
-        string compactCode = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "CompactMainWindow.xaml.cs"));
-        string fullCode = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+        string compactCode = File.ReadAllText(ProjectFile("UI", "CompactMainWindow.xaml.cs"));
+        string fullCode = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
 
         Assert.Contains("MessageBoxButton.YesNo", compactCode);
         Assert.Contains("WpfAutoFixComposition.Create", compactCode);
         Assert.Contains("_autoFixWorkflow.RunAsync", compactCode);
-        Assert.Contains("CompactAutoFixOverlay", File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "CompactMainWindow.xaml")));
+        Assert.Contains("CompactAutoFixOverlay", File.ReadAllText(ProjectFile("UI", "CompactMainWindow.xaml")));
         Assert.Contains("new MainWindow(_session.Startup, _client, _license)", compactCode);
         Assert.DoesNotContain("fullWindow.StartAutoFixAsync", compactCode);
         Assert.Contains("WindowState = WindowState.Maximized", compactCode);
@@ -119,5 +119,5 @@ public sealed class CompactWorkplacePresentationTests
     };
 
     private static string ProjectFile(params string[] parts) => Path.GetFullPath(Path.Combine(
-        new[] { AppContext.BaseDirectory, "..", "..", "..", ".." }.Concat(parts).ToArray()));
+        new[] { AppContext.BaseDirectory, "..", "..", "..", "..", ".." }.Concat(parts).ToArray()));
 }

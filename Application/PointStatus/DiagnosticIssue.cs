@@ -509,13 +509,44 @@ namespace HonestFlow.Application.PointStatus
                 context.Result.EsmApiStatus?.Status?.LmInfo?.EffectiveCode?.ToString() ?? "missing"));
             facts.Add(ConnectionFact("EsmToController.LinkState", DiagnosticComponent.Controller, context.EsmController));
             facts.Add(ConnectionFact("Lm.Connection", DiagnosticComponent.Lm, context.LmConnection));
+            AddGisMtFacts(facts, context);
+            return facts;
+        }
+
+        private static void AddGisMtFacts(ICollection<DiagnosticFact> facts, DiagnosticEvaluationContext context)
+        {
+            GisMtDiagnosticResult gis = context.Result.GisMtDiagnostics;
             facts.Add(new DiagnosticFact("GisMt", DiagnosticComponent.GisMt,
                 context.Gismt.State == DiagnosticState.Healthy ? DiagnosticFactState.Success :
                 context.Gismt.State == DiagnosticState.Failed ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
-                context.Result.GisMtDiagnostics?.State.ToString() ?? context.Api?.Gismt?.Code?.ToString() ?? "unknown",
+                gis?.State.ToString() ?? context.Api?.Gismt?.Code?.ToString() ?? "unknown",
                 context.Gismt.Details));
-            return facts;
+            if (gis == null) return;
+
+            facts.Add(GisMtFact("GisMt.ControlledChannel", gis.ControlledChannelState,
+                gis.ControlledChannelState.ToString(),
+                $"observedUtc={gis.LastControlledChannelSuccessUtc?.ToString("O") ?? gis.LastControlledChannelErrorUtc?.ToString("O") ?? "-"}; details={gis.ControlledChannelDetails ?? gis.LastControlledChannelError ?? "-"}"));
+            facts.Add(GisMtFact("GisMt.CdnTransport", gis.CdnTransportState,
+                gis.CdnTransportState.ToString(),
+                $"lastSuccessUtc={gis.LastCdnTransportSuccessUtc?.ToString("O") ?? "-"}; lastErrorUtc={gis.LastCdnTransportErrorUtc?.ToString("O") ?? "-"}; error={gis.LastCdnTransportError ?? "-"}"));
+            facts.Add(GisMtFact("GisMt.ApplicationExchange", gis.ApplicationExchangeState,
+                gis.ApplicationExchangeState.ToString(),
+                $"lastSuccessUtc={gis.LastSuccessfulGisExchangeUtc?.ToString("O") ?? "-"}; lastErrorUtc={gis.LastApplicationErrorUtc?.ToString("O") ?? "-"}; error={gis.LastApplicationError ?? "-"}"));
+            facts.Add(new DiagnosticFact("GisMt.CdnConfiguration", DiagnosticComponent.GisMt,
+                gis.ConfiguredCdnCount > 0 ? DiagnosticFactState.Success : DiagnosticFactState.Failure,
+                gis.ConfiguredCdnCount.ToString(), string.Join(", ", gis.ConfiguredCdns ?? Array.Empty<string>())));
+            facts.Add(new DiagnosticFact("GisMt.CdnCache", DiagnosticComponent.GisMt,
+                gis.CachedCdnCount == 0 ? DiagnosticFactState.Unknown :
+                gis.AvailableCdnCount > 0 ? DiagnosticFactState.Success : DiagnosticFactState.Failure,
+                $"available={gis.AvailableCdnCount}; blocked={gis.BlockedCdnCount}; total={gis.CachedCdnCount}",
+                $"checkedUtc={gis.CacheLastCheckedUtc?.ToString("O") ?? "-"}; latencyMs={gis.LastLatencyMs?.ToString() ?? "-"}"));
         }
+
+        private static DiagnosticFact GisMtFact(string key, GisMtEvidenceState state, string value, string evidence) =>
+            new(key, DiagnosticComponent.GisMt,
+                state == GisMtEvidenceState.Healthy ? DiagnosticFactState.Success :
+                state == GisMtEvidenceState.Error ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
+                value, evidence);
 
         private static DiagnosticFact ConnectionFact(string key, DiagnosticComponent component, DiagnosticConnectionFact fact) =>
             new(key, component,

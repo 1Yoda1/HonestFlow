@@ -57,6 +57,7 @@ namespace HonestFlow.Application.PointStatus
         public string LastApplicationError { get; init; }
         public GisMtErrorKind LastApplicationErrorKind { get; init; }
         public GisMtEvidenceState ControlledChannelState { get; init; }
+        public DateTimeOffset? LastControlledChannelSuccessUtc { get; init; }
         public DateTimeOffset? LastControlledChannelErrorUtc { get; init; }
         public string LastControlledChannelError { get; init; }
         public DateTimeOffset? EvidenceTimestampUtc { get; init; }

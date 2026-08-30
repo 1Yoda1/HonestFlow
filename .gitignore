@@ -384,6 +384,7 @@ licenses.json.sig
 /release/
 
 # Local generated publish/build outputs
+/.build/
 /publish-hf/
 /publish-diagnostics-test/
 /publish-honestflow/

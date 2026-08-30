@@ -19,7 +19,7 @@ using HonestFlow.Infrastructure.Api;
 using HonestFlow.Infrastructure.Licensing;
 using HonestFlow.Models;
 
-namespace HonestFlow.WpfPrototype;
+namespace HonestFlow.UI;
 
 public partial class StartupWindow : Window
 {

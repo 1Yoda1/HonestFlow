@@ -93,10 +93,10 @@ namespace HonestFlow.Tests
         [Fact]
         public void StartupServiceMode_IsSeparateFromNormalAuthRegistrationAndLicensePipeline()
         {
-            string xaml = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "StartupWindow.xaml"));
-            string startup = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "StartupWindow.xaml.cs"));
+            string xaml = File.ReadAllText(ProjectFile("UI", "StartupWindow.xaml"));
+            string startup = File.ReadAllText(ProjectFile("UI", "StartupWindow.xaml.cs"));
             string serviceClient = File.ReadAllText(ProjectFile("Infrastructure", "Api", "ApiServiceInstallationAccessClient.cs"));
-            string modeXaml = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "InstallationModeWindow.xaml"));
+            string modeXaml = File.ReadAllText(ProjectFile("UI", "InstallationModeWindow.xaml"));
 
             Assert.Contains("Только установка", xaml);
             Assert.Contains("ServiceAccessDialog", startup);
@@ -116,7 +116,7 @@ namespace HonestFlow.Tests
             "hfi_active", DateTimeOffset.UtcNow.AddMinutes(30), Array.Empty<ServiceInstallationPackage>());
 
         private static string ProjectFile(params string[] parts) => Path.GetFullPath(Path.Combine(
-            new[] { AppContext.BaseDirectory, "..", "..", "..", ".." }.Concat(parts).ToArray()));
+            new[] { AppContext.BaseDirectory, "..", "..", "..", "..", ".." }.Concat(parts).ToArray()));
 
         private sealed class StubAccessClient : IServiceInstallationAccessClient
         {

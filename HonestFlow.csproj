@@ -1,23 +1,26 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<OutputType>Library</OutputType>
+		<OutputType>WinExe</OutputType>
 		<TargetFramework>net10.0-windows</TargetFramework>
 		<Nullable>disable</Nullable>
+		<UseWPF>true</UseWPF>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ImplicitUsings>disable</ImplicitUsings>
 
-		<!-- Имя EXE -->
-		<AssemblyName>HonestFlow.Core</AssemblyName>
+		<AssemblyName>HonestFlow</AssemblyName>
 		<RootNamespace>HonestFlow</RootNamespace>
 
-		<!-- Один компактный EXE для безопасной замены текущим updater; .NET 10 Desktop Runtime поставляется отдельно -->
+		<!-- Framework-dependent single-file production publish; .NET 10 Desktop Runtime is installed separately. -->
 		<SelfContained>false</SelfContained>
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<PublishSingleFile>true</PublishSingleFile>
 		<PublishTrimmed>false</PublishTrimmed>
 		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<OutputPath Condition="'$(Configuration)' == 'Debug'">$(MSBuildThisFileDirectory)bin\Debug\</OutputPath>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
 
 		<!-- Версии и информация -->
 		<AssemblyVersion>3.0.0.0</AssemblyVersion>
@@ -39,10 +42,45 @@
 	<ItemGroup>
 	  <Compile Remove="HonestFlow.Tests\**\*.cs" />
 	  <Compile Remove="HonestFlow.LicenseSigning\**\*.cs" />
-	  <Compile Remove="HonestFlow.WpfPrototype\**\*.cs" />
-	  <Compile Remove="obj\**\*.cs" />
+	  <Compile Remove="GISMTCorrelationProbe\**\*.cs" />
+	  <Compile Remove="GoNetworkProbe\**\*.cs" />
+	  <Compile Remove="KktBootstrap\**\*.cs" />
+	  <Compile Remove="Forms\**\*.cs" />
+	  <Compile Remove="Program.cs" />
+	  <Compile Remove="Application\Ui\WindowIconService.cs" />
+	  <Compile Remove="Infrastructure\Composition\MainFormDependencies.cs" />
+	  <Compile Remove="Infrastructure\Dialogs\MainFormDialogService.cs" />
+	  <Compile Remove="**\bin\**\*.cs" />
+	  <Compile Remove="**\obj\**\*.cs" />
+	  <Compile Remove=".build\**\*.cs" />
+	  <Compile Remove=".codex-build\**\*.cs" />
 	  <Compile Remove=".codex-bin\**\*.cs" />
+	  <EmbeddedResource Remove="Forms\**\*.resx" />
 	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove="Assets\TopologyIcons\*.png" />
+	  <Resource Include="Assets\TopologyIcons\*.png" />
+	</ItemGroup>
+
+	<PropertyGroup>
+		<KktBootstrapOutputRoot>$(MSBuildProjectDirectory)\.build\kkt\$(Configuration)</KktBootstrapOutputRoot>
+	</PropertyGroup>
+	<ItemGroup>
+		<EmbeddedResource Include="$(KktBootstrapOutputRoot)\x86\KktBootstrap.x86.exe"
+		                  LogicalName="HonestFlow.KktBootstrap.x86.exe" />
+		<EmbeddedResource Include="$(KktBootstrapOutputRoot)\x64\KktBootstrap.x64.exe"
+		                  LogicalName="HonestFlow.KktBootstrap.x64.exe" />
+	</ItemGroup>
+
+	<Target Name="PublishAndEmbedKktBootstrapHelpers" BeforeTargets="PrepareResources">
+		<MSBuild Projects="$(MSBuildProjectDirectory)\KktBootstrap\KktBootstrap.x86\KktBootstrap.x86.csproj"
+		         Targets="Restore;Publish"
+		         Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x86;PlatformTarget=x86;SelfContained=true;PublishDir=$(KktBootstrapOutputRoot)\x86\" />
+		<MSBuild Projects="$(MSBuildProjectDirectory)\KktBootstrap\KktBootstrap.x64\KktBootstrap.x64.csproj"
+		         Targets="Restore;Publish"
+		         Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;PlatformTarget=x64;SelfContained=true;PublishDir=$(KktBootstrapOutputRoot)\x64\" />
+	</Target>
 
 	<ItemGroup>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />

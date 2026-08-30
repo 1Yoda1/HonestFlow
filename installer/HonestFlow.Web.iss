@@ -2,10 +2,10 @@
   #define MyAppVersion "3.0.0"
 #endif
 #ifndef PublishDir
-  #define PublishDir "..\artifacts\HonestFlow\current"
+  #define PublishDir "..\bin\Release"
 #endif
 #ifndef OutputDir
-  #define OutputDir "..\artifacts\installer\web"
+  #define OutputDir "..\bin\Release"
 #endif
 #ifndef DotNetRuntimeVersion
   #define DotNetRuntimeVersion "10.0.10"

@@ -76,8 +76,8 @@ namespace HonestFlow.Tests
         {
             string path = Path.GetFullPath(Path.Combine(
                 AppContext.BaseDirectory,
-                "..", "..", "..", "..",
-                "HonestFlow.WpfPrototype",
+                "..", "..", "..", "..", "..",
+                "UI",
                 "StartupWindow.xaml"));
             return XDocument.Load(path);
         }

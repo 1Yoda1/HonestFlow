@@ -9,7 +9,7 @@ namespace HonestFlow.Tests
         [Fact]
         public void UpdateAll_ReinstallAndLmRestore_UseSameProgressPresentationMethod()
         {
-            string source = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+            string source = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
 
             Assert.Contains("RunInstallationOperationAsync(",
                 Segment(source, "private async Task InstallAllAsync", "private async Task RunInstallationOperationAsync"));
@@ -22,7 +22,7 @@ namespace HonestFlow.Tests
         [Fact]
         public void UpdateAll_RegistersTsPiotAfterSuccessfulComponentInstallation()
         {
-            string source = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+            string source = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
             string installAll = Segment(source, "private async Task InstallAllAsync", "private async Task RunInstallationOperationAsync");
 
             Assert.Contains("InstallAndRegisterTsPiotAsync", installAll);
@@ -34,7 +34,7 @@ namespace HonestFlow.Tests
         [Fact]
         public void SharedPresentation_BlocksParallelStart_EndsWithAcknowledgementAndReleasesBusyState()
         {
-            string source = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+            string source = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
             string operation = Segment(source,
                 "private async Task RunInstallationOperationAsync",
                 "private async Task RefreshAfterComponentOperationAsync");
@@ -50,7 +50,7 @@ namespace HonestFlow.Tests
         [Fact]
         public void SharedPresentation_RefreshesVersionsAndDiagnosticsAfterOperation()
         {
-            string source = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+            string source = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
             string refresh = Segment(source,
                 "private async Task RefreshAfterComponentOperationAsync",
                 "private void ShowInstallationProgress");
@@ -67,7 +67,7 @@ namespace HonestFlow.Tests
         [Fact]
         public void ProgressOverlay_HasReusableOperationTitle()
         {
-            string xaml = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml"));
+            string xaml = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml"));
 
             Assert.Contains("x:Name=\"InstallationBusyOverlay\"", xaml);
             Assert.Contains("x:Name=\"InstallationProgressTitle\"", xaml);
@@ -76,7 +76,7 @@ namespace HonestFlow.Tests
         [Fact]
         public void ServiceTools_UseApplicationServiceAndRefreshGridAfterCompletedAction()
         {
-            string source = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+            string source = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
             string control = Segment(source,
                 "private async Task ControlServiceFromButtonAsync",
                 "private static string ServiceActionText");
@@ -89,15 +89,15 @@ namespace HonestFlow.Tests
         [Fact]
         public void AutoFixButton_UsesRealWorkflowWithBusyStateAndConfirmationContinuation()
         {
-            string source = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml.cs"));
+            string source = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
             string autoFix = Segment(source,
                 "public async Task StartAutoFixAsync()",
                 "private AutoFixWorkflow CreateAutoFixWorkflow()");
             string composition = Segment(source,
                 "private AutoFixWorkflow CreateAutoFixWorkflow()",
                 "private void SetAutoFixProgress");
-            string xaml = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "MainWindow.xaml"));
-            string sharedComposition = File.ReadAllText(ProjectFile("HonestFlow.WpfPrototype", "WpfAutoFixComposition.cs"));
+            string xaml = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml"));
+            string sharedComposition = File.ReadAllText(ProjectFile("UI", "WpfAutoFixComposition.cs"));
 
             Assert.Contains("if (_operationRunning || _autoFixWorkflow == null) return;", autoFix);
             Assert.Contains("_operationRunning = true;", autoFix);
