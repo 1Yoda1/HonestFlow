@@ -136,10 +136,12 @@
             <Polygon Fill="#1467C9" Points="19,0 36,10 36,28 19,38 2,28 2,10"/>
             <TextBlock Text="HF" Foreground="White" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Grid>
-          <TextBlock Text="HonestFlow" FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,0,0,0"/>
+          <TextBlock x:Name="ProductTitleText" Text="HonestFlow" FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,0,0,0"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
-          <Button Content="Сменить пользователя" Width="170" Height="36" Margin="0,6,8,0"
+          <Button x:Name="ConnectServiceButton" Content="Подключить Service" Width="170" Height="36" Margin="0,6,8,0"
+                  Background="#0868D9" Foreground="White" BorderBrush="#0868D9" Cursor="Hand" Visibility="Collapsed" Click="ConnectService_Click"/>
+          <Button x:Name="LogoutButton" Content="Сменить пользователя" Width="170" Height="36" Margin="0,6,8,0"
                   Background="Transparent" BorderBrush="#D8DEE9" Cursor="Hand" Click="Logout_Click"/>
           <Button Style="{StaticResource TopButton}" Content="−" Click="Minimize_Click"/>
           <Button Style="{StaticResource TopButton}" Content="□" Click="Maximize_Click"/>
@@ -207,12 +209,12 @@
                 <TextBlock Text="Последняя проверка" FontSize="15"/>
                 <TextBlock x:Name="LastCheckText" Text="Ещё не выполнялась" Foreground="{StaticResource Muted}" FontSize="15" Margin="0,9,0,0"/>
               </StackPanel>
-              <Border Grid.Column="2" Background="#FFF5F6" CornerRadius="10" Margin="18,14,0,14" Padding="20,0">
+              <Border x:Name="HeaderStatusBorder" Grid.Column="2" Background="#F4F7FB" CornerRadius="10" Margin="18,14,0,14" Padding="20,0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="⚠" Foreground="{StaticResource Red}" FontSize="40" Margin="0,-3,16,0"/>
+                  <TextBlock x:Name="HeaderStatusIcon" Text="…" Foreground="#68748A" FontSize="40" Margin="0,-3,16,0"/>
                   <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Требуется внимание" Foreground="#B8182D" FontSize="16" FontWeight="SemiBold"/>
-                    <TextBlock Text="Найдено 2 проблемы" Foreground="#C31D33" FontSize="15" Margin="0,8,0,0"/>
+                    <TextBlock x:Name="HeaderStatusTitle" Text="Локальная диагностика" Foreground="#344054" FontSize="16" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="HeaderStatusDescription" Text="Проверка ещё не выполнялась" Foreground="#68748A" FontSize="15" Margin="0,8,0,0"/>
                   </StackPanel>
                 </StackPanel>
               </Border>
@@ -340,14 +342,14 @@
                   </StackPanel>
                   <StackPanel Grid.Column="2" VerticalAlignment="Center">
                     <Button x:Name="DetailedFixButton" Style="{StaticResource PrimaryButton}" Content="✧  Исправить автоматически" Margin="0,0,0,9" IsEnabled="False" Click="SimpleFix_Click"/>
-                    <Button Style="{StaticResource OutlineButton}" Content="Исправить вручную      ⌄"/>
+                    <Button x:Name="DetailedManualFixButton" Style="{StaticResource OutlineButton}" Content="Исправить вручную      ⌄"/>
                   </StackPanel>
                 </Grid>
               </Border>
                 <Border x:Name="ToolsPanel" Background="White" BorderBrush="#E4E8F0" BorderThickness="1" CornerRadius="12" Padding="20" Visibility="Collapsed">
                   <ScrollViewer x:Name="ToolsScrollViewer" VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
                     <StackPanel>                      <TextBlock Text="Отчёт для поддержки" FontSize="18" FontWeight="SemiBold"/>
-                      <WrapPanel Margin="0,12,0,22"><Button Style="{StaticResource PrimaryButton}" Content="Собрать и отправить" Margin="0,0,10,10" Click="ToolsCollectAndSend_Click"/><Button Style="{StaticResource OutlineButton}" Content="Только собрать" Margin="0,0,10,10" Click="ToolsCollect_Click"/></WrapPanel>
+                      <WrapPanel Margin="0,12,0,22"><Button x:Name="SendDiagnosticsButton" Style="{StaticResource PrimaryButton}" Content="Собрать и отправить" Margin="0,0,10,10" Click="ToolsCollectAndSend_Click"/><Button x:Name="CollectDiagnosticsButton" Style="{StaticResource OutlineButton}" Content="Только собрать" Margin="0,0,10,10" Click="ToolsCollect_Click"/></WrapPanel>
                       <TextBlock Text="Папки и файлы" FontSize="18" FontWeight="SemiBold"/>
                       <WrapPanel Margin="0,12,0,22"><Button Style="{StaticResource OutlineButton}" Content="Папка ККТ" Margin="0,0,10,10" Click="OpenKktDataFolder_Click"/>
                         <Button Style="{StaticResource OutlineButton}" Content="Папка службы ККТ" Margin="0,0,10,10" Click="OpenKktServiceFolder_Click"/>
@@ -362,15 +364,15 @@
                         <DataGrid x:Name="ServiceToolsGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeight="54" ColumnHeaderHeight="44" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Disabled" PreviewMouseWheel="ServiceToolsGrid_PreviewMouseWheel">
                           <DataGrid.Columns>
                             <DataGridTextColumn Header="Служба" Binding="{Binding DisplayName}" Width="2*"/><DataGridTextColumn Header="Имя" Binding="{Binding ServiceName}" Width="1.6*"/><DataGridTextColumn Header="Состояние" Binding="{Binding Status}" Width="1.2*"/>
-                            <DataGridTemplateColumn Width="310"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Style="{StaticResource OutlineButton}" Content="Запустить" Height="36" Padding="10,0" Margin="3" IsEnabled="{Binding CanControl}" Tag="{Binding ServiceName}" Click="StartService_Click"/><Button Style="{StaticResource OutlineButton}" Content="Остановить" Height="36" Padding="10,0" Margin="3" IsEnabled="{Binding CanControl}" Tag="{Binding ServiceName}" Click="StopService_Click"/><Button Style="{StaticResource OutlineButton}" Content="Перезапустить" Height="36" Padding="10,0" Margin="3" IsEnabled="{Binding CanControl}" Tag="{Binding ServiceName}" Click="RestartService_Click"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                            <DataGridTemplateColumn x:Name="ServiceControlColumn" Width="310"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Style="{StaticResource OutlineButton}" Content="Запустить" Height="36" Padding="10,0" Margin="3" IsEnabled="{Binding CanControl}" Tag="{Binding ServiceName}" Click="StartService_Click"/><Button Style="{StaticResource OutlineButton}" Content="Остановить" Height="36" Padding="10,0" Margin="3" IsEnabled="{Binding CanControl}" Tag="{Binding ServiceName}" Click="StopService_Click"/><Button Style="{StaticResource OutlineButton}" Content="Перезапустить" Height="36" Padding="10,0" Margin="3" IsEnabled="{Binding CanControl}" Tag="{Binding ServiceName}" Click="RestartService_Click"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
                           </DataGrid.Columns>
                         </DataGrid>
                       </Border>
                       <TextBlock Text="Быстрые действия" FontSize="18" FontWeight="SemiBold"/>
-                      <WrapPanel Margin="0,12,0,22"><Button Style="{StaticResource OutlineButton}" Content="Убрать дубли ЕСМ GUI" Margin="0,0,10,10" Click="RemoveEsmGuiDuplicates_Click"/><Button Style="{StaticResource OutlineButton}" Content="Диспетчер задач" Margin="0,0,10,10" Click="OpenTaskManager_Click"/></WrapPanel>
+                      <WrapPanel Margin="0,12,0,22"><Button x:Name="RemoveEsmGuiDuplicatesButton" Style="{StaticResource OutlineButton}" Content="Убрать дубли ЕСМ GUI" Margin="0,0,10,10" Click="RemoveEsmGuiDuplicates_Click"/><Button Style="{StaticResource OutlineButton}" Content="Диспетчер задач" Margin="0,0,10,10" Click="OpenTaskManager_Click"/></WrapPanel>
                       <TextBlock Text="Системные инструменты" FontSize="18" FontWeight="SemiBold"/>
                       <WrapPanel Margin="0,12,0,22">
-                        <Button Style="{StaticResource OutlineButton}" Content="Просмотр событий" Margin="0,0,10,10" Tag="eventvwr.msc" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Установленные программы" Margin="0,0,10,10" Tag="appwiz.cpl" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Сетевые подключения" Margin="0,0,10,10" Tag="ncpa.cpl" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Диспетчер устройств" Margin="0,0,10,10" Tag="devmgmt.msc" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Командная строка (администратор)" Margin="0,0,10,10" Tag="cmd.exe" Click="OpenAdminTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="PowerShell (администратор)" Margin="0,0,10,10" Tag="powershell.exe" Click="OpenAdminTool_Click"/>
+                        <Button Style="{StaticResource OutlineButton}" Content="Просмотр событий" Margin="0,0,10,10" Tag="eventvwr.msc" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Установленные программы" Margin="0,0,10,10" Tag="appwiz.cpl" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Сетевые подключения" Margin="0,0,10,10" Tag="ncpa.cpl" Click="OpenSystemTool_Click"/><Button Style="{StaticResource OutlineButton}" Content="Диспетчер устройств" Margin="0,0,10,10" Tag="devmgmt.msc" Click="OpenSystemTool_Click"/><Button x:Name="AdminCommandPromptButton" Style="{StaticResource OutlineButton}" Content="Командная строка (администратор)" Margin="0,0,10,10" Tag="cmd.exe" Click="OpenAdminTool_Click"/><Button x:Name="AdminPowerShellButton" Style="{StaticResource OutlineButton}" Content="PowerShell (администратор)" Margin="0,0,10,10" Tag="powershell.exe" Click="OpenAdminTool_Click"/>
                       </WrapPanel>
                     </StackPanel>
                   </ScrollViewer>
@@ -421,12 +423,12 @@
                     <DataGrid.Columns>
                       <DataGridTextColumn Header="Компонент" Binding="{Binding Name}" Width="2*"/>
                       <DataGridTextColumn Header="Установлена версия" Binding="{Binding InstalledVersion}" Width="1.45*"/>
-                      <DataGridTextColumn Header="Нужна версия" Binding="{Binding ExpectedVersion}" Width="1.45*"/>
-                      <DataGridTextColumn Header="Совпадает" Binding="{Binding MatchText}" Width="1.05*"/>
-                      <DataGridTemplateColumn Width="190">
+                      <DataGridTextColumn x:Name="ExpectedVersionColumn" Header="Нужна версия" Binding="{Binding ExpectedVersion}" Width="1.45*"/>
+                      <DataGridTextColumn x:Name="VersionMatchColumn" Header="Совпадает" Binding="{Binding MatchText}" Width="1.05*"/>
+                      <DataGridTemplateColumn x:Name="ComponentActionColumn" Width="190">
                         <DataGridTemplateColumn.CellTemplate>
                           <DataTemplate>
-                            <Button Style="{StaticResource OutlineButton}" Content="Переустановить" Height="42" MinWidth="154" Margin="10,8" Padding="14,0" Tag="{Binding Component}" Click="UpdateComponent_Click"/>
+                            <Button Style="{StaticResource OutlineButton}" Content="{Binding ActionText}" ToolTip="{Binding ActionTooltip}" Height="42" MinWidth="154" Margin="10,8" Padding="14,0" IsEnabled="{Binding CanUpdate}" Tag="{Binding Component}" Click="UpdateComponent_Click"/>
                           </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
@@ -439,8 +441,9 @@
           <Border Grid.Row="4" Style="{StaticResource CardBorder}" Padding="20,0">
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/><ColumnDefinition Width="210"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions>
-              <StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="&#xE753;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Green}" FontSize="24"/><TextBlock Text="Облако: доступно" Margin="11,4,0,0" FontSize="14"/></StackPanel>
-              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Green}" FontSize="23"/><TextBlock Text="RuDesktop: подключен" Margin="11,3,0,0" FontSize="14"/><TextBlock Text="ID: 219174069" Margin="30,3,0,0" Foreground="{StaticResource Muted}" FontSize="14"/></StackPanel>
+              <StackPanel x:Name="FreeFooterPanel" Grid.ColumnSpan="5" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed"><TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" Foreground="#0868D9" FontSize="24"/><TextBlock Text="HonestFlow Free · локальная диагностика этого компьютера" Margin="11,4,0,0" FontSize="14"/></StackPanel>
+              <StackPanel x:Name="CloudStatusPanel" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="&#xE753;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Green}" FontSize="24"/><TextBlock Text="Облако: доступно" Margin="11,4,0,0" FontSize="14"/></StackPanel>
+              <StackPanel x:Name="RemoteAccessStatusPanel" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Green}" FontSize="23"/><TextBlock Text="RuDesktop: подключен" Margin="11,3,0,0" FontSize="14"/><TextBlock Text="ID: 219174069" Margin="30,3,0,0" Foreground="{StaticResource Muted}" FontSize="14"/></StackPanel>
               <TextBlock Grid.Column="2" x:Name="TariffText" Text="Тариф: не указан" VerticalAlignment="Center" Foreground="{StaticResource Muted}" FontSize="14"/>
               <Button x:Name="RefreshLicenseButton" Grid.Column="3" Style="{StaticResource OutlineButton}" Foreground="#0757A5" Content="Обновить лицензию" Height="44" Margin="0,0,10,0" Click="RefreshLicense_Click"/>
               <Button x:Name="FooterHelpButton" Grid.Column="4" Style="{StaticResource OutlineButton}" Foreground="#0757A5" Content="☵  Запросить помощь" Height="44" Click="RequestHelp_Click"/>

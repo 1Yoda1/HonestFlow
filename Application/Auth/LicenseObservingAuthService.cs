@@ -12,6 +12,7 @@ namespace HonestFlow.Application.Auth
         ILicenseAuthenticatingAuthService,
         IApiCredentialAuthService,
         IApiSessionProvider,
+        IApiConfigurationProvider,
         ILicenseObservationRefresher
     {
         private readonly IAuthService _inner;
@@ -19,6 +20,8 @@ namespace HonestFlow.Application.Auth
 
         public IApiSessionService ApiSessionService =>
             (_inner as IApiSessionProvider)?.ApiSessionService;
+        public ApiConfigurationResponse CurrentConfiguration =>
+            (_inner as IApiConfigurationProvider)?.CurrentConfiguration;
 
         public LicenseObservingAuthService(
             IAuthService inner,

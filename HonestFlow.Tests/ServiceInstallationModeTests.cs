@@ -91,7 +91,7 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void StartupServiceMode_IsSeparateFromNormalAuthRegistrationAndLicensePipeline()
+        public void InstallationOnlyFlow_RemainsSeparateAndIsNotExposedByServiceConnectionWindow()
         {
             string xaml = File.ReadAllText(ProjectFile("UI", "StartupWindow.xaml"));
             string startup = File.ReadAllText(ProjectFile("UI", "StartupWindow.xaml.cs"));
@@ -99,8 +99,9 @@ namespace HonestFlow.Tests
             string modeXaml = File.ReadAllText(ProjectFile("UI", "InstallationModeWindow.xaml"));
 
             Assert.Contains("Только установка", xaml);
-            Assert.Contains("ServiceAccessDialog", startup);
-            Assert.Contains("new InstallationModeWindow", startup);
+            Assert.Contains("ServiceInstallationButton.Visibility = Visibility.Collapsed", startup);
+            Assert.DoesNotContain("new InstallationModeWindow", startup);
+            Assert.DoesNotContain("ServiceAccessDialog", startup);
             Assert.Contains("api/service/install-access", serviceClient);
             Assert.DoesNotContain("api/auth/login", serviceClient);
             Assert.DoesNotContain("api/device/request", serviceClient);

@@ -34,10 +34,9 @@ internal static class WpfKktBootstrapComposition
 
         async Task<PointStatusRefreshResult> RefreshAsync(CancellationToken token)
         {
-            PointStatusRefreshResult refresh = await pointStatusRefresh.RefreshAsync(
+            PointStatusRefreshResult refresh = await pointStatusRefresh.RefreshForClientAsync(
                 client,
                 startup.RemoteVersions,
-                includeLicensedComponents: true,
                 token);
             if (applyRefresh != null)
                 await owner.Dispatcher.InvokeAsync(() => applyRefresh(refresh));

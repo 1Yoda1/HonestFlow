@@ -61,13 +61,14 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void ManifestFeatureEnum_ContainsExactlyTwoTags()
+        public void ManifestFeatureEnum_ContainsServiceAndLegacyTags()
         {
             Assert.Equal(
                 new[]
                 {
                     LicenseFeature.ViewAndRepair,
-                    LicenseFeature.InstallAndMaintenance
+                    LicenseFeature.InstallAndMaintenance,
+                    LicenseFeature.Service
                 },
                 Enum.GetValues<LicenseFeature>());
         }
@@ -227,13 +228,14 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void FeatureCatalog_ExposesOnlyTwoLicenseTags()
+        public void FeatureCatalog_ExposesServiceAndLegacyLicenseTags()
         {
             Assert.Equal(
                 new[]
                 {
                     LicenseFeature.ViewAndRepair,
-                    LicenseFeature.InstallAndMaintenance
+                    LicenseFeature.InstallAndMaintenance,
+                    LicenseFeature.Service
                 },
                 LicenseFeatureCatalog.ConfigurableFeatures);
         }

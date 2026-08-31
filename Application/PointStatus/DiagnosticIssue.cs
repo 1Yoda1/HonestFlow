@@ -408,7 +408,7 @@ namespace HonestFlow.Application.PointStatus
 
             foreach (ComponentVersionStatus version in context.Versions ?? Array.Empty<ComponentVersionStatus>())
                 facts.Add(new DiagnosticFact("Version." + version.ComponentName, DiagnosticComponent.ComponentVersion,
-                    version.State is ComponentVersionState.Current ? DiagnosticFactState.Success :
+                    version.State is ComponentVersionState.Current or ComponentVersionState.Installed ? DiagnosticFactState.Success :
                     version.State is ComponentVersionState.Unknown ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
                     version.InstalledVersion ?? "not installed", VersionEvidence(version)));
 
@@ -429,7 +429,7 @@ namespace HonestFlow.Application.PointStatus
                 string.IsNullOrWhiteSpace(controllerVersion?.TargetVersion) ? DiagnosticFactState.Unknown : DiagnosticFactState.Success,
                 controllerVersion?.TargetVersion ?? "-"));
             facts.Add(new DiagnosticFact("Controller.VersionMatch", DiagnosticComponent.Controller,
-                controllerVersion?.State == ComponentVersionState.Current ? DiagnosticFactState.Success :
+                controllerVersion?.State is ComponentVersionState.Current or ComponentVersionState.Installed ? DiagnosticFactState.Success :
                 controllerVersion?.State is ComponentVersionState.UpdateRequired or ComponentVersionState.BelowMinimum ? DiagnosticFactState.Failure : DiagnosticFactState.Unknown,
                 controllerVersion?.State.ToString() ?? "Unknown"));
             facts.Add(new DiagnosticFact("Controller.ServiceExists", DiagnosticComponent.Controller,

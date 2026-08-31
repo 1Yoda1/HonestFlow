@@ -16,7 +16,7 @@ namespace HonestFlow.Tests
         [Fact]
         public async Task Login_LoadsOnlyCurrentClientConfiguration()
         {
-            const string json = "{\"client\":{\"clientId\":\"c1\",\"name\":\"Point\",\"inn\":\"007701234567\",\"architecture\":\"x64\",\"hasLmDatabaseBackup\":true,\"ruDesktopEnabled\":true},\"device\":{\"deviceId\":\"d1\",\"status\":\"Approved\"},\"components\":[{\"component\":\"LmModule\",\"effectiveVersion\":\"4.2\"}]}";
+            const string json = "{\"client\":{\"clientId\":\"c1\",\"name\":\"Point\",\"inn\":\"007701234567\",\"architecture\":\"x64\",\"hasLmDatabaseBackup\":true,\"ruDesktopEnabled\":true},\"device\":{\"deviceId\":\"d1\",\"status\":\"Approved\"},\"components\":[{\"component\":\"LmModule\",\"effectiveVersion\":\"4.2\",\"fileName\":\"regime-4.2.msi\",\"downloadUrl\":\"https://api.honestflow.ru/api/assets/LmModule/4.2/download\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"sizeBytes\":123,\"architecture\":\"x64\"}]}";
             var session = new FakeSession(json);
             var service = new ApiAuthService(
                 session,
@@ -30,6 +30,8 @@ namespace HonestFlow.Tests
             Assert.Equal("c1", result.Client.ClientId);
             Assert.Equal("007701234567", result.Client.Inn);
             Assert.Equal("4.2", result.Client.Versions.LmModule);
+            Assert.Equal("regime-4.2.msi", service.CurrentConfiguration.Components[0].FileName);
+            Assert.Equal(123, service.CurrentConfiguration.Components[0].SizeBytes);
             Assert.Null(result.Client.Password);
         }
 

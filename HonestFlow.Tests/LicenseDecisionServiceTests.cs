@@ -109,14 +109,29 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void Decide_OperatorGrantGetsAllFeatures()
+        public void Decide_OperatorGrantKeepsLegacyFeaturesWithoutServiceEscalation()
         {
             LicenseDecisionContext context = Context();
             context.Grant.OperatorDevice = true;
             context.Grant.Features.Clear();
             LicenseDecisionResult result = Service().Decide(context);
             Assert.Equal(LicenseDecision.Allowed, result.Decision);
-            Assert.Equal(Enum.GetValues<LicenseFeature>().Length, result.Features.Count);
+            Assert.Equal(2, result.Features.Count);
+            Assert.Contains(LicenseFeature.ViewAndRepair, result.Features);
+            Assert.Contains(LicenseFeature.InstallAndMaintenance, result.Features);
+            Assert.DoesNotContain(LicenseFeature.Service, result.Features);
+        }
+
+        [Fact]
+        public void Decide_PreservesExplicitServiceFeature()
+        {
+            LicenseDecisionContext context = Context();
+            context.Grant.Features = new List<LicenseFeature> { LicenseFeature.Service };
+
+            LicenseDecisionResult result = Service().Decide(context);
+
+            Assert.Equal(LicenseDecision.Allowed, result.Decision);
+            Assert.Equal(new[] { LicenseFeature.Service }, result.Features);
         }
 
         private static LicenseDecisionService Service() =>

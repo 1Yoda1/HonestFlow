@@ -10,6 +10,8 @@ using HonestFlow.Infrastructure.Installers;
 using HonestFlow.Models;
 using Microsoft.Win32;
 using HonestFlow.Application.Licensing;
+using HonestFlow.Application.Installation;
+using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Models.Licensing;
 using HonestFlow.Infrastructure;
 
@@ -22,19 +24,22 @@ namespace HonestFlow.Application.Lm
         private readonly IUserDialogService _dialogService;
         private readonly bool _useRemoteConfigMode;
         private readonly ILicenseOperationGuard _licenseGuard;
+        private readonly IInstallationPackageSource _packageSource;
 
         public LmDatabaseRestoreService(
             ILogService log,
             IProgressService progress,
             IUserDialogService dialogService,
             ILicenseOperationGuard licenseGuard,
-            bool useRemoteConfigMode)
+            bool useRemoteConfigMode,
+            IInstallationPackageSource packageSource = null)
         {
             _log = log;
             _progress = progress;
             _dialogService = dialogService ?? new WinFormsDialogService();
             _licenseGuard = licenseGuard ?? throw new ArgumentNullException(nameof(licenseGuard));
             _useRemoteConfigMode = useRemoteConfigMode;
+            _packageSource = packageSource;
         }
 
         public async Task<bool> Restore(IPData selectedIP, CancellationToken cancellationToken = default)
@@ -190,6 +195,16 @@ namespace HonestFlow.Application.Lm
         private async Task<string> ResolveLmInstallerPath(IPData selectedIP, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (_packageSource != null)
+            {
+                var progress = new Progress<int>(percent =>
+                {
+                    _progress.SetProgress(10 + percent * 15 / 100, $"Скачивание установщика ЛМ ЧЗ: {percent}%");
+                });
+                return await _packageSource.ResolveInstallerAsync(
+                    InstallationComponent.LmModule, progress, cancellationToken);
+            }
+
             VersionsData versions = _useRemoteConfigMode
                 ? ConfigManager.LoadRemoteVersions()
                 : ConfigManager.LoadVersions();

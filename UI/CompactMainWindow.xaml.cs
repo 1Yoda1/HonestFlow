@@ -111,10 +111,9 @@ public partial class CompactMainWindow : Window
     {
         try
         {
-            Task<PointStatusRefreshResult> refreshTask = _pointStatusRefresh.RefreshAsync(
+            Task<PointStatusRefreshResult> refreshTask = _pointStatusRefresh.RefreshForClientAsync(
                 _client,
                 _session.Startup.RemoteVersions,
-                includeLicensedComponents: true,
                 cancellationToken);
             Task<HonestFlowCloudStatus> cloudStatusTask = _apiServerConnectivityProbe is null
                 ? Task.FromResult(HonestFlowCloudStatus.Unknown)

@@ -21,6 +21,8 @@ namespace HonestFlow.Application.Bootstrap
         private readonly ILogService _logService;
         private readonly IProgressService _progressService;
         private readonly IUserDialogService _dialogService;
+        // The retained legacy path has no production configuration or environment activation.
+        private static readonly bool LegacyStartupCompatibilityEnabled = false;
 
         public ApplicationStartupService(ILogService logService, IProgressService progressService, IUserDialogService dialogService)
         {
@@ -31,10 +33,7 @@ namespace HonestFlow.Application.Bootstrap
 
         public StartupResult Start()
         {
-            if (!string.Equals(
-                    Environment.GetEnvironmentVariable("HONESTFLOW_USE_LEGACY_STARTUP"),
-                    "1",
-                    StringComparison.Ordinal))
+            if (!LegacyStartupCompatibilityEnabled)
             {
                 return StartApiFirst();
             }
@@ -94,14 +93,7 @@ namespace HonestFlow.Application.Bootstrap
         private StartupResult StartApiFirst()
         {
             _progressService.SetProgress(58, "Подготавливаем безопасное подключение к HonestLicenseServer...");
-            string configuredBaseUrl = Environment.GetEnvironmentVariable("HONESTFLOW_API_BASE_URL");
-            var httpClient = new HttpClient
-            {
-                BaseAddress = new Uri(string.IsNullOrWhiteSpace(configuredBaseUrl)
-                    ? "https://api.honestflow.ru/"
-                    : configuredBaseUrl.TrimEnd('/') + "/"),
-                Timeout = System.Threading.Timeout.InfiniteTimeSpan
-            };
+            var httpClient = HonestLicenseServerEndpoint.CreateClient(System.Threading.Timeout.InfiniteTimeSpan);
             var session = new ApiSessionService(
                 httpClient,
                 new FileApiSessionStore(),
@@ -113,8 +105,6 @@ namespace HonestFlow.Application.Bootstrap
                 _logService,
                 new FileApiConfigurationCache());
 
-            // Yandex Disk remains available only to the installer download infrastructure.
-            ConfigManager.InitYandexDiskDownloader();
             _progressService.SetProgress(78, "Введите логин и пароль HonestFlow.");
             Logger.Info("Event=ApiFirstStartupConfigured Source=HonestLicenseServer", nameof(ApplicationStartupService));
             return new StartupResult

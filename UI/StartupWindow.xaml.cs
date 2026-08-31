@@ -2,7 +2,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -12,6 +11,9 @@ using HonestFlow.Application.Bootstrap;
 using HonestFlow.Application.Core;
 using HonestFlow.Application.Licensing;
 using HonestFlow.Application.Installation;
+using HonestFlow.Application.PointStatus;
+using HonestFlow.Application.RemoteAccess;
+using HonestFlow.Application.ServiceConnection;
 using HonestFlow.Infrastructure;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Dialogs;
@@ -38,6 +40,10 @@ public partial class StartupWindow : Window
     private readonly string? _accessNotice;
     private StartupPresentationPhase _startupPhase;
 
+    public ServiceConnectionState ConnectionState { get; private set; } = ServiceConnectionState.Disconnected;
+    public string ConnectionMessage { get; private set; } = "HonestFlow Service не подключён.";
+    public ServiceConnectionResult? ConnectionResult { get; private set; }
+
     public StartupWindow() : this(null)
     {
     }
@@ -46,6 +52,8 @@ public partial class StartupWindow : Window
     {
         _accessNotice = accessNotice;
         InitializeComponent();
+        ServiceInstallationButton.Visibility = Visibility.Collapsed;
+        RequestHelpButton.Visibility = Visibility.Collapsed;
         ApplyStartupPhase(StartupPresentationPhase.Initializing);
     }
 
@@ -53,6 +61,7 @@ public partial class StartupWindow : Window
     {
         try
         {
+            SetConnectionState(ServiceConnectionState.Connecting);
             _session = await _controller.InitializeAsync(new WpfProgress(this), new WpfDialogs(this), _lifetime.Token);
             _lastAuthorizedClientHint = await _controller.LoadLastAuthorizedClientHintAsync(_lifetime.Token);
             ApplyStartupPhase(StartupPresentationPhase.RememberedAccessChecking);
@@ -70,7 +79,7 @@ public partial class StartupWindow : Window
             {
                 if (resumed.LicenseSnapshot?.Decision == LicenseDecision.Allowed)
                 {
-                    await OpenMainWindowAsync(resumed.Client, resumed.LicenseSnapshot);
+                    await CompleteServiceConnectionAsync(resumed.Client, resumed.LicenseSnapshot);
                     return;
                 }
 
@@ -87,6 +96,7 @@ public partial class StartupWindow : Window
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            SetConnectionState(ServiceConnectionState.Unavailable, "Не удалось подготовить подключение HonestFlow Service.");
             Logger.LogException(ex, "WPF startup failed", nameof(StartupWindow));
             if (_startupPhase == StartupPresentationPhase.Initializing)
                 ApplyStartupPhase(StartupPresentationPhase.PreparationFailed);
@@ -97,6 +107,7 @@ public partial class StartupWindow : Window
 
     private void ShowLogin()
     {
+        SetConnectionState(ServiceConnectionState.AuthenticationRequired);
         ApplyStartupPhase(StartupPresentationPhase.FreshLogin);
         ShowOnly(LoginPanel);
         LastAuthorizedClientHintPanel.Visibility = string.IsNullOrWhiteSpace(_lastAuthorizedClientHint?.ClientName)
@@ -144,7 +155,7 @@ public partial class StartupWindow : Window
 
             if (result.LicenseSnapshot?.Decision == LicenseDecision.Allowed)
             {
-                await OpenMainWindowAsync(result.Client, result.LicenseSnapshot);
+                await CompleteServiceConnectionAsync(result.Client, result.LicenseSnapshot);
                 return;
             }
 
@@ -154,6 +165,7 @@ public partial class StartupWindow : Window
         catch (ApiRequestException ex) when (
             !string.IsNullOrWhiteSpace(ApiAuthenticationErrorPresentation.GetMessage(ex)))
         {
+            SetConnectionState(ServiceConnectionState.AuthenticationRequired);
             Logger.LogException(ex, "WPF authentication rejected", nameof(StartupWindow));
             LoginError.Text = ApiAuthenticationErrorPresentation.GetMessage(ex);
             LoginError.Visibility = Visibility.Visible;
@@ -162,6 +174,7 @@ public partial class StartupWindow : Window
         }
         catch (Exception ex)
         {
+            SetConnectionState(ServiceConnectionState.Unavailable, "Не удалось проверить код клиента.");
             Logger.LogException(ex, "WPF authentication failed", nameof(StartupWindow));
             LoginError.Text = "Не удалось проверить код клиента. Повторите попытку.";
             LoginError.Visibility = Visibility.Visible;
@@ -197,54 +210,16 @@ public partial class StartupWindow : Window
 
     private void ServiceInstallation_Click(object sender, RoutedEventArgs e)
     {
-        if (_session == null) return;
-        ServiceInstallationButton.IsEnabled = false;
-        HttpClient? httpClient = null;
-        try
-        {
-            httpClient = CreateServiceInstallationHttpClient();
-            var workflow = new ServiceInstallationAccessWorkflow(
-                new ApiServiceInstallationAccessClient(httpClient));
-            string architecture = Environment.Is64BitOperatingSystem ? "x64" : "x86";
-            string appVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown";
-            var dialog = new ServiceAccessDialog(
-                workflow, architecture, appVersion, _lifetime.Token) { Owner = this };
-            if (dialog.ShowDialog() != true || dialog.Session == null)
-            {
-                httpClient.Dispose();
-                return;
-            }
-
-            PasswordInput.Clear();
-            var installationWindow = new InstallationModeWindow(
-                dialog.Session, httpClient, _session.LogService);
-            httpClient = null;
-            System.Windows.Application.Current.MainWindow = installationWindow;
-            installationWindow.Show();
-            Close();
-        }
-        finally
-        {
-            httpClient?.Dispose();
-            ServiceInstallationButton.IsEnabled = true;
-        }
+        // Installation access is intentionally not part of Service connection.
     }
 
-    private static HttpClient CreateServiceInstallationHttpClient()
-    {
-        string? configuredBaseUrl = Environment.GetEnvironmentVariable("HONESTFLOW_API_BASE_URL");
-        return new HttpClient
-        {
-            BaseAddress = new Uri(string.IsNullOrWhiteSpace(configuredBaseUrl)
-                ? "https://api.honestflow.ru/"
-                : configuredBaseUrl.TrimEnd('/') + "/"),
-            Timeout = TimeSpan.FromSeconds(30)
-        };
-    }
+    private static HttpClient CreateServiceInstallationHttpClient() =>
+        HonestLicenseServerEndpoint.CreateClient(TimeSpan.FromSeconds(30));
 
     private async Task ShowRestrictedAccessAsync(LicenseObservationSnapshot? snapshot)
     {
         _restrictedSnapshot = snapshot;
+        SetConnectionState(ServiceEntitlementEvaluator.Evaluate(snapshot), snapshot?.Message);
         _deviceRegistrationWorkflow = null;
         _licenseNotIssuedWorkflow = null;
         if (snapshot?.Decision == LicenseDecision.DeviceNotRegistered)
@@ -255,13 +230,13 @@ public partial class StartupWindow : Window
 
         ShowOnly(LicenseMissingPanel);
         SwitchBlockedClientButton.Visibility = Visibility.Collapsed;
-        RequestHelpButton.Visibility = Visibility.Visible;
+        RequestHelpButton.Visibility = Visibility.Collapsed;
 
         if (snapshot?.TechnicalCode == "CLIENT_ACCESS_DISABLED")
         {
             ApplyStartupPhase(StartupPresentationPhase.ClientAccessDisabled);
-            LicenseMissingTitle.Text = "Доступ к HonestFlow отключён";
-            LicenseMissingDescription.Text = "Доступ к HonestFlow для этого клиента отключён.";
+            LicenseMissingTitle.Text = "HonestFlow Service отключён";
+            LicenseMissingDescription.Text = "Service для этой организации отключён. HonestFlow Free продолжает работать.";
             RegistrationStatus.Text = string.Empty;
             RetryLicenseButton.Visibility = Visibility.Collapsed;
             RequestHelpButton.Visibility = Visibility.Collapsed;
@@ -275,9 +250,9 @@ public partial class StartupWindow : Window
             _session.Startup.AuthService is ILicenseObservationRefresher licenseRefresher)
         {
             ApplyStartupPhase(StartupPresentationPhase.LicenseNotIssued);
-            LicenseMissingTitle.Text = "Лицензия ещё не выдана";
+            LicenseMissingTitle.Text = "Service ещё не подключён";
             LicenseMissingDescription.Text =
-                "Устройство уже зарегистрировано. После выдачи лицензии запуск продолжится без повторного входа.";
+                "Устройство уже зарегистрировано. После выдачи Service подключение продолжится без повторного входа.";
             RegistrationStatus.Text = LicenseNotIssuedStartupWorkflow.WaitingMessage;
             SetLicenseClientContext(_session.Startup.AuthorizedClient?.Name ?? snapshot.ClientName);
             RetryLicenseButton.Visibility = Visibility.Visible;
@@ -289,14 +264,25 @@ public partial class StartupWindow : Window
 
         ApplyStartupPhase(StartupStagePresentationMapper.PhaseForLicense(snapshot));
 
-        LicenseMissingTitle.Text = "Доступ ограничен";
+        if (snapshot?.Decision == LicenseDecision.Allowed)
+        {
+            LicenseMissingTitle.Text = "HonestFlow Service не подключён";
+            LicenseMissingDescription.Text =
+                "Действующая лицензия не содержит доступ HonestFlow Service. HonestFlow Free продолжает работать.";
+            RetryLicenseButton.Visibility = Visibility.Collapsed;
+            SetLicenseClientContext(_session?.Startup.AuthorizedClient?.Name ?? snapshot.ClientName);
+            RegistrationStatus.Text = ServiceEntitlementEvaluator.Message(ServiceConnectionState.NotEntitled);
+            return;
+        }
+
+        LicenseMissingTitle.Text = "HonestFlow Service недоступен";
         LicenseMissingDescription.Text =
-            "HonestFlow не может продолжить запуск при текущем состоянии лицензии.";
+            "Текущее состояние лицензии не разрешает подключить Service. HonestFlow Free продолжает работать.";
         RetryLicenseButton.Visibility = Visibility.Collapsed;
         SetLicenseClientContext(_session?.Startup.AuthorizedClient?.Name ?? snapshot?.ClientName);
-        RegistrationStatus.Text = string.IsNullOrWhiteSpace(snapshot?.Message)
-            ? "Лицензия не разрешает вход. Запросите помощь, чтобы специалист проверил доступ."
-            : snapshot.Message;
+        RegistrationStatus.Text = ServiceEntitlementEvaluator.Message(
+            ServiceEntitlementEvaluator.Evaluate(snapshot),
+            snapshot?.Message);
     }
 
     private async Task ShowDeviceRegistrationAsync(LicenseObservationSnapshot snapshot)
@@ -347,7 +333,7 @@ public partial class StartupWindow : Window
         {
             _session!.Startup.AuthorizedClient = state.Authentication.Client;
             _session.Startup.SellerAuthenticationHandled = true;
-            await OpenMainWindowAsync(state.Authentication.Client, state.Authentication.LicenseSnapshot);
+            await CompleteServiceConnectionAsync(state.Authentication.Client, state.Authentication.LicenseSnapshot);
             return;
         }
 
@@ -362,6 +348,7 @@ public partial class StartupWindow : Window
 
         DeviceRegistrationPresentation presentation = DeviceRegistrationPresentationMapper.Create(
             state, _restrictedSnapshot?.ClientName);
+        SetConnectionState(MapRegistrationState(state.State), state.Message);
         RegistrationTitle.Text = presentation.Title;
         RegistrationDescription.Text = presentation.Description;
         RegistrationAddressLabel.Visibility = presentation.ShowAddressEntry ? Visibility.Visible : Visibility.Collapsed;
@@ -512,13 +499,14 @@ public partial class StartupWindow : Window
             {
                 _session!.Startup.AuthorizedClient = result.Authentication.Client;
                 _session.Startup.SellerAuthenticationHandled = true;
-                await OpenMainWindowAsync(result.Authentication.Client, result.Authentication.LicenseSnapshot);
+                await CompleteServiceConnectionAsync(result.Authentication.Client, result.Authentication.LicenseSnapshot);
                 return;
             }
 
             if (result.Snapshot != null)
             {
                 _restrictedSnapshot = result.Snapshot;
+                SetConnectionState(ServiceEntitlementEvaluator.Evaluate(result.Snapshot), result.Message);
                 ApplyStartupPhase(StartupStagePresentationMapper.PhaseForLicense(result.Snapshot));
             }
             RegistrationStatus.Text = result.Message;
@@ -549,6 +537,7 @@ public partial class StartupWindow : Window
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            SetConnectionState(ServiceConnectionState.Unavailable, "Не удалось получить статус регистрации.");
             Logger.LogException(ex, "WPF device registration failed", nameof(StartupWindow));
             ApplyStartupPhase(StartupPresentationPhase.DeviceStatusUnavailable);
             DeviceRegistrationStatus.Text = "Не удалось выполнить операцию. Попробуйте проверить снова.";
@@ -578,16 +567,82 @@ public partial class StartupWindow : Window
         }
     }
 
-    private async Task OpenMainWindowAsync(IPData client, LicenseObservationSnapshot? snapshot)
+    private async Task CompleteServiceConnectionAsync(IPData client, LicenseObservationSnapshot? snapshot)
     {
+        SetConnectionState(ServiceConnectionState.EntitlementChecking);
         ApplyStartupPhase(StartupStagePresentationMapper.PhaseForLicense(snapshot));
-        var compactWindow = new CompactMainWindow(_session!, client, snapshot);
-        System.Windows.Application.Current.MainWindow = compactWindow;
-        compactWindow.Show();
+        ServiceConnectionState entitlementState = ServiceEntitlementEvaluator.Evaluate(snapshot);
+        if (entitlementState != ServiceConnectionState.Active ||
+            _session?.Startup.CurrentApiConfiguration is null)
+        {
+            ServiceConnectionState deniedState = entitlementState == ServiceConnectionState.Active
+                ? ServiceConnectionState.Unavailable
+                : entitlementState;
+            SetConnectionState(deniedState, snapshot?.Message);
+            if (entitlementState != ServiceConnectionState.Active)
+            {
+                await ShowRestrictedAccessAsync(snapshot);
+                return;
+            }
+
+            ShowOnly(LicenseMissingPanel);
+            RequestHelpButton.Visibility = Visibility.Collapsed;
+            SwitchBlockedClientButton.Visibility = Visibility.Visible;
+            RetryLicenseButton.Visibility = Visibility.Collapsed;
+            LicenseMissingTitle.Text = "Не удалось получить конфигурацию Service";
+            LicenseMissingDescription.Text = "Повторите подключение позже. HonestFlow Free продолжает работать.";
+            RegistrationStatus.Text = ConnectionMessage;
+            return;
+        }
+
+        var componentVersions = new ComponentVersionStatusService(_session.LogService);
+        var pointStatus = new PointStatusService(
+            _session.Startup.UseRemoteConfigMode,
+            _session.Startup.Ips?.Count ?? _session.Startup.RemoteIps?.Count ?? 0,
+            _session.Startup.Ips ?? _session.Startup.RemoteIps,
+            new RuDesktopService(_session.LogService));
+        var pointStatusRefresh = new PointStatusRefreshService(
+            pointStatus,
+            componentVersions,
+            new PointStatusReportBuilder(),
+            _session.LogService);
+        var context = new ServiceRuntimeContext(
+            _controller,
+            _session,
+            client,
+            snapshot!,
+            _session.Startup.CurrentApiConfiguration,
+            pointStatusRefresh,
+            componentVersions);
+
         await _controller.SaveLastAuthorizedClientHintAsync(client, snapshot!, CancellationToken.None);
+        ConnectionResult = new ServiceConnectionResult(
+            ServiceConnectionState.Active,
+            ServiceEntitlementEvaluator.Message(ServiceConnectionState.Active),
+            context);
+        SetConnectionState(ServiceConnectionState.Active);
         ApplyStartupPhase(StartupPresentationPhase.Launched);
-        Close();
+        DialogResult = true;
     }
+
+    private void SetConnectionState(ServiceConnectionState state, string? fallback = null)
+    {
+        ConnectionState = state;
+        ConnectionMessage = ServiceEntitlementEvaluator.Message(state, fallback);
+    }
+
+    private static ServiceConnectionState MapRegistrationState(DeviceRegistrationStartupState state) => state switch
+    {
+        DeviceRegistrationStartupState.AwaitingAddress or
+        DeviceRegistrationStartupState.InvalidAddress or
+        DeviceRegistrationStartupState.SendFailed => ServiceConnectionState.RegistrationRequired,
+        DeviceRegistrationStartupState.Pending => ServiceConnectionState.RegistrationPending,
+        DeviceRegistrationStartupState.Rejected => ServiceConnectionState.RegistrationRejected,
+        DeviceRegistrationStartupState.ApprovedNotReady => ServiceConnectionState.EntitlementChecking,
+        DeviceRegistrationStartupState.SessionInvalid => ServiceConnectionState.AuthenticationRequired,
+        DeviceRegistrationStartupState.Allowed => ServiceConnectionState.Active,
+        _ => ServiceConnectionState.Unavailable
+    };
 
     private void ApplyStartupPhase(StartupPresentationPhase phase)
     {

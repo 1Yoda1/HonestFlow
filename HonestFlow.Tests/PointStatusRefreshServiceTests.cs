@@ -12,7 +12,7 @@ namespace HonestFlow.Tests
     public sealed class PointStatusRefreshServiceTests
     {
         [Fact]
-        public async Task RefreshAsync_ReturnsOnePresentationIndependentSnapshot()
+        public async Task RefreshForClientAsync_ReturnsOnePresentationIndependentSnapshot()
         {
             var pointStatus = new PointStatusResult
             {
@@ -25,10 +25,9 @@ namespace HonestFlow.Tests
             };
             var service = CreateService(pointStatus);
 
-            PointStatusRefreshResult result = await service.RefreshAsync(
+            PointStatusRefreshResult result = await service.RefreshForClientAsync(
                 new IPData(),
                 new VersionsData(),
-                includeLicensedComponents: true,
                 CancellationToken.None);
 
             Assert.Same(pointStatus, result.PointStatus);
@@ -38,7 +37,7 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public async Task RefreshAsync_IgnoresProtectedNodesInDiagnosticMode()
+        public async Task RefreshLocalAsync_ReturnsFullLocalSnapshot()
         {
             var pointStatus = new PointStatusResult
             {
@@ -51,14 +50,36 @@ namespace HonestFlow.Tests
             };
             var service = CreateService(pointStatus);
 
-            PointStatusRefreshResult result = await service.RefreshAsync(
-                null,
-                null,
-                includeLicensedComponents: false,
+            PointStatusRefreshResult result = await service.RefreshLocalAsync(
+                new LocalRuntimeContext("x86"),
+                CancellationToken.None);
+
+            Assert.Equal(NodeLevel.Error, result.OverallLevel);
+            Assert.Equal(4, result.VersionStatuses.Length);
+            Assert.Same(pointStatus.Esm, result.PointStatus.Esm);
+            Assert.Same(pointStatus.Kkt, result.PointStatus.Kkt);
+            Assert.Same(pointStatus.Lm, result.PointStatus.Lm);
+            Assert.Same(pointStatus.Controller, result.PointStatus.Controller);
+        }
+
+        [Fact]
+        public async Task RefreshLocalAsync_CloudUnavailabilityDoesNotDegradeLocalOverallLevel()
+        {
+            var pointStatus = new PointStatusResult
+            {
+                Lm = Status(NodeLevel.Ok, "ЛМ работает"),
+                Controller = Status(NodeLevel.Ok, "Контроллер работает"),
+                Esm = Status(NodeLevel.Ok, "ЕСМ работает"),
+                Kkt = Status(NodeLevel.Ok, "ККТ работает"),
+                Cloud = Status(NodeLevel.Error, "Удалённый сервис недоступен"),
+                RuDesktop = Status(NodeLevel.Ok, "RuDesktop работает")
+            };
+
+            PointStatusRefreshResult result = await CreateService(pointStatus).RefreshLocalAsync(
+                new LocalRuntimeContext("x64"),
                 CancellationToken.None);
 
             Assert.Equal(NodeLevel.Ok, result.OverallLevel);
-            Assert.Empty(result.VersionStatuses);
         }
 
         [Fact]
@@ -78,8 +99,8 @@ namespace HonestFlow.Tests
             var log = new CaptureLog();
             PointStatusRefreshService service = CreateService(pointStatus, log);
 
-            PointStatusRefreshResult result = await service.RefreshAsync(
-                new IPData(), new VersionsData(), true, CancellationToken.None);
+            PointStatusRefreshResult result = await service.RefreshForClientAsync(
+                new IPData(), new VersionsData(), CancellationToken.None);
 
             Assert.NotEmpty(result.Diagnostics.Issues);
             Assert.Equal(result.Diagnostics.Issues.Count, log.Debug.Count);

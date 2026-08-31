@@ -4,6 +4,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.PointStatus;
+using HonestFlow.Application.Core;
 using HonestFlow.Application.RemoteAccess;
 using HonestFlow.Models;
 using Xunit;
@@ -74,6 +75,31 @@ public sealed class LmDiagnosticsSemanticsTests
         DiagnosticFact fact = Assert.Single(snapshot.Facts, item => item.Key == "LmInnComparison");
         Assert.Equal(DiagnosticFactState.Unknown, fact.State);
         Assert.Contains("Expected client INN unavailable", fact.Evidence);
+    }
+
+    [Fact]
+    public async Task LocalDiagnostics_HasNoExpectedClientInnAndDoesNotCreateMismatch()
+    {
+        var service = new PointStatusService(
+            remoteConfigLoaded: false,
+            ipCount: 0,
+            ruDesktopService: new StubRuDesktop(),
+            esmStatusClient: new StubEsm(),
+            serviceSnapshotProvider: new StubServices(),
+            lmStatusClient: new StubLm("7707083893", true, "ready"),
+            cloudConnectivityProbe: new StubCloud(),
+            kktPnpProbe: new StubKktPnp(),
+            kktDriverProbe: new StubKktDriver(),
+            kktPortProbe: new StubKktPort(),
+            esmApiPortProbe: new StubEsmApiPort());
+
+        PointStatusResult result = await service.CheckLocalAsync(new LocalRuntimeContext("x86"), CancellationToken.None);
+        DiagnosticsSnapshot snapshot = Build(result);
+
+        Assert.Equal(LmInnComparisonState.Unknown, result.LmProbe.InnComparison);
+        Assert.DoesNotContain(snapshot.Issues, IsInnIssue);
+        Assert.Equal(DiagnosticFactState.Unknown,
+            Assert.Single(snapshot.Facts, item => item.Key == "LmInnComparison").State);
     }
 
     [Fact]

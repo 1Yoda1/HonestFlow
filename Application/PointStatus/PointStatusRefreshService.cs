@@ -27,18 +27,36 @@ namespace HonestFlow.Application.PointStatus
             _log = log;
         }
 
-        public async Task<PointStatusRefreshResult> RefreshAsync(
+        public Task<PointStatusRefreshResult> RefreshLocalAsync(
+            LocalRuntimeContext runtime,
+            CancellationToken cancellationToken) =>
+            RefreshAsync(
+                () => _pointStatusService.CheckLocalAsync(runtime ?? LocalRuntimeContext.CreateCurrent(), cancellationToken),
+                () => _componentVersionStatusService.GetLocalStatuses(runtime ?? LocalRuntimeContext.CreateCurrent()),
+                includeCloudInOverallLevel: false,
+                cancellationToken);
+
+        public Task<PointStatusRefreshResult> RefreshForClientAsync(
             IPData selectedClient,
             VersionsData configuredVersions,
-            bool includeLicensedComponents,
             CancellationToken cancellationToken)
         {
-            Task<PointStatusResult> pointStatusTask = _pointStatusService.CheckAsync(selectedClient, cancellationToken);
-            Task<ComponentVersionStatus[]> versionStatusTask = includeLicensedComponents
-                ? Task.Run(
-                    () => _componentVersionStatusService.GetStatuses(selectedClient, configuredVersions),
-                    cancellationToken)
-                : Task.FromResult(Array.Empty<ComponentVersionStatus>());
+            if (selectedClient is null) throw new ArgumentNullException(nameof(selectedClient));
+            return RefreshAsync(
+                () => _pointStatusService.CheckForClientAsync(selectedClient, cancellationToken),
+                () => _componentVersionStatusService.GetClientStatuses(selectedClient, configuredVersions),
+                includeCloudInOverallLevel: true,
+                cancellationToken);
+        }
+
+        private async Task<PointStatusRefreshResult> RefreshAsync(
+            Func<Task<PointStatusResult>> refreshPointStatus,
+            Func<ComponentVersionStatus[]> getVersionStatuses,
+            bool includeCloudInOverallLevel,
+            CancellationToken cancellationToken)
+        {
+            Task<PointStatusResult> pointStatusTask = refreshPointStatus();
+            Task<ComponentVersionStatus[]> versionStatusTask = Task.Run(getVersionStatuses, cancellationToken);
 
             await Task.WhenAll(pointStatusTask, versionStatusTask);
             PointStatusResult pointStatus = await pointStatusTask;
@@ -77,7 +95,7 @@ namespace HonestFlow.Application.PointStatus
                     kktDriverVersion);
             }
 
-            NodeStatus[] visibleStatuses = includeLicensedComponents
+            NodeStatus[] visibleStatuses = includeCloudInOverallLevel
                 ? new[]
                 {
                     pointStatus.Lm,
@@ -87,7 +105,14 @@ namespace HonestFlow.Application.PointStatus
                     pointStatus.Cloud,
                     pointStatus.RuDesktop
                 }
-                : new[] { pointStatus.Cloud, pointStatus.RuDesktop };
+                : new[]
+                {
+                pointStatus.Lm,
+                pointStatus.Controller,
+                pointStatus.Esm,
+                pointStatus.Kkt,
+                pointStatus.RuDesktop
+                };
 
             DiagnosticsSnapshot diagnostics = new DiagnosticsSnapshotBuilder().Create(pointStatus, versionStatuses);
             foreach (DiagnosticIssue issue in diagnostics.Issues)

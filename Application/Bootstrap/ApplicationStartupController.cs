@@ -52,6 +52,7 @@ namespace HonestFlow.Application.Bootstrap
 
             LicenseAuthenticationResult result = await session.Authentication.AuthenticateAsync(login, password, progress, cancellationToken);
             if (result.Client == null) return result;
+            UpdateCurrentApiConfiguration(session.Startup, result.Client);
             if (remember)
             {
                 if (session.Startup.UseRemoteConfigMode && !usesApiSession)
@@ -100,10 +101,21 @@ namespace HonestFlow.Application.Bootstrap
             LicenseAuthenticationResult result = await apiAuth.TryResumeAsync(progress, cancellationToken);
             if (result.Client != null)
             {
+                UpdateCurrentApiConfiguration(session.Startup, result.Client);
                 session.Startup.AuthorizedClient = result.Client;
                 session.Startup.SellerAuthenticationHandled = true;
             }
             return result;
+        }
+
+        private static void UpdateCurrentApiConfiguration(StartupResult startup, IPData client)
+        {
+            if (startup?.AuthService is not IApiConfigurationProvider configurationProvider ||
+                configurationProvider.CurrentConfiguration is null)
+                return;
+
+            startup.CurrentApiConfiguration = configurationProvider.CurrentConfiguration;
+            startup.RemoteVersions = client?.Versions;
         }
 
         public async Task<LicenseObservationSnapshot> TryResumeRegistrationContinuationAsync(

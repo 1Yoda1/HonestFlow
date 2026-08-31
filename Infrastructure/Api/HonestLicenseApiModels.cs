@@ -67,7 +67,11 @@ namespace HonestFlow.Infrastructure.Api
     {
         public string Component { get; set; }
         public string EffectiveVersion { get; set; }
+        public string FileName { get; set; }
         public string DownloadUrl { get; set; }
+        public string Sha256 { get; set; }
+        public long? SizeBytes { get; set; }
+        public string Architecture { get; set; }
     }
 
     public sealed class ApiRegistrationStatusResponse

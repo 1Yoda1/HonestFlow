@@ -23,7 +23,16 @@ namespace HonestFlow.Tests
                     {
                         ClientId = "client-secret", Name = "Point", Inn = "007701234567"
                     },
-                    Device = new ApiDeviceConfiguration { DeviceId = "device-1" }
+                    Device = new ApiDeviceConfiguration { DeviceId = "device-1" },
+                    Components =
+                    {
+                        new ApiComponentConfiguration
+                        {
+                            Component = "ESM", EffectiveVersion = "4.2.0", FileName = "esm.exe",
+                            DownloadUrl = "https://api.honestflow.ru/api/assets/ESM/4.2.0/download",
+                            Sha256 = new string('a', 64), SizeBytes = 1234, Architecture = "x64"
+                        }
+                    }
                 };
                 await cache.SaveAsync(configuration, CancellationToken.None);
 
@@ -32,6 +41,8 @@ namespace HonestFlow.Tests
                 ApiConfigurationResponse restored = await cache.LoadAsync("device-1", CancellationToken.None);
                 Assert.Equal("client-secret", restored.Client.ClientId);
                 Assert.Equal("007701234567", restored.Client.Inn);
+                Assert.Equal("esm.exe", restored.Components[0].FileName);
+                Assert.Equal(1234, restored.Components[0].SizeBytes);
                 Assert.Null(await cache.LoadAsync("another-device", CancellationToken.None));
             }
             finally

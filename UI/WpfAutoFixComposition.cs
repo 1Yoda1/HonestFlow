@@ -33,12 +33,14 @@ internal static class WpfAutoFixComposition
         Action<PointStatusRefreshResult> applyRefresh)
     {
         var dialogs = new AutoFixDialogs(owner);
+        var packageSource = ApiConfigurationInstallationPackageSource.CreateRequired(startup.AuthService);
         var installationService = new InstallationService(
             logService,
             installationProgress,
             dialogs,
             createLicenseGuard(),
-            startup.UseRemoteConfigMode);
+            useRemoteConfigMode: false,
+            packageSource: packageSource);
         var registration = new TsPiotRegistrationWorkflow(
             new EsmTsPiotRegistrationClient(),
             new EsmApiPortProbe(),
@@ -111,7 +113,8 @@ internal static class WpfAutoFixComposition
                     installationProgress,
                     dialogs,
                     createLicenseGuard(),
-                    startup.UseRemoteConfigMode);
+                    useRemoteConfigMode: false,
+                    packageSource: packageSource);
                 return await restore.Restore(client, token);
             },
             [DiagnosticFixKey.RegisterTsPiot] = async (_, _, token) =>
@@ -125,10 +128,9 @@ internal static class WpfAutoFixComposition
             new AutoFixExecutor(actions),
             async token =>
             {
-                PointStatusRefreshResult refresh = await pointStatusRefresh.RefreshAsync(
+                PointStatusRefreshResult refresh = await pointStatusRefresh.RefreshForClientAsync(
                     client,
                     startup.RemoteVersions,
-                    includeLicensedComponents: true,
                     token);
                 await owner.Dispatcher.InvokeAsync(() => applyRefresh(refresh));
                 return refresh;

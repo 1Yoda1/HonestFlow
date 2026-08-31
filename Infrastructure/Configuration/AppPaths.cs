@@ -16,8 +16,6 @@ namespace HonestFlow.Infrastructure.Configuration
         public static string CachedVersionsFile => Path.Combine(ProgramDataFolder, "cache", "versions.json");
         public static string LocalSupportMailFile => Path.Combine(BaseFolder, "support_mail_encrypted.json");
         public static string CachedSupportMailFile => Path.Combine(ProgramDataFolder, "cache", "support_mail_encrypted.json");
-        public static string YandexPublicKeyFile => Path.Combine(BaseFolder, "yandex_public_key.txt");
-        public static string YandexPublicUrlFile => Path.Combine(BaseFolder, "yandex_public_url.txt");
         public static string DistrFolder => Path.Combine(BaseFolder, "Distr");
         public static string LegacyYandexDiskCacheFolder => Path.Combine(BaseFolder, "YandexDiskCache");
         public static string LegacyRemoteCacheFolder => Path.Combine(BaseFolder, "Git" + "HubCache");

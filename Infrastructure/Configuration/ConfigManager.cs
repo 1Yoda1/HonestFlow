@@ -17,7 +17,7 @@ namespace HonestFlow.Infrastructure.Configuration
     {
         private static readonly LocalConfigRepository LocalConfig = new();
         private static readonly RemoteConfigRepository RemoteConfig = new();
-        private const string DefaultYandexPublicKey = "https://disk.360.yandex.ru/d/sngNP8yBz9weWA";
+        public const string ProductionYandexPublicKey = "https://disk.360.yandex.ru/d/sngNP8yBz9weWA";
         private static YandexDiskDownloader _downloader;
 
         public static List<IPData> LoadIps() => LocalConfig.LoadIps();
@@ -42,25 +42,7 @@ namespace HonestFlow.Infrastructure.Configuration
 
         public static string GetYandexPublicKey()
         {
-            string publicKey = Environment.GetEnvironmentVariable("HONESTFLOW_YANDEX_PUBLIC_KEY");
-            if (!string.IsNullOrWhiteSpace(publicKey))
-                return publicKey.Trim();
-
-            if (File.Exists(AppPaths.YandexPublicKeyFile))
-            {
-                publicKey = File.ReadAllText(AppPaths.YandexPublicKeyFile).Trim();
-                if (!string.IsNullOrWhiteSpace(publicKey))
-                    return publicKey;
-            }
-
-            if (File.Exists(AppPaths.YandexPublicUrlFile))
-            {
-                publicKey = File.ReadAllText(AppPaths.YandexPublicUrlFile).Trim();
-                if (!string.IsNullOrWhiteSpace(publicKey))
-                    return publicKey;
-            }
-
-            return DefaultYandexPublicKey;
+            return ProductionYandexPublicKey;
         }
 
         public static async Task<bool> DownloadInstallerIfNeeded(

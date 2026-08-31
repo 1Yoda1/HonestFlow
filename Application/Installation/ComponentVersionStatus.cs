@@ -4,6 +4,7 @@ namespace HonestFlow.Application.Installation
 {
     public enum ComponentVersionState
     {
+        Installed,
         Current,
         UpdateRequired,
         BelowMinimum,
@@ -45,6 +46,7 @@ namespace HonestFlow.Application.Installation
 
         public string StateText => State switch
         {
+            ComponentVersionState.Installed => "Установлено",
             ComponentVersionState.Current => "Актуально",
             ComponentVersionState.UpdateRequired => "Нужно обновить",
             ComponentVersionState.BelowMinimum => "Версия не поддерживается",
@@ -81,6 +83,26 @@ namespace HonestFlow.Application.Installation
                 expected,
                 minimum,
                 updateRequired.Value ? ComponentVersionState.UpdateRequired : ComponentVersionState.Current);
+        }
+
+        public static ComponentVersionStatus CreateInstalledOnly(
+            string componentName,
+            string installedVersion,
+            string minimumSupportedVersion = null)
+        {
+            string installed = Normalize(installedVersion);
+            string minimum = Normalize(minimumSupportedVersion);
+
+            if (IsUnknown(installedVersion))
+                return new ComponentVersionStatus(componentName, null, null, minimum, ComponentVersionState.Unknown);
+
+            if (string.IsNullOrWhiteSpace(installed))
+                return new ComponentVersionStatus(componentName, null, null, minimum, ComponentVersionState.NotInstalled);
+
+            if (IsBelowMinimum(installed, minimum))
+                return new ComponentVersionStatus(componentName, installed, null, minimum, ComponentVersionState.BelowMinimum);
+
+            return new ComponentVersionStatus(componentName, installed, null, minimum, ComponentVersionState.Installed);
         }
 
         private static bool IsBelowMinimum(string installed, string minimum)

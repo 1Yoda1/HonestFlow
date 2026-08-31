@@ -1,4 +1,5 @@
 using HonestFlow.Application.Installation;
+using HonestFlow.Application.Core;
 using HonestFlow.Application.Lm;
 using HonestFlow.Models;
 using Xunit;
@@ -78,7 +79,7 @@ namespace HonestFlow.Tests
                 }
             };
 
-            ComponentVersionStatus[] result = service.GetStatuses(client, new VersionsData());
+            ComponentVersionStatus[] result = service.GetClientStatuses(client, new VersionsData());
 
             Assert.Collection(
                 result,
@@ -94,7 +95,7 @@ namespace HonestFlow.Tests
             var service = new ComponentVersionStatusService(new StubVersionCheckService(), () => "2.6.0");
             var configured = new VersionsData { LmModule = "2.6.0-10" };
 
-            ComponentVersionStatus status = service.GetStatuses(new IPData(), configured)[0];
+            ComponentVersionStatus status = service.GetClientStatuses(new IPData(), configured)[0];
 
             Assert.Equal("2.6.0", status.InstalledVersion);
             Assert.Equal("2.6.0-10", status.ExpectedVersion);
@@ -119,9 +120,27 @@ namespace HonestFlow.Tests
                 Controller = "1.6.3.2"
             };
 
-            ComponentVersionStatus[] result = service.GetStatuses(new IPData(), configured);
+            ComponentVersionStatus[] result = service.GetClientStatuses(new IPData(), configured);
 
             Assert.All(result, status => Assert.Equal(ComponentVersionState.Current, status.State));
+        }
+
+        [Fact]
+        public void LocalStatuses_UseLocalArchitectureAndNeverHaveClientTargets()
+        {
+            var checker = new StubVersionCheckService
+            {
+                AtolVersion = "10.10.8.24 (32-bit)",
+                EsmVersion = "1.6.3.2",
+                ControllerVersion = "1.6.3.2"
+            };
+            var service = new ComponentVersionStatusService(checker, () => "1.0.5");
+
+            ComponentVersionStatus[] result = service.GetLocalStatuses(new LocalRuntimeContext("x86"));
+
+            Assert.Equal("x86", checker.LastRequestedArchitecture);
+            Assert.All(result, status => Assert.Null(status.TargetVersion));
+            Assert.All(result, status => Assert.Equal(ComponentVersionState.Installed, status.State));
         }
 
         private sealed class StubVersionCheckService : IVersionCheckService
@@ -132,12 +151,17 @@ namespace HonestFlow.Tests
             public bool AtolNeedsUpdate { get; init; }
             public bool EsmNeedsUpdate { get; init; }
             public bool ControllerNeedsUpdate { get; init; }
+            public string LastRequestedArchitecture { get; private set; }
 
             public bool NeedAtolInstall(IPData selectedIP, string expectedVersion) => AtolNeedsUpdate;
             public bool NeedEsmInstall(string expectedVersion) => EsmNeedsUpdate;
             public bool NeedControllerInstall(string expectedVersion) => ControllerNeedsUpdate;
             public string GetAtolDriverInfo() => AtolVersion;
-            public string GetAtolDriverInfo(string requiredArchitecture) => AtolVersion;
+            public string GetAtolDriverInfo(string requiredArchitecture)
+            {
+                LastRequestedArchitecture = requiredArchitecture;
+                return AtolVersion;
+            }
             public string GetEsmVersion() => EsmVersion;
             public string GetControllerVersion() => ControllerVersion;
         }

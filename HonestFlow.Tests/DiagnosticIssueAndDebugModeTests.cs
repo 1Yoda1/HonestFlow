@@ -236,7 +236,7 @@ namespace HonestFlow.Tests
 
             string mainCode = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
             Assert.Contains("new DeveloperDiagnosticsSession(_lastDiagnostics", mainCode);
-            Assert.Contains("_pointStatusRefresh.RefreshAsync", mainCode);
+            Assert.Contains("_pointStatusRefresh.RefreshForClientAsync", mainCode);
         }
 
         private static PointStatusResult Healthy()

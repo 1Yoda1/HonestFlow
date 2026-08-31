@@ -5,13 +5,13 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Installation;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Infrastructure.Configuration;
+using HonestFlow.Infrastructure.Downloads;
 using HonestFlow.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -151,11 +151,16 @@ namespace HonestFlow.Infrastructure.Api
     {
         private readonly HttpClient _httpClient;
         private readonly ServiceInstallationSession _session;
+        private readonly VerifiedAssetDownloader _downloader;
 
-        public ApiInstallationPackageSource(HttpClient httpClient, ServiceInstallationSession session)
+        public ApiInstallationPackageSource(
+            HttpClient httpClient,
+            ServiceInstallationSession session,
+            VerifiedAssetDownloader downloader = null)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _session = session ?? throw new ArgumentNullException(nameof(session));
+            _downloader = downloader ?? new VerifiedAssetDownloader();
             Versions = session.CreateVersions();
         }
 
@@ -169,55 +174,25 @@ namespace HonestFlow.Infrastructure.Api
             if (!_session.IsActive)
                 throw new InvalidOperationException("Срок сервисного доступа истёк. Войдите снова.");
             ServiceInstallationPackage package = _session.Packages.FirstOrDefault(x => x.Component == component);
-            if (package == null || string.IsNullOrWhiteSpace(package.FileName) ||
-                string.IsNullOrWhiteSpace(package.DownloadUrl))
+            if (package == null)
                 throw new InvalidOperationException($"Для компонента {component} на сервере не настроен установочный файл.");
-
-            string destination = AppPaths.GetRemoteInstallerDownloadPath(package.FileName);
-            if (IsValidCached(destination, package)) return destination;
-            Directory.CreateDirectory(Path.GetDirectoryName(destination));
-            string temporary = destination + ".download";
-            try
+            var asset = new TrustedAsset
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, package.DownloadUrl);
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session.AccessToken);
-                using HttpResponseMessage response = await _httpClient.SendAsync(
-                    request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-                response.EnsureSuccessStatusCode();
-                long total = response.Content.Headers.ContentLength ?? package.SizeBytes ?? 0;
-                await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
-                await using var output = new FileStream(temporary, FileMode.Create, FileAccess.Write,
-                    FileShare.None, 81920, true);
-                var buffer = new byte[81920];
-                long readTotal = 0;
-                int read;
-                while ((read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+                FileName = package.FileName,
+                DownloadUrl = package.DownloadUrl,
+                Sha256 = package.Sha256,
+                SizeBytes = package.SizeBytes
+            };
+            return await _downloader.GetVerifiedAsync(
+                asset,
+                AppPaths.InstallerCacheFolder,
+                async (request, token) =>
                 {
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                    readTotal += read;
-                    if (total > 0) progress?.Report((int)Math.Min(100, readTotal * 100 / total));
-                }
-                await output.FlushAsync(cancellationToken);
-                if (!IsValidCached(temporary, package))
-                    throw new InvalidDataException("Скачанный установочный файл не прошёл проверку размера или SHA-256.");
-                File.Move(temporary, destination, true);
-                progress?.Report(100);
-                return destination;
-            }
-            finally
-            {
-                if (File.Exists(temporary)) File.Delete(temporary);
-            }
-        }
-
-        private static bool IsValidCached(string path, ServiceInstallationPackage package)
-        {
-            if (!File.Exists(path)) return false;
-            if (package.SizeBytes is > 0 && new FileInfo(path).Length != package.SizeBytes.Value) return false;
-            if (string.IsNullOrWhiteSpace(package.Sha256)) return new FileInfo(path).Length > 0;
-            using FileStream stream = File.OpenRead(path);
-            string actual = Convert.ToHexString(SHA256.HashData(stream));
-            return string.Equals(actual, package.Sha256, StringComparison.OrdinalIgnoreCase);
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session.AccessToken);
+                    return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+                },
+                progress,
+                cancellationToken);
         }
     }
 }

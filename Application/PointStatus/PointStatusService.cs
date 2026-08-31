@@ -62,9 +62,27 @@ namespace HonestFlow.Application.PointStatus
         }
 
         public Task<PointStatusResult> CheckAsync(CancellationToken cancellationToken) =>
-            CheckAsync(null, cancellationToken);
+            CheckLocalAsync(LocalRuntimeContext.CreateCurrent(), cancellationToken);
 
-        public async Task<PointStatusResult> CheckAsync(IPData currentClient, CancellationToken cancellationToken)
+        public Task<PointStatusResult> CheckAsync(IPData currentClient, CancellationToken cancellationToken) =>
+            currentClient is null
+                ? CheckAsync(cancellationToken)
+                : CheckForClientAsync(currentClient, cancellationToken);
+
+        public Task<PointStatusResult> CheckLocalAsync(
+            LocalRuntimeContext runtime,
+            CancellationToken cancellationToken) =>
+            CheckCoreAsync(null, runtime ?? LocalRuntimeContext.CreateCurrent(), cancellationToken);
+
+        public Task<PointStatusResult> CheckForClientAsync(
+            IPData currentClient,
+            CancellationToken cancellationToken) =>
+            CheckCoreAsync(currentClient, LocalRuntimeContext.CreateCurrent(), cancellationToken);
+
+        private async Task<PointStatusResult> CheckCoreAsync(
+            IPData currentClient,
+            LocalRuntimeContext runtime,
+            CancellationToken cancellationToken)
         {
             var services = await _serviceSnapshotProvider
                 .GetSnapshotsAsync(cancellationToken)
@@ -88,7 +106,10 @@ namespace HonestFlow.Application.PointStatus
             Task<NodeStatus> cloudTask = CheckCloudStatusAsync(cancellationToken);
             Task<NodeStatus> ruDesktopTask = CheckRuDesktopStatusAsync();
             Task<KktPnpResult> kktPnpTask = DetectKktPnpAsync(cancellationToken);
-            Task<KktDriverProbeResult> kktDriverTask = _kktDriverProbe.CheckAsync(currentClient?.Architecture, cancellationToken);
+            string requiredKktArchitecture = !string.IsNullOrWhiteSpace(currentClient?.Architecture)
+                ? currentClient.Architecture
+                : runtime.OperatingSystemArchitecture;
+            Task<KktDriverProbeResult> kktDriverTask = _kktDriverProbe.CheckAsync(requiredKktArchitecture, cancellationToken);
             Task<KktPortProbeResult> kktPortTask = _kktPortProbe.CheckAsync(cancellationToken);
             await Task.WhenAll(controllerTask, controllerServiceInfoTask, kktTask, esmTask, lmTask, cloudTask, ruDesktopTask, kktPnpTask, kktDriverTask, kktPortTask).ConfigureAwait(false);
             EsmRegistrationResult esmRegistration = await esmTask.ConfigureAwait(false);
@@ -248,7 +269,7 @@ namespace HonestFlow.Application.PointStatus
             return $"Installed={version?.State != ComponentVersionState.NotInstalled}; " +
                    $"InstalledVersion={version?.InstalledVersion ?? "-"}; " +
                    $"TargetVersion={version?.TargetVersion ?? "-"}; " +
-                   $"VersionMatch={version?.State == ComponentVersionState.Current}; " +
+                   $"VersionMatch={FormatVersionMatch(version)}; " +
                    $"Orchestrator={orchestrator?.State ?? "missing"}; " +
                    $"CmService={cm?.ServiceName ?? "missing"}; " +
                    $"CmServiceState={cm?.State ?? "missing"}; " +
@@ -367,12 +388,17 @@ namespace HonestFlow.Application.PointStatus
             $"Installed={version?.State != ComponentVersionState.NotInstalled}; " +
             $"InstalledVersion={version?.InstalledVersion ?? "-"}; " +
             $"TargetVersion={version?.TargetVersion ?? "-"}; " +
-            $"VersionMatch={version?.State == ComponentVersionState.Current}; " +
+            $"VersionMatch={FormatVersionMatch(version)}; " +
             $"ServiceExists={service is not null}; " +
             $"ServiceRunning={service?.IsRunning == true}; " +
             $"ServiceInfoAvailable={serviceInfo?.IsAvailable == true}; " +
             $"ServiceInfoHttpStatus={serviceInfo?.HttpStatusCode?.ToString() ?? "-"}; " +
             $"ServiceInfoErrorCategory={serviceInfo?.ErrorCategory ?? "-"}.";
+
+        private static string FormatVersionMatch(ComponentVersionStatus version) =>
+            string.IsNullOrWhiteSpace(version?.TargetVersion)
+                ? "Unknown"
+                : (version.State == ComponentVersionState.Current).ToString();
 
         private async Task<NodeStatus> CheckRuDesktopStatusAsync()
         {

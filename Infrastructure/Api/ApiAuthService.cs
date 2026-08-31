@@ -12,7 +12,7 @@ using Newtonsoft.Json;
 
 namespace HonestFlow.Infrastructure.Api
 {
-    public sealed class ApiAuthService : IApiCredentialAuthService, IApiSessionProvider
+    public sealed class ApiAuthService : IApiCredentialAuthService, IApiSessionProvider, IApiConfigurationProvider
     {
         private readonly IApiSessionService _session;
         private readonly IDeviceIdentityService _deviceIdentity;
@@ -28,6 +28,7 @@ namespace HonestFlow.Infrastructure.Api
         }
 
         public IApiSessionService ApiSessionService => _session;
+        public ApiConfigurationResponse CurrentConfiguration { get; private set; }
         public void LoadIpList() { }
         public IPData Authenticate(string password) => null;
 
@@ -56,6 +57,7 @@ namespace HonestFlow.Infrastructure.Api
             }
 
             ApiConfigurationResponse configuration = await LoadOnlineConfigurationAsync(cancellationToken);
+            CurrentConfiguration = configuration;
             await _configurationCache.SaveAsync(configuration, cancellationToken);
             IPData client = Map(configuration);
             _log.LogDebug($"API authentication completed for client {client.ClientId}.");
@@ -79,6 +81,7 @@ namespace HonestFlow.Infrastructure.Api
                 if (_session is IApiClientAccessStateProvider access && access.LicensePolicyEnabled == false)
                     return ClientAccessDisabled(access, identity.DeviceId);
                 configuration = await LoadOnlineConfigurationAsync(cancellationToken);
+                CurrentConfiguration = configuration;
                 await _configurationCache.SaveAsync(configuration, cancellationToken);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
@@ -89,6 +92,7 @@ namespace HonestFlow.Infrastructure.Api
             {
                 configuration = await _configurationCache.LoadAsync(identity.DeviceId, cancellationToken);
                 if (configuration == null) return new LicenseAuthenticationResult(null, null);
+                CurrentConfiguration = configuration;
                 _log.LogDebug("API unavailable; using protected current-client configuration cache.");
             }
             catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized ||

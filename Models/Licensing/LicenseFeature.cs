@@ -14,7 +14,10 @@ namespace HonestFlow.Models.Licensing
         ViewAndRepair,
 
         [Description("Установка и обслуживание точки")]
-        InstallAndMaintenance
+        InstallAndMaintenance,
+
+        [Description("HonestFlow Service")]
+        Service
     }
 
     public enum LicenseOperation
@@ -40,7 +43,8 @@ namespace HonestFlow.Models.Licensing
             Array.AsReadOnly(new[]
             {
                 LicenseFeature.ViewAndRepair,
-                LicenseFeature.InstallAndMaintenance
+                LicenseFeature.InstallAndMaintenance,
+                LicenseFeature.Service
             });
 
         public static string GetDisplayName(LicenseFeature feature)

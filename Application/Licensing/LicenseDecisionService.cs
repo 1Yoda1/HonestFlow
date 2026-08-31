@@ -127,7 +127,11 @@ namespace HonestFlow.Application.Licensing
             features == null ? Array.Empty<LicenseFeature>() : features.Distinct().ToArray();
 
         private static IReadOnlyCollection<LicenseFeature> AllFeatures() =>
-            ((LicenseFeature[])Enum.GetValues(typeof(LicenseFeature))).ToArray();
+            new[]
+            {
+                LicenseFeature.ViewAndRepair,
+                LicenseFeature.InstallAndMaintenance
+            };
 
         private static Version ParseVersion(string value) =>
             Version.TryParse(value, out Version version) ? version : null;

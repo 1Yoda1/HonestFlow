@@ -14,9 +14,11 @@ Purpose: production workplace client, startup/authentication, configuration, lic
 
 ### UI architecture (preserve these rules)
 
-HonestFlow 3.0 is a WPF application. The sole production project is the root `HonestFlow.csproj`; its startup path is:
+HonestFlow 3.0 is a WPF application. The sole production project is the root `HonestFlow.csproj`; its current production startup path is:
 
-`App.xaml` → `UI/StartupWindow.xaml` → `UI/MainWindow`.
+`App.xaml` / `App.OnStartup` → public trusted SelfUpdate → `LocalApplicationBootstrap` → `UI/MainWindow` in `ApplicationMode.Free`.
+
+`UI/StartupWindow` and the existing auth/device-registration/license path remain in the project for the future explicit `Connect Service` flow, but `App` must not open that window automatically.
 
 The legacy WinForms sources are retained for fallback/reference only and are excluded from the production WPF compilation.
 
@@ -38,11 +40,16 @@ New UI features belong in the WPF startup and main-window flow. Shared applicati
 
 ### Production startup flow
 
+The current default is Free: a public update check runs without identity/session state, then local diagnostics open without login, ClientId, DeviceId, configuration or license. Free startup must remain usable without HonestLicenseServer or internet and must not create device identity state.
+
+The user-initiated Service connection flow starts only from the Free `MainWindow` CTA `Подключить Service` and is:
+
 `password` → `POST /api/auth/login` → opaque access/refresh tokens + `clientId/clientName` + `deviceRegistrationRequired`.
 
-- Registered Active device: fetch `GET /api/configuration/current` and `GET /api/license/current`, run the existing license pipeline, then open `MainWindow` only when the decision is `Allowed`.
+- Registered Active device: fetch `GET /api/configuration/current` and `GET /api/license/current`, run the existing signed-license pipeline, require the explicit `LicenseFeature.Service`, then promote the existing `MainWindow` from Free to Service without replacing it.
 - Unknown or Deleted device: restricted `StartupWindow` → `GET /api/device/registration/current` → address entry → `POST /api/device/request` → manual status checks.
-- Approved registration: refresh the existing session → fetch configuration/license through the existing pipeline → open `MainWindow` when allowed. Do not require application restart.
+- Approved registration: refresh the existing session → fetch configuration/license through the existing pipeline → activate Service in the existing `MainWindow` when entitled. Do not require application restart.
+- Closing, rejecting or leaving a pending Service connection keeps `MainWindow` in Free mode. A later Service denial/expiry demotes the live window back to Free; it does not close HonestFlow.
 - `ApiSessionService` owns token persistence/rotation; do not duplicate login, refresh or bearer logic in UI code.
 
 ## HonestDesk
@@ -146,6 +153,27 @@ Schema initialization/update is in `Data/DatabaseSchema.cs`; integration tests u
 
 ## Rules for Codex
 
+## Task Decision Policy
+
+Before modifying code, internally evaluate the task using this 10-point Prompt Score. Do not show the score to the user unless they explicitly ask for it.
+
+Score each category from 0 to 2:
+
+1. **Goal clarity** — 0: desired result is unclear; 1: general intent is clear but details are ambiguous; 2: expected result is clear.
+2. **Change scope clarity** — 0: affected area cannot be determined; 1: likely area can be inferred; 2: affected modules/files can be confidently identified.
+3. **Constraint clarity** — 0: important constraints are unknown or conflicting; 1: constraints can mostly be inferred from the repository; 2: constraints are explicit or unambiguous.
+4. **Verification clarity** — 0: no clear completion check; 1: correctness can be partially verified; 2: build, tests, runtime behavior, or explicit acceptance criteria verify correctness.
+5. **Assumption safety** — 0: a wrong assumption could significantly alter architecture, behavior, compatibility, or data; 1: assumptions have moderate but reversible impact; 2: assumptions are local, low-risk, and easily reversible.
+
+Decision rules:
+
+- **8–10:** execute without clarification.
+- **6–7:** execute with minimal repository-consistent assumptions; ask only when a remaining ambiguity materially changes the implementation.
+- **4–5:** investigate code, docs, tests, AGENTS.md, conventions, and Git history first; ask only if they cannot resolve the ambiguity.
+- **0–3:** ask before meaningful code changes.
+
+Ask only when different plausible answers would materially change the implementation, especially if the unresolved choice could cause destructive data changes, a breaking API/protocol change, a major architectural boundary change, removal/replacement of substantial functionality, or violation of an explicit constraint. Do not ask about details that can be reasonably inferred from the repository. Prefer minimal, local, reversible assumptions consistent with existing architecture.
+
 1. Always read this `AGENTS.md` first, then inspect only task-related files.
 2. Do not scan an entire repository when the map below identifies the owning area.
 3. Preserve the WPF production path; do not implement HonestFlow 3.0 UI in legacy WinForms.
@@ -161,7 +189,8 @@ Schema initialization/update is in `Data/DatabaseSchema.cs`; integration tests u
 
 | Task | Start here |
 | --- | --- |
-| HonestFlow startup/login/restricted UI | `UI/StartupWindow.xaml*`, `Application/Bootstrap/`, `Infrastructure/Api/` |
+| HonestFlow production Free startup | `App.xaml*`, `Application/Bootstrap/LocalApplication*`, `FreeApplicationStartup.cs`, `UI/MainWindow.xaml*` |
+| HonestFlow retained Service login/restricted UI | `UI/StartupWindow.xaml*`, `Application/Bootstrap/`, `Infrastructure/Api/` |
 | HonestFlow main UI | `UI/MainWindow.xaml*` |
 | Device registration client flow | `Application/Licensing/DeviceRegistration*`, `Infrastructure/Licensing/ApiDeviceRegistrationRequestSender.cs`, `Infrastructure/Api/ApiDeviceRegistrationStatusProvider.cs` |
 | License decision/download/cache | `Application/Licensing/`, `Infrastructure/Licensing/`, `Infrastructure/Configuration/` |

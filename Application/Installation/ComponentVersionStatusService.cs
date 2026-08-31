@@ -26,7 +26,7 @@ namespace HonestFlow.Application.Installation
             _installedLmVersion = installedLmVersion ?? throw new ArgumentNullException(nameof(installedLmVersion));
         }
 
-        public ComponentVersionStatus[] GetStatuses(
+        public ComponentVersionStatus[] GetClientStatuses(
             IPData selectedClient,
             VersionsData configuredVersions = null)
         {
@@ -70,6 +70,26 @@ namespace HonestFlow.Application.Installation
                     controllerVersion,
                     expected.Controller,
                     HasExpected(expected.Controller) ? _versionChecker.NeedControllerInstall(expected.Controller) : null)
+            };
+        }
+
+        public ComponentVersionStatus[] GetLocalStatuses(LocalRuntimeContext runtime)
+        {
+            LocalRuntimeContext context = runtime ?? LocalRuntimeContext.CreateCurrent();
+            string lmVersion = _installedLmVersion();
+            string atolVersion = _versionChecker.GetAtolDriverInfo(context.OperatingSystemArchitecture);
+            string esmVersion = _versionChecker.GetEsmVersion();
+            string controllerVersion = _versionChecker.GetControllerVersion();
+
+            return new[]
+            {
+                ComponentVersionStatus.CreateInstalledOnly("ЛМ ЧЗ", lmVersion),
+                ComponentVersionStatus.CreateInstalledOnly(
+                    "Драйвер ККТ",
+                    atolVersion,
+                    ComponentVersionRequirements.MinimumSupportedAtolDriver),
+                ComponentVersionStatus.CreateInstalledOnly("ЕСМ", esmVersion),
+                ComponentVersionStatus.CreateInstalledOnly("Контроллер", controllerVersion)
             };
         }
 
