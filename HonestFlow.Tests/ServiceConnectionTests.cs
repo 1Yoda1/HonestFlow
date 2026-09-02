@@ -67,24 +67,29 @@ public sealed class ServiceConnectionTests
         string code = File.ReadAllText(ProjectFile("UI", "StartupWindow.xaml.cs"));
         string completion = Segment(code, "private async Task CompleteServiceConnectionAsync", "private void SetConnectionState");
 
-        Assert.Contains("new ServiceRuntimeContext(", completion);
+        Assert.Contains("new ServiceRuntimeContextBuilder().BuildAsync(", completion);
         Assert.Contains("DialogResult = true", completion);
         Assert.DoesNotContain("new MainWindow", completion);
         Assert.DoesNotContain("new CompactMainWindow", completion);
         Assert.DoesNotContain("Application.Current.MainWindow", completion);
         Assert.DoesNotContain("new CompactMainWindow", code);
         Assert.DoesNotContain("Application.Current.MainWindow", code);
+
+        string builder = File.ReadAllText(ProjectFile(
+            "Application", "ServiceConnection", "ServiceRuntimeContextBuilder.cs"));
+        Assert.Contains("new ServiceRuntimeContext(", builder);
     }
 
     [Fact]
-    public void MainWindowPromotesAndDeactivatesInPlaceWhilePaidExecutionStaysLocked()
+    public void MainWindowPromotesAndDeactivatesInPlaceWithServiceExecutionEnabledOnlyWhileContextIsActive()
     {
         string code = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
         string activation = Segment(code, "internal async Task ActivateServiceAsync", "private async Task DeactivateServiceAsync");
         string deactivation = Segment(code, "private async Task DeactivateServiceAsync", "private void ShowToolError");
 
         Assert.Contains("_applicationMode = ApplicationMode.Service", activation);
-        Assert.Contains("_paidExecutionEnabled = false", activation);
+        Assert.Contains("_paidExecutionEnabled = true", activation);
+        Assert.Contains("_autoFixWorkflow = CreateAutoFixWorkflow();", activation);
         Assert.Contains("RefreshTopologyAsync", activation);
         Assert.DoesNotContain("new MainWindow", activation);
         Assert.DoesNotContain("new CompactMainWindow", activation);
@@ -96,20 +101,22 @@ public sealed class ServiceConnectionTests
     }
 
     [Fact]
-    public void ServiceActivationDoesNotUnlockPaidActions()
+    public void ServiceActivationUnlocksServiceActionsButFreeKeepsThemLocked()
     {
         string code = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
+        string freePresentation = Segment(code, "private void ApplyFreePresentation", "private void ApplyServicePresentation");
         string presentation = Segment(code, "private void ApplyServicePresentation", "private void ShowServiceConnectionStatus");
 
         foreach (string control in new[]
         {
-            "FooterHelpButton", "SimpleHelpButton", "SimpleFixButton", "DetailedFixButton",
-            "DetailedManualFixButton", "SendDiagnosticsButton", "ServiceControlColumn"
+            "SimpleFixButton", "DetailedFixButton", "ServiceControlColumn"
         })
         {
-            Assert.Contains($"{control}.Visibility = Visibility.Collapsed", presentation);
+            Assert.Contains($"{control}.Visibility = Visibility.Visible", presentation);
+            Assert.Contains($"{control}.Visibility = Visibility.Collapsed", freePresentation);
         }
 
+        Assert.Contains("new ServiceOperationGuard(() => _serviceRuntime)", code);
         Assert.Contains("if (!_paidExecutionEnabled && send)", code);
         Assert.Contains("if (!_paidExecutionEnabled || _startup == null || _client == null) return;", code);
         Assert.Contains("if (!_paidExecutionEnabled) return;", code);

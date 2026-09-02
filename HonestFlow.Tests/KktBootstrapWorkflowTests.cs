@@ -224,7 +224,8 @@ namespace HonestFlow.Tests
             var registration = new TsPiotRegistrationWorkflow(
                 registrationClient,
                 new FakePortProbe(),
-                new FakeLog());
+                new FakeLog(),
+                new AllowLicenseOperationGuard());
             var fixture = new Fixture(process, session, clock, esm, registrationClient);
             fixture.Workflow = new KktBootstrapWorkflow(
                 process,
@@ -234,6 +235,7 @@ namespace HonestFlow.Tests
                 _ => Task.FromResult((diagnostics ?? UnknownGis)()),
                 _ => Task.FromResult(confirmWait),
                 new FakeProgress(),
+                new AllowLicenseOperationGuard(),
                 new KktBootstrapWorkflowOptions
                 {
                     KktDiscoveryTimeout = TimeSpan.FromSeconds(2),

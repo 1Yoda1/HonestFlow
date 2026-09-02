@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using HonestFlow.Application.Licensing;
+using HonestFlow.Models.Licensing;
 
 namespace HonestFlow.Application.PointStatus
 {
@@ -12,22 +14,26 @@ namespace HonestFlow.Application.PointStatus
         private readonly AutoFixPlanner _planner;
         private readonly AutoFixExecutor _executor;
         private readonly Func<CancellationToken, Task<PointStatusRefreshResult>> _refresh;
+        private readonly ILicenseOperationGuard _operationGuard;
         private readonly int _maxSteps;
 
         public AutoFixWorkflow(
             AutoFixPlanner planner,
             AutoFixExecutor executor,
             Func<CancellationToken, Task<PointStatusRefreshResult>> refresh,
+            ILicenseOperationGuard operationGuard,
             int maxSteps = DefaultMaxSteps)
         {
             _planner = planner ?? throw new ArgumentNullException(nameof(planner));
             _executor = executor ?? throw new ArgumentNullException(nameof(executor));
             _refresh = refresh ?? throw new ArgumentNullException(nameof(refresh));
+            _operationGuard = operationGuard ?? throw new ArgumentNullException(nameof(operationGuard));
             _maxSteps = maxSteps > 0 ? maxSteps : throw new ArgumentOutOfRangeException(nameof(maxSteps));
         }
 
         public async Task<AutoFixResult> RunAsync(Action<AutoFixProgress> progress, CancellationToken cancellationToken)
         {
+            _operationGuard.Demand(LicenseOperation.AutoFix);
             Report(progress, "Проверяем состояние…", Array.Empty<AutoFixStepResult>());
             AutoFixDiagnosticState initial;
             try
@@ -58,6 +64,7 @@ namespace HonestFlow.Application.PointStatus
             CancellationToken cancellationToken)
         {
             if (continuation == null) throw new ArgumentNullException(nameof(continuation));
+            _operationGuard.Demand(LicenseOperation.AutoFix);
             if (!confirmed)
                 return Task.FromResult(Result(
                     AutoFixStatus.Cancelled,

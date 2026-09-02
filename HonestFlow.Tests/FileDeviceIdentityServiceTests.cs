@@ -41,6 +41,48 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task TryLoadExistingAsync_MissingStateDoesNotCreateIdentity()
+        {
+            using var fixture = DeviceIdentityFixture.Create();
+
+            DeviceIdentityResult result = await fixture.CreateService()
+                .TryLoadExistingAsync(CancellationToken.None);
+
+            Assert.False(result.IsAvailable);
+            Assert.False(File.Exists(fixture.StatePath));
+            Assert.False(Directory.Exists(fixture.Root));
+        }
+
+        [Fact]
+        public async Task TryLoadExistingAsync_ReturnsExistingIdentityWithoutMutation()
+        {
+            using var fixture = DeviceIdentityFixture.Create();
+            DeviceIdentityResult created = await fixture.CreateService()
+                .GetOrCreateAsync(CancellationToken.None);
+
+            DeviceIdentityResult existing = await fixture.CreateService()
+                .TryLoadExistingAsync(CancellationToken.None);
+
+            Assert.Equal(DeviceIdentityStatus.Existing, existing.Status);
+            Assert.Equal(created.DeviceId, existing.DeviceId);
+        }
+
+        [Fact]
+        public async Task TryLoadExistingAsync_CorruptStateDoesNotQuarantineOrRecreate()
+        {
+            using var fixture = DeviceIdentityFixture.Create();
+            Directory.CreateDirectory(fixture.Root);
+            await File.WriteAllTextAsync(fixture.StatePath, "corrupted-state");
+
+            DeviceIdentityResult result = await fixture.CreateService()
+                .TryLoadExistingAsync(CancellationToken.None);
+
+            Assert.False(result.IsAvailable);
+            Assert.Equal("corrupted-state", await File.ReadAllTextAsync(fixture.StatePath));
+            Assert.Empty(Directory.GetFiles(fixture.Root, "device-identity.dpapi.corrupt-*"));
+        }
+
+        [Fact]
         public async Task GetOrCreateAsync_QuarantinesCorruptionAndCreatesNewDeviceId()
         {
             using var fixture = DeviceIdentityFixture.Create();

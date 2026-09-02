@@ -83,6 +83,11 @@ public sealed class FreeProductionStartupTests
         Assert.Contains("new MainWindow(result.Context)", appCode);
         Assert.DoesNotContain("new StartupWindow", appCode);
         Assert.DoesNotContain("SelfUpdateService", startupWindow);
+
+        int showWindow = appCode.IndexOf("window.Show();", StringComparison.Ordinal);
+        int silentResume = appCode.IndexOf("window.BeginRememberedServiceResume();", StringComparison.Ordinal);
+        Assert.True(showWindow >= 0 && silentResume > showWindow,
+            "Remembered Service resume must start only after the Free MainWindow is shown.");
     }
 
     [Fact]

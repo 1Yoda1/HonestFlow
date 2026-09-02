@@ -43,6 +43,7 @@ public partial class App : System.Windows.Application
             var window = new MainWindow(result.Context);
             MainWindow = window;
             window.Show();
+            window.BeginRememberedServiceResume();
         }
         catch (Exception ex)
         {

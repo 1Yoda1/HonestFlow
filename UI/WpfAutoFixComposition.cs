@@ -44,7 +44,8 @@ internal static class WpfAutoFixComposition
         var registration = new TsPiotRegistrationWorkflow(
             new EsmTsPiotRegistrationClient(),
             new EsmApiPortProbe(),
-            logService);
+            logService,
+            createLicenseGuard());
         var bootstrap = WpfKktBootstrapComposition.Create(
             owner,
             startup,
@@ -134,7 +135,8 @@ internal static class WpfAutoFixComposition
                     token);
                 await owner.Dispatcher.InvokeAsync(() => applyRefresh(refresh));
                 return refresh;
-            });
+            },
+            createLicenseGuard());
     }
 
     public static string ResultMessage(AutoFixResult result) => result.Status switch

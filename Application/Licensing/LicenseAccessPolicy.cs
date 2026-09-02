@@ -88,8 +88,13 @@ namespace HonestFlow.Application.Licensing
                     Contains(features, LicenseFeature.ViewAndRepair),
                 LicenseOperation.InstallComponents or
                 LicenseOperation.ReinstallComponents or
-                LicenseOperation.RestoreLmDatabase =>
+                LicenseOperation.RestoreLmDatabase or
+                LicenseOperation.RegisterTsPiot or
+                LicenseOperation.BootstrapKkt =>
                     Contains(features, LicenseFeature.InstallAndMaintenance),
+                LicenseOperation.AutoFix or
+                LicenseOperation.AutomateRuDesktop =>
+                    Contains(features, LicenseFeature.ViewAndRepair),
                 _ => false
             };
         }

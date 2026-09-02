@@ -7,4 +7,9 @@ namespace HonestFlow.Application.DeviceIdentity
     {
         Task<DeviceIdentityResult> GetOrCreateAsync(CancellationToken cancellationToken);
     }
+
+    public interface IExistingDeviceIdentityService
+    {
+        Task<DeviceIdentityResult> TryLoadExistingAsync(CancellationToken cancellationToken);
+    }
 }

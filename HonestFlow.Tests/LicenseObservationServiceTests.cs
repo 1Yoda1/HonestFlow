@@ -241,6 +241,8 @@ namespace HonestFlow.Tests
         [Theory]
         [InlineData(LicenseManifestReadStatus.Unauthorized)]
         [InlineData(LicenseManifestReadStatus.Forbidden)]
+        [InlineData(LicenseManifestReadStatus.NotFound)]
+        [InlineData(LicenseManifestReadStatus.Gone)]
         [InlineData(LicenseManifestReadStatus.RateLimited)]
         public async Task Observe_AuthoritativeOrRateLimitedResponse_DoesNotUseCache(
             LicenseManifestReadStatus remoteStatus)

@@ -67,6 +67,9 @@ namespace HonestFlow.Tests
                 CancellationToken.None);
 
             Assert.Equal(LicenseDecision.Allowed, snapshot.Decision);
+            Assert.Equal(
+                HonestFlow.Application.ServiceConnection.ServiceConnectionState.Active,
+                HonestFlow.Application.ServiceConnection.ServiceEntitlementEvaluator.Evaluate(snapshot));
             Assert.Equal(LicenseManifestSource.Cache, snapshot.ManifestSource);
             Assert.Equal(DeviceId, snapshot.DeviceId);
             Assert.Equal(_nowUtc.AddHours(-1), snapshot.LastSuccessfulOnlineCheckUtc);
@@ -180,7 +183,7 @@ namespace HonestFlow.Tests
             OfflineGraceHours = 24,
             IssuedAtUtc = _nowUtc.AddDays(-1),
             ValidUntilUtc = _nowUtc.AddDays(7),
-            Features = new List<LicenseFeature> { LicenseFeature.ViewAndRepair }
+            Features = new List<LicenseFeature> { LicenseFeature.Service }
         };
 
         private static HttpClient Client(HttpMessageHandler handler) => new(handler)

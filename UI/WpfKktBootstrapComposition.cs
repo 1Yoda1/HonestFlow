@@ -70,6 +70,7 @@ internal static class WpfKktBootstrapComposition
                         MessageBoxButton.YesNo,
                         MessageBoxImage.Question) == MessageBoxResult.Yes);
             },
-            progress);
+            progress,
+            createLicenseGuard());
     }
 }

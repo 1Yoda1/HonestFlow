@@ -145,7 +145,7 @@ namespace HonestFlow.Tests
             RegistrationWorkflow(new StubRegistrationClient(result));
 
         private static TsPiotRegistrationWorkflow RegistrationWorkflow(StubRegistrationClient client) =>
-            new(client, new StubPortProbe(), new StubLog());
+            new(client, new StubPortProbe(), new StubLog(), new AllowLicenseOperationGuard());
 
         private static ComponentInstallationWorkflow CreateWorkflow(bool isAdministrator) =>
             new(

@@ -2,8 +2,10 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Core;
+using HonestFlow.Application.Licensing;
 using HonestFlow.Application.PointStatus;
 using HonestFlow.Models;
+using HonestFlow.Models.Licensing;
 
 namespace HonestFlow.Application.Installation
 {
@@ -16,6 +18,7 @@ namespace HonestFlow.Application.Installation
         private readonly Func<CancellationToken, Task<DiagnosticsSnapshot>> _refreshDiagnostics;
         private readonly Func<CancellationToken, Task<bool>> _confirmGisMtWait;
         private readonly IProgressService _progress;
+        private readonly ILicenseOperationGuard _operationGuard;
         private readonly KktBootstrapWorkflowOptions _options;
         private readonly Func<DateTimeOffset> _utcNow;
         private readonly Func<TimeSpan, CancellationToken, Task> _delay;
@@ -28,6 +31,7 @@ namespace HonestFlow.Application.Installation
             Func<CancellationToken, Task<DiagnosticsSnapshot>> refreshDiagnostics,
             Func<CancellationToken, Task<bool>> confirmGisMtWait,
             IProgressService progress,
+            ILicenseOperationGuard operationGuard,
             KktBootstrapWorkflowOptions options = null,
             Func<DateTimeOffset> utcNow = null,
             Func<TimeSpan, CancellationToken, Task> delay = null)
@@ -39,6 +43,7 @@ namespace HonestFlow.Application.Installation
             _refreshDiagnostics = refreshDiagnostics ?? throw new ArgumentNullException(nameof(refreshDiagnostics));
             _confirmGisMtWait = confirmGisMtWait ?? throw new ArgumentNullException(nameof(confirmGisMtWait));
             _progress = progress ?? throw new ArgumentNullException(nameof(progress));
+            _operationGuard = operationGuard ?? throw new ArgumentNullException(nameof(operationGuard));
             _options = options ?? KktBootstrapWorkflowOptions.Default;
             _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
             _delay = delay ?? Task.Delay;
@@ -46,6 +51,7 @@ namespace HonestFlow.Application.Installation
 
         public async Task<KktBootstrapResult> RunAsync(IPData selectedClient, CancellationToken cancellationToken)
         {
+            _operationGuard.Demand(LicenseOperation.BootstrapKkt);
             if (selectedClient == null) throw new ArgumentNullException(nameof(selectedClient));
             string architecture;
             try { architecture = NormalizeArchitecture(selectedClient.Architecture); }

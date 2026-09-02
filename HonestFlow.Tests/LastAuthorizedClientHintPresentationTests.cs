@@ -63,15 +63,18 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void StartupWindow_UsesHintOnlyAtFreshLoginAndWritesAfterMainWindowShown()
+        public void StartupWindow_UsesHintOnlyAtFreshLoginAndWritesAfterValidatedServiceContext()
         {
             string source = File.ReadAllText(SourcePath("StartupWindow.xaml.cs"));
+            string builder = File.ReadAllText(ProjectPath(
+                "Application", "ServiceConnection", "ServiceRuntimeContextBuilder.cs"));
 
             Assert.Contains("LoadLastAuthorizedClientHintAsync", source, StringComparison.Ordinal);
             Assert.Contains("LastAuthorizedClientHintPanel.Visibility", source, StringComparison.Ordinal);
+            Assert.Contains("new ServiceRuntimeContextBuilder().BuildAsync(", source, StringComparison.Ordinal);
             Assert.True(
-                source.IndexOf("mainWindow.Show();", StringComparison.Ordinal) <
-                source.IndexOf("SaveLastAuthorizedClientHintAsync", StringComparison.Ordinal));
+                builder.IndexOf("new ServiceRuntimeContext(", StringComparison.Ordinal) <
+                builder.IndexOf("SaveLastAuthorizedClientHintAsync", StringComparison.Ordinal));
             Assert.DoesNotContain("ClearLastAuthorizedClientHint", source, StringComparison.Ordinal);
         }
 
@@ -80,10 +83,11 @@ namespace HonestFlow.Tests
 
         private static XDocument LoadStartupWindow() => XDocument.Load(SourcePath("StartupWindow.xaml"));
 
-        private static string SourcePath(string fileName) => Path.GetFullPath(Path.Combine(
+        private static string SourcePath(string fileName) => ProjectPath("UI", fileName);
+
+        private static string ProjectPath(params string[] parts) => Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory,
             "..", "..", "..", "..", "..",
-            "UI",
-            fileName));
+            Path.Combine(parts)));
     }
 }

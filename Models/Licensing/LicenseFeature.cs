@@ -34,6 +34,10 @@ namespace HonestFlow.Models.Licensing
         InitializeLm,
         InstallRuDesktop,
         ConfigureRuDesktop,
+        AutoFix,
+        RegisterTsPiot,
+        BootstrapKkt,
+        AutomateRuDesktop,
         OpenLocalTools
     }
 

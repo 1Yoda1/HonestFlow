@@ -17,7 +17,8 @@ namespace HonestFlow.Tests
             var workflow = new TsPiotRegistrationWorkflow(
                 client,
                 new StubPortProbe(EsmApiPortProbeResult.Unavailable(null, "refused")),
-                new StubLog());
+                new StubLog(),
+                new AllowLicenseOperationGuard());
 
             TsPiotRegistrationResult result = await workflow.RegisterAsync(CancellationToken.None);
 
@@ -32,7 +33,8 @@ namespace HonestFlow.Tests
             var workflow = new TsPiotRegistrationWorkflow(
                 client,
                 new StubPortProbe(EsmApiPortProbeResult.Available(51888)),
-                new StubLog());
+                new StubLog(),
+                new AllowLicenseOperationGuard());
 
             TsPiotRegistrationResult result = await workflow.RegisterAsync(CancellationToken.None);
 
@@ -48,9 +50,24 @@ namespace HonestFlow.Tests
             var workflow = new TsPiotRegistrationWorkflow(
                 new StubRegistrationClient(TsPiotRegistrationResult.Success()),
                 new StubPortProbe(EsmApiPortProbeResult.Available(51888)),
-                new StubLog());
+                new StubLog(),
+                new AllowLicenseOperationGuard());
 
             await Assert.ThrowsAsync<OperationCanceledException>(() => workflow.RegisterAsync(cancellation.Token));
+        }
+
+        [Fact]
+        public async Task RegisterAsync_DeniedByServiceGuard_DoesNotProbeOrSendRequest()
+        {
+            var client = new StubRegistrationClient(TsPiotRegistrationResult.Success());
+            var probe = new StubPortProbe(EsmApiPortProbeResult.Available(51888));
+            var workflow = new TsPiotRegistrationWorkflow(client, probe, new StubLog(), new DenyLicenseOperationGuard());
+
+            await Assert.ThrowsAsync<HonestFlow.Application.Licensing.LicenseOperationDeniedException>(
+                () => workflow.RegisterAsync(CancellationToken.None));
+
+            Assert.False(client.Called);
+            Assert.False(probe.Called);
         }
 
         private sealed class StubRegistrationClient : IEsmTsPiotRegistrationClient
@@ -73,8 +90,11 @@ namespace HonestFlow.Tests
             public Task<EsmApiPortProbeResult> CheckAsync(CancellationToken cancellationToken)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                Called = true;
                 return Task.FromResult(_result);
             }
+
+            public bool Called { get; private set; }
         }
 
         private sealed class StubLog : ILogService

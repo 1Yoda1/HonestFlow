@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 
 namespace HonestFlow.Infrastructure.DeviceIdentity
 {
-    public sealed class FileDeviceIdentityService : IDeviceIdentityService
+    public sealed class FileDeviceIdentityService : IDeviceIdentityService, IExistingDeviceIdentityService
     {
         private const string ModuleName = nameof(FileDeviceIdentityService);
         private readonly string _stateFilePath;
@@ -72,7 +72,29 @@ namespace HonestFlow.Infrastructure.DeviceIdentity
             }
         }
 
-        private async Task<DeviceIdentityResult> TryReadAsync(CancellationToken cancellationToken)
+        public async Task<DeviceIdentityResult> TryLoadExistingAsync(CancellationToken cancellationToken)
+        {
+            await _gate.WaitAsync(cancellationToken);
+            try
+            {
+                if (!File.Exists(_stateFilePath))
+                    return DeviceIdentityResult.Unavailable("DeviceIdentityNotFound");
+
+                DeviceIdentityResult existing = await TryReadAsync(cancellationToken, "IgnoredWithoutMutation");
+                return existing ?? DeviceIdentityResult.Unavailable("DeviceIdentityInvalid");
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        private Task<DeviceIdentityResult> TryReadAsync(CancellationToken cancellationToken) =>
+            TryReadAsync(cancellationToken, "QuarantineAndRecreate");
+
+        private async Task<DeviceIdentityResult> TryReadAsync(
+            CancellationToken cancellationToken,
+            string failureAction)
         {
             try
             {
@@ -107,7 +129,7 @@ namespace HonestFlow.Infrastructure.DeviceIdentity
             {
                 Logger.Error(
                     $"Event=DeviceIdentityStateReadFailed ErrorType={ex.GetType().Name} " +
-                    "Action=QuarantineAndRecreate",
+                    $"Action={failureAction}",
                     ModuleName);
                 return null;
             }

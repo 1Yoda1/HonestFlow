@@ -51,6 +51,10 @@ public partial class MainWindow : Window
     private ServiceRuntimeContext? _serviceRuntime;
     private ServiceConnectionState _serviceConnectionState = ServiceConnectionState.Disconnected;
     private CancellationTokenSource? _serviceLifetime;
+    private readonly SemaphoreSlim _serviceConnectionGate = new(1, 1);
+    private CancellationTokenSource? _silentServiceResumeCancellation;
+    private bool _silentServiceResumeStarted;
+    private bool _manualServiceConnectionRunning;
     private bool _paidExecutionEnabled;
     private readonly LocalRuntimeContext? _localRuntime;
     private readonly DiagnosticArchiveService? _localDiagnosticArchive;
@@ -127,7 +131,7 @@ public partial class MainWindow : Window
         SimpleHelpButton.Visibility = Visibility.Collapsed;
         SimpleFixButton.Visibility = Visibility.Collapsed;
         DetailedFixButton.Visibility = Visibility.Collapsed;
-        DetailedManualFixButton.Visibility = Visibility.Collapsed;
+        UpdateInstructionAvailability();
         SendDiagnosticsButton.Visibility = Visibility.Collapsed;
         ServiceControlColumn.Visibility = Visibility.Collapsed;
         RemoveEsmGuiDuplicatesButton.Visibility = Visibility.Collapsed;
@@ -160,11 +164,11 @@ public partial class MainWindow : Window
         RefreshLicenseButton.Visibility = Visibility.Collapsed;
         FooterHelpButton.Visibility = Visibility.Collapsed;
         SimpleHelpButton.Visibility = Visibility.Collapsed;
-        SimpleFixButton.Visibility = Visibility.Collapsed;
-        DetailedFixButton.Visibility = Visibility.Collapsed;
-        DetailedManualFixButton.Visibility = Visibility.Collapsed;
+        SimpleFixButton.Visibility = Visibility.Visible;
+        DetailedFixButton.Visibility = Visibility.Visible;
+        UpdateInstructionAvailability();
         SendDiagnosticsButton.Visibility = Visibility.Collapsed;
-        ServiceControlColumn.Visibility = Visibility.Collapsed;
+        ServiceControlColumn.Visibility = Visibility.Visible;
         RemoveEsmGuiDuplicatesButton.Visibility = Visibility.Collapsed;
         AdminCommandPromptButton.Visibility = Visibility.Collapsed;
         AdminPowerShellButton.Visibility = Visibility.Collapsed;
@@ -173,7 +177,7 @@ public partial class MainWindow : Window
         CloudStatusPanel.Visibility = Visibility.Visible;
         RemoteAccessStatusPanel.Visibility = Visibility.Visible;
         FreeFooterPanel.Visibility = Visibility.Collapsed;
-        SectionOutput.Text = "HonestFlow Service подключён. Автоматические действия пока недоступны.";
+        SectionOutput.Text = "HonestFlow Service подключён. Доступны автоматическое исправление и обслуживание компонентов.";
         ShowServiceConnectionStatus(ServiceConnectionState.Active, null);
     }
 
@@ -960,7 +964,8 @@ public partial class MainWindow : Window
         var registration = new TsPiotRegistrationWorkflow(
             new EsmTsPiotRegistrationClient(),
             new EsmApiPortProbe(),
-            _logService);
+            _logService,
+            CreateLicenseGuard());
         KktBootstrapWorkflow? bootstrap = _pointStatusRefresh == null || _client == null
             ? null
             : WpfKktBootstrapComposition.Create(
@@ -980,10 +985,8 @@ public partial class MainWindow : Window
             bootstrap);
     }
 
-    private ILicenseOperationGuard CreateLicenseGuard() => new LicenseOperationGuard(new LicenseAccessPolicy(
-        LicenseRuntimeConfiguration.FromEnvironment().EnforcementMode,
-        LicenseObservationSnapshotStore.Instance,
-        () => _client?.ClientId));
+    private ILicenseOperationGuard CreateLicenseGuard() =>
+        new ServiceOperationGuard(() => _serviceRuntime);
 
     private async Task RunOperationAsync(string status, Func<Task> operation)
     {
@@ -1026,6 +1029,14 @@ public partial class MainWindow : Window
 
     private void SimpleView_Click(object sender, RoutedEventArgs e) => ShowSimpleView();
     private void DetailedView_Click(object sender, RoutedEventArgs e) => ShowDetailedView();
+    private void DetailedManualFix_Click(object sender, RoutedEventArgs e)
+    {
+        if (_lastDiagnostics?.Issues is not { Count: > 0 } issues)
+            return;
+
+        new InstructionWindow(issues) { Owner = this }.ShowDialog();
+    }
+
     private async void SimpleFix_Click(object sender, RoutedEventArgs e)
     {
         await StartAutoFixAsync();
@@ -1189,6 +1200,7 @@ public partial class MainWindow : Window
     {
         _lastPointStatus = refresh.PointStatus;
         _lastDiagnostics = refresh.Diagnostics;
+        UpdateInstructionAvailability();
         TopologyPresentation presentation = _topologyPresentation.Create(refresh.Diagnostics);
         ApplyTopology(presentation);
         ApplySimpleStatus(presentation);
@@ -1203,6 +1215,11 @@ public partial class MainWindow : Window
         DetailedFixButton.IsEnabled = canAutoFix;
         UpdateHeaderWorkState(refresh.Diagnostics);
     }
+
+    private void UpdateInstructionAvailability() =>
+        DetailedManualFixButton.Visibility = _lastDiagnostics?.Issues is { Count: > 0 }
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     private void SetTopologyChecking()
     {
@@ -1604,14 +1621,22 @@ public partial class MainWindow : Window
     private async void ToolsCollect_Click(object sender, RoutedEventArgs e) => await RunDiagnosticsAsync(send: false);
     private async void ConnectService_Click(object sender, RoutedEventArgs e)
     {
-        if (_applicationMode != ApplicationMode.Free || _operationRunning)
+        if (_applicationMode != ApplicationMode.Free || _operationRunning || _manualServiceConnectionRunning)
             return;
 
+        _manualServiceConnectionRunning = true;
         _operationRunning = true;
+        _silentServiceResumeCancellation?.Cancel();
         ConnectServiceButton.IsEnabled = false;
-        ShowServiceConnectionStatus(ServiceConnectionState.Connecting, null);
+        bool gateEntered = false;
         try
         {
+            await _serviceConnectionGate.WaitAsync(_lifetime.Token);
+            gateEntered = true;
+            if (_applicationMode != ApplicationMode.Free)
+                return;
+
+            ShowServiceConnectionStatus(ServiceConnectionState.Connecting, null);
             var connectionWindow = new StartupWindow { Owner = this };
             bool? connected = connectionWindow.ShowDialog();
             if (connected == true && connectionWindow.ConnectionResult?.Context is ServiceRuntimeContext context)
@@ -1624,6 +1649,9 @@ public partial class MainWindow : Window
                 connectionWindow.ConnectionState,
                 connectionWindow.ConnectionMessage);
         }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
         catch (Exception ex)
         {
             Logger.LogException(ex, "HonestFlow Service connection failed", nameof(MainWindow));
@@ -1633,8 +1661,59 @@ public partial class MainWindow : Window
         }
         finally
         {
+            if (gateEntered)
+                _serviceConnectionGate.Release();
+            _manualServiceConnectionRunning = false;
             _operationRunning = false;
             ConnectServiceButton.IsEnabled = true;
+        }
+    }
+
+    internal void BeginRememberedServiceResume()
+    {
+        if (_applicationMode != ApplicationMode.Free || _silentServiceResumeStarted)
+            return;
+
+        _silentServiceResumeStarted = true;
+        _silentServiceResumeCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        CancellationToken cancellationToken = _silentServiceResumeCancellation.Token;
+        Dispatcher.BeginInvoke(
+            new Action(() => _ = ResumeRememberedServiceAsync(cancellationToken)),
+            DispatcherPriority.ContextIdle);
+    }
+
+    private async Task ResumeRememberedServiceAsync(CancellationToken cancellationToken)
+    {
+        bool gateEntered = false;
+        try
+        {
+            await _serviceConnectionGate.WaitAsync(cancellationToken);
+            gateEntered = true;
+            if (_applicationMode != ApplicationMode.Free)
+                return;
+
+            ServiceConnectionResult result = await RememberedServiceResumeService
+                .CreateProduction()
+                .TryResumeAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (result.IsActive &&
+                result.Context is ServiceRuntimeContext context &&
+                _applicationMode == ApplicationMode.Free)
+            {
+                await ActivateServiceAsync(context);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Logger.LogException(ex, "Background Service resume failed", nameof(MainWindow));
+        }
+        finally
+        {
+            if (gateEntered)
+                _serviceConnectionGate.Release();
         }
     }
 
@@ -1655,9 +1734,10 @@ public partial class MainWindow : Window
         _pointStatusRefresh = context.PointStatusRefresh;
         _componentVersionStatusService = context.ComponentVersionStatus;
         _applicationMode = ApplicationMode.Service;
-        _paidExecutionEnabled = false;
+        _paidExecutionEnabled = true;
         _serviceConnectionState = ServiceConnectionState.Active;
         LicenseObservationSnapshotStore.Instance.SnapshotChanged += LicenseSnapshotChanged;
+        _autoFixWorkflow = CreateAutoFixWorkflow();
 
         ApplyServicePresentation();
         await RefreshTopologyAsync();
@@ -1674,6 +1754,8 @@ public partial class MainWindow : Window
         _serviceLifetime?.Dispose();
         _serviceLifetime = null;
         LicenseObservationSnapshotStore.Instance.SnapshotChanged -= LicenseSnapshotChanged;
+        _serviceRuntime = null;
+        _paidExecutionEnabled = false;
 
         if (logout)
         {
@@ -1686,14 +1768,12 @@ public partial class MainWindow : Window
             }
         }
 
-        _serviceRuntime = null;
         _startupController = null;
         _startup = null;
         _client = null;
         _license = null;
         _deviceId = null;
         _applicationMode = ApplicationMode.Free;
-        _paidExecutionEnabled = false;
         _serviceConnectionState = state;
         _pointStatusRefresh = _localContext?.PointStatusRefresh;
         _componentVersionStatusService = _localContext?.ComponentVersionStatus;
@@ -1798,6 +1878,8 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         LicenseObservationSnapshotStore.Instance.SnapshotChanged -= LicenseSnapshotChanged;
+        _silentServiceResumeCancellation?.Cancel();
+        _silentServiceResumeCancellation?.Dispose();
         _serviceLifetime?.Cancel();
         _serviceLifetime?.Dispose();
         _logTimer.Stop();

@@ -595,31 +595,18 @@ public partial class StartupWindow : Window
             return;
         }
 
-        var componentVersions = new ComponentVersionStatusService(_session.LogService);
-        var pointStatus = new PointStatusService(
-            _session.Startup.UseRemoteConfigMode,
-            _session.Startup.Ips?.Count ?? _session.Startup.RemoteIps?.Count ?? 0,
-            _session.Startup.Ips ?? _session.Startup.RemoteIps,
-            new RuDesktopService(_session.LogService));
-        var pointStatusRefresh = new PointStatusRefreshService(
-            pointStatus,
-            componentVersions,
-            new PointStatusReportBuilder(),
-            _session.LogService);
-        var context = new ServiceRuntimeContext(
+        ConnectionResult = await new ServiceRuntimeContextBuilder().BuildAsync(
             _controller,
             _session,
             client,
-            snapshot!,
-            _session.Startup.CurrentApiConfiguration,
-            pointStatusRefresh,
-            componentVersions);
+            snapshot,
+            _lifetime.Token);
+        if (!ConnectionResult.IsActive)
+        {
+            SetConnectionState(ConnectionResult.State, ConnectionResult.Message);
+            return;
+        }
 
-        await _controller.SaveLastAuthorizedClientHintAsync(client, snapshot!, CancellationToken.None);
-        ConnectionResult = new ServiceConnectionResult(
-            ServiceConnectionState.Active,
-            ServiceEntitlementEvaluator.Message(ServiceConnectionState.Active),
-            context);
         SetConnectionState(ServiceConnectionState.Active);
         ApplyStartupPhase(StartupPresentationPhase.Launched);
         DialogResult = true;

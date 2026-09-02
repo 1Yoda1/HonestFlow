@@ -130,7 +130,8 @@ namespace HonestFlow.Infrastructure.Composition
                 RuDesktopWorkflow = new RuDesktopWorkflow(
                     ruDesktopService,
                     ruDesktopInstaller,
-                    logService),
+                    logService,
+                    licenseOperationGuard),
                 HelpRequestWorkflow = new HelpRequestWorkflow(
                     pointStatusService,
                     helpRequestDataBuilder,

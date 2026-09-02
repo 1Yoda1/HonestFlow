@@ -342,7 +342,7 @@
                   </StackPanel>
                   <StackPanel Grid.Column="2" VerticalAlignment="Center">
                     <Button x:Name="DetailedFixButton" Style="{StaticResource PrimaryButton}" Content="✧  Исправить автоматически" Margin="0,0,0,9" IsEnabled="False" Click="SimpleFix_Click"/>
-                    <Button x:Name="DetailedManualFixButton" Style="{StaticResource OutlineButton}" Content="Исправить вручную      ⌄"/>
+                    <Button x:Name="DetailedManualFixButton" Style="{StaticResource OutlineButton}" Content="Инструкция" Click="DetailedManualFix_Click"/>
                   </StackPanel>
                 </Grid>
               </Border>

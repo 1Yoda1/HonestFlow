@@ -2,7 +2,9 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Core;
+using HonestFlow.Application.Licensing;
 using HonestFlow.Models;
+using HonestFlow.Models.Licensing;
 
 namespace HonestFlow.Application.RemoteAccess
 {
@@ -11,15 +13,18 @@ namespace HonestFlow.Application.RemoteAccess
         private readonly RuDesktopService _service;
         private readonly IRuDesktopInstaller _installer;
         private readonly ILogService _log;
+        private readonly ILicenseOperationGuard _operationGuard;
 
         public RuDesktopWorkflow(
             RuDesktopService service,
             IRuDesktopInstaller installer,
-            ILogService log)
+            ILogService log,
+            ILicenseOperationGuard operationGuard)
         {
             _service = service ?? throw new ArgumentNullException(nameof(service));
             _installer = installer ?? throw new ArgumentNullException(nameof(installer));
             _log = log;
+            _operationGuard = operationGuard ?? throw new ArgumentNullException(nameof(operationGuard));
         }
 
         public RuDesktopPackage GetInstallationPackage() =>
@@ -29,6 +34,7 @@ namespace HonestFlow.Application.RemoteAccess
             IProgress<RuDesktopInstallProgress> progress,
             CancellationToken cancellationToken)
         {
+            _operationGuard.Demand(LicenseOperation.AutomateRuDesktop);
             RuDesktopInstallResult install = await _installer.InstallAsync(progress);
             if (!install.IsSuccess)
                 return new RuDesktopWorkflowInstallResult(install, null);
@@ -52,6 +58,7 @@ namespace HonestFlow.Application.RemoteAccess
 
         public Task<RuDesktopSetupResult> ConfigurePasswordAsync(IPData client)
         {
+            _operationGuard.Demand(LicenseOperation.AutomateRuDesktop);
             if (string.IsNullOrWhiteSpace(client?.RuDesktop?.Password))
                 throw new InvalidOperationException("В карточке клиента не указан пароль RuDesktop.");
             return _service.ConfigurePermanentPassword(client.RuDesktop.Password);

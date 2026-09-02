@@ -160,7 +160,33 @@ namespace HonestFlow.Tests
             Func<CancellationToken, Task<PointStatusRefreshResult>> refresh,
             int maxSteps,
             params KeyValuePair<DiagnosticFixKey, AutoFixAction>[] actions) =>
-            new(new AutoFixPlanner(), new AutoFixExecutor(new Dictionary<DiagnosticFixKey, AutoFixAction>(actions)), refresh, maxSteps);
+            new(new AutoFixPlanner(), new AutoFixExecutor(new Dictionary<DiagnosticFixKey, AutoFixAction>(actions)), refresh,
+                new AllowLicenseOperationGuard(), maxSteps);
+
+        [Fact]
+        public async Task RunAsync_DeniedByServiceGuard_DoesNotStartDiagnosticsRefresh()
+        {
+            int refreshCalls = 0;
+            var workflow = new AutoFixWorkflow(
+                new AutoFixPlanner(),
+                new AutoFixExecutor(new Dictionary<DiagnosticFixKey, AutoFixAction>()),
+                _ =>
+                {
+                    refreshCalls++;
+                    return Task.FromResult(new PointStatusRefreshResult(
+                        new PointStatusResult(),
+                        Array.Empty<HonestFlow.Application.Installation.ComponentVersionStatus>(),
+                        string.Empty,
+                        NodeLevel.Ok,
+                        AutoFixPlannerTests.Snapshot()));
+                },
+                new DenyLicenseOperationGuard());
+
+            await Assert.ThrowsAsync<HonestFlow.Application.Licensing.LicenseOperationDeniedException>(
+                () => workflow.RunAsync(null, CancellationToken.None));
+
+            Assert.Equal(0, refreshCalls);
+        }
 
         private static KeyValuePair<DiagnosticFixKey, AutoFixAction> Action(DiagnosticFixKey key, Action callback) =>
             new(key, (_, _, _) =>
