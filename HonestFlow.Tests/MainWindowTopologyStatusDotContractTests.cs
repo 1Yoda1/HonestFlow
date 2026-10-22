@@ -49,7 +49,7 @@ public sealed class MainWindowTopologyStatusDotContractTests
     }
 
     [Fact]
-    public void DetailedTopology_IconsUseApplicationRootResourcesAfterWindowMove()
+    public void DetailedTopology_IconsUseHonestFlowResourcesRegardlessOfHostingEntryPoint()
     {
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
         XDocument document = XDocument.Load(ProjectFile("UI", "MainWindow.xaml"));
@@ -60,7 +60,7 @@ public sealed class MainWindowTopologyStatusDotContractTests
             .ToArray();
 
         Assert.Equal(5, imageSources.Length);
-        Assert.All(imageSources, source => Assert.StartsWith("/Assets/TopologyIcons/", source));
+        Assert.All(imageSources, source => Assert.StartsWith("/HonestFlow;component/Assets/TopologyIcons/", source));
     }
 
     private static string ProjectFile(params string[] parts) => Path.GetFullPath(Path.Combine(

@@ -42,6 +42,10 @@ public sealed class ServiceRuntimeContext
     public string DeviceId => Entitlement.DeviceId;
     public LicenseObservationSnapshot Entitlement { get; internal set; }
     public ApiConfigurationResponse Configuration { get; }
+    // Service-only secrets remain in the protected configuration document and are
+    // deliberately not copied into IPData or API session state.
+    public string? IdentificationCode => Configuration.Client?.IdentificationCode;
+    public string? ChzToken => Configuration.Client?.ChzToken;
     public VersionsData? EffectiveVersions => Client.Versions ?? Startup.RemoteVersions;
     public PointStatusRefreshService PointStatusRefresh { get; }
     public ComponentVersionStatusService ComponentVersionStatus { get; }

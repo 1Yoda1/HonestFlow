@@ -37,6 +37,8 @@ namespace HonestFlow.Application.Installation
                 return TsPiotRegistrationResult.EsmUnavailable(readiness.ErrorCategory);
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+            _operationGuard.Demand(LicenseOperation.RegisterTsPiot);
             TsPiotRegistrationResult result = await _registrationClient.RegisterAsync(cancellationToken).ConfigureAwait(false);
             _log.LogUser(result.Status switch
             {

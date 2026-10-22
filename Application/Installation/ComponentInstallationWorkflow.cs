@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Application.Lm;
+using HonestFlow.Application.Licensing;
 using HonestFlow.Infrastructure;
 using HonestFlow.Models;
 
@@ -59,20 +60,42 @@ namespace HonestFlow.Application.Installation
             if (!installed)
                 return ComponentInstallationCompletionResult.InstallationFailed();
 
-            if (_kktBootstrapWorkflow != null)
+            // Installation has already succeeded. A later cancellation/registration error
+            // must not erase that result or suggest that the installers need to run again.
+            try
             {
-                KktBootstrapResult bootstrap = await _kktBootstrapWorkflow
-                    .RunAsync(selectedClient, cancellationToken)
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_kktBootstrapWorkflow != null)
+                {
+                    KktBootstrapResult bootstrap = await _kktBootstrapWorkflow
+                        .RunAsync(selectedClient, cancellationToken)
+                        .ConfigureAwait(false);
+                    return ComponentInstallationCompletionResult.InstalledWithBootstrap(bootstrap);
+                }
+
+                if (_tsPiotRegistrationWorkflow == null)
+                    return ComponentInstallationCompletionResult.Installed(null);
+
+                TsPiotRegistrationResult registration = await _tsPiotRegistrationWorkflow.RegisterAsync(cancellationToken)
                     .ConfigureAwait(false);
-                return ComponentInstallationCompletionResult.InstalledWithBootstrap(bootstrap);
+                return ComponentInstallationCompletionResult.Installed(registration);
             }
-
-            if (_tsPiotRegistrationWorkflow == null)
-                return ComponentInstallationCompletionResult.Installed(null);
-
-            TsPiotRegistrationResult registration = await _tsPiotRegistrationWorkflow.RegisterAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return ComponentInstallationCompletionResult.Installed(registration);
+            catch (LicenseOperationDeniedException ex)
+            {
+                Logger.Warning($"Компоненты установлены; последующая настройка заблокирована: {ex.TechnicalCode}", nameof(ComponentInstallationWorkflow));
+                return ComponentInstallationCompletionResult.PostInstallationDenied();
+            }
+            catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested ||
+                (cancellationToken.CanBeCanceled && ex.CancellationToken == cancellationToken))
+            {
+                Logger.Info("Компоненты установлены; последующая настройка отменена.", nameof(ComponentInstallationWorkflow));
+                return ComponentInstallationCompletionResult.PostInstallationCancelled();
+            }
+            catch (Exception ex)
+            {
+                Logger.DebugLog($"Ошибка последующей настройки после установки компонентов: {ex}", nameof(ComponentInstallationWorkflow));
+                return ComponentInstallationCompletionResult.PostInstallationFailed();
+            }
         }
 
         public Task<bool> ReinstallAsync(

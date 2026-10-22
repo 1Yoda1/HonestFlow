@@ -7,7 +7,9 @@ using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Application.Lm;
 using HonestFlow.Application.Core;
 using HonestFlow.Application.PointStatus;
+using HonestFlow.Application.Licensing;
 using HonestFlow.Models;
+using HonestFlow.Models.Licensing;
 using Xunit;
 
 namespace HonestFlow.Tests
@@ -55,6 +57,22 @@ namespace HonestFlow.Tests
 
             Assert.True(result);
             Assert.Same(client, installation.InstalledClient);
+        }
+
+        [Fact]
+        public async Task InstallAsync_DoesNotStartTsPiotRegistration()
+        {
+            var registrationClient = new StubRegistrationClient(TsPiotRegistrationResult.Success());
+            var workflow = new ComponentInstallationWorkflow(
+                new StubInstallationService { InstallResult = true },
+                () => true,
+                () => new LmSystemRequirementsResult(Array.Empty<string>(), Array.Empty<string>()),
+                RegistrationWorkflow(registrationClient));
+
+            bool result = await workflow.InstallAsync(new IPData(), CancellationToken.None);
+
+            Assert.True(result);
+            Assert.False(registrationClient.Called);
         }
 
         [Fact]
@@ -110,17 +128,19 @@ namespace HonestFlow.Tests
         public async Task InstallAndRegisterTsPiotAsync_SeparatesSuccessfulInstallationFromRegistrationFailure()
         {
             var installation = new StubInstallationService { InstallResult = true };
+            var registrationClient = new StubRegistrationClient(TsPiotRegistrationResult.KktNotDetected());
             var workflow = new ComponentInstallationWorkflow(
                 installation,
                 () => true,
                 () => new LmSystemRequirementsResult(Array.Empty<string>(), Array.Empty<string>()),
-                RegistrationWorkflow(TsPiotRegistrationResult.KktNotDetected()));
+                RegistrationWorkflow(registrationClient));
 
             ComponentInstallationCompletionResult result = await workflow.InstallAndRegisterTsPiotAsync(
                 new IPData(), CancellationToken.None);
 
             Assert.True(result.ComponentsInstalled);
             Assert.Equal(TsPiotRegistrationStatus.KktNotDetected, result.TsPiotRegistration.Status);
+            Assert.True(registrationClient.Called);
         }
 
         [Fact]
@@ -144,6 +164,66 @@ namespace HonestFlow.Tests
         private static TsPiotRegistrationWorkflow RegistrationWorkflow(TsPiotRegistrationResult result) =>
             RegistrationWorkflow(new StubRegistrationClient(result));
 
+        [Theory]
+        [InlineData("cancel", ComponentPostInstallationStatus.Cancelled)]
+        [InlineData("denied", ComponentPostInstallationStatus.Denied)]
+        [InlineData("timeout", ComponentPostInstallationStatus.Failed)]
+        [InlineData("error", ComponentPostInstallationStatus.Failed)]
+        public async Task PostInstallationException_PreservesInstalledComponents(string outcome, ComponentPostInstallationStatus status)
+        {
+            using var cancellation = new CancellationTokenSource();
+            Exception error = outcome switch
+            {
+                "cancel" => new OperationCanceledException("cancelled", cancellation.Token),
+                "denied" => new LicenseOperationDeniedException(LicenseOperation.RegisterTsPiot, null),
+                "timeout" => new TaskCanceledException("HTTP timeout"),
+                _ => new InvalidOperationException("private technical error")
+            };
+            var registration = new StubRegistrationClient(null) { Error = error };
+            var workflow = new ComponentInstallationWorkflow(new StubInstallationService { InstallResult = true },
+                () => true, () => null, RegistrationWorkflow(registration));
+
+            ComponentInstallationCompletionResult result = await workflow.InstallAndRegisterTsPiotAsync(new IPData(), cancellation.Token);
+
+            Assert.True(registration.Called);
+            Assert.True(result.ComponentsInstalled);
+            Assert.False(result.IsSuccessful);
+            Assert.Equal(status, result.PostInstallationStatus);
+            Assert.StartsWith("Компоненты установлены.", result.PostInstallationUserMessage);
+            Assert.DoesNotContain("private technical error", result.PostInstallationUserMessage);
+        }
+
+        [Fact]
+        public async Task CancellationImmediatelyAfterInstallation_DoesNotStartRegistration()
+        {
+            using var cancellation = new CancellationTokenSource();
+            var registration = new StubRegistrationClient(TsPiotRegistrationResult.Success());
+            var installation = new StubInstallationService { InstallResult = true, AfterInstall = cancellation.Cancel };
+            var workflow = new ComponentInstallationWorkflow(installation, () => true, () => null, RegistrationWorkflow(registration));
+
+            ComponentInstallationCompletionResult result = await workflow.InstallAndRegisterTsPiotAsync(new IPData(), cancellation.Token);
+
+            Assert.True(result.ComponentsInstalled);
+            Assert.Equal(ComponentPostInstallationStatus.Cancelled, result.PostInstallationStatus);
+            Assert.False(registration.Called);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task InstallationException_IsNotReportedAsPartialSuccess(bool cancelled)
+        {
+            Exception error = cancelled ? new OperationCanceledException() : new InvalidOperationException("installer failed");
+            var registration = new StubRegistrationClient(TsPiotRegistrationResult.Success());
+            var workflow = new ComponentInstallationWorkflow(new StubInstallationService { Error = error },
+                () => true, () => null, RegistrationWorkflow(registration));
+
+            Exception actual = await Record.ExceptionAsync(() => workflow.InstallAndRegisterTsPiotAsync(new IPData(), CancellationToken.None));
+
+            Assert.Same(error, actual);
+            Assert.False(registration.Called);
+        }
+
         private static TsPiotRegistrationWorkflow RegistrationWorkflow(StubRegistrationClient client) =>
             new(client, new StubPortProbe(), new StubLog(), new AllowLicenseOperationGuard());
 
@@ -155,6 +235,8 @@ namespace HonestFlow.Tests
 
         private sealed class StubInstallationService : IInstallationService
         {
+            public Exception Error { get; init; }
+            public Action AfterInstall { get; init; }
             public bool InstallResult { get; init; }
             public bool ReinstallResult { get; init; }
             public IPData InstalledClient { get; private set; }
@@ -171,6 +253,8 @@ namespace HonestFlow.Tests
                 InstalledClient = selectedIP;
                 Options = options;
                 InstallationCancellationToken = cancellationToken;
+                if (Error != null) return Task.FromException<bool>(Error);
+                AfterInstall?.Invoke();
                 return Task.FromResult(InstallResult);
             }
 
@@ -187,12 +271,14 @@ namespace HonestFlow.Tests
 
         private sealed class StubRegistrationClient : IEsmTsPiotRegistrationClient
         {
+            public Exception Error { get; init; }
             private readonly TsPiotRegistrationResult _result;
             public StubRegistrationClient(TsPiotRegistrationResult result) => _result = result;
             public bool Called { get; private set; }
             public Task<TsPiotRegistrationResult> RegisterAsync(CancellationToken cancellationToken)
             {
                 Called = true;
+                if (Error != null) return Task.FromException<TsPiotRegistrationResult>(Error);
                 return Task.FromResult(_result);
             }
         }

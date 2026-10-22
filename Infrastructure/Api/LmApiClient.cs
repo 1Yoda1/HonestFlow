@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using HonestFlow.Models;
 using HonestFlow.Application.PointStatus;
 
@@ -52,7 +53,70 @@ namespace HonestFlow.Infrastructure.Api
             if (!_enableDetailedLogging)
                 return;
 
-            Logger.DebugLog($"HTTP {method} {url}" + (string.IsNullOrWhiteSpace(requestBody) ? string.Empty : $" | Body: {requestBody}"), "HTTP");
+            Logger.DebugLog($"HTTP {method} {url}" + (string.IsNullOrWhiteSpace(requestBody) ? string.Empty : $" | Body: {SanitizeRequestBodyForLog(requestBody)}"), "HTTP");
+        }
+
+        public static string SanitizeRequestBodyForLog(string requestBody)
+        {
+            if (string.IsNullOrWhiteSpace(requestBody)) return requestBody;
+            try
+            {
+                JToken payload = JToken.Parse(requestBody);
+                RedactSensitiveProperties(payload);
+                return payload.ToString(Formatting.None);
+            }
+            catch (JsonException)
+            {
+                return "[redacted malformed request body]";
+            }
+        }
+
+        private static void RedactSensitiveProperties(JToken value)
+        {
+            if (value is JObject obj)
+            {
+                foreach (JProperty property in obj.Properties())
+                {
+                    if (string.Equals(property.Name, "token", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(property.Name, "chzToken", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(property.Name, "identificationCode", StringComparison.OrdinalIgnoreCase))
+                    {
+                        property.Value = "[redacted]";
+                    }
+                    else
+                    {
+                        RedactSensitiveProperties(property.Value);
+                    }
+                }
+            }
+            else if (value is JArray array)
+            {
+                foreach (JToken item in array)
+                    RedactSensitiveProperties(item);
+            }
+        }
+
+        public static string SanitizeSubmittedToken(string text, string submittedToken)
+        {
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(submittedToken))
+                return text;
+
+            string escapedToken = JsonConvert.ToString(submittedToken)[1..^1];
+            try
+            {
+                // Normalize JSON escapes so an echoed token inside message is also redacted.
+                string normalized = JToken.Parse(text).ToString(Formatting.None);
+                string sanitized = normalized.Replace(escapedToken, "[redacted]", StringComparison.Ordinal);
+                if (!string.Equals(normalized, sanitized, StringComparison.Ordinal))
+                    return sanitized;
+            }
+            catch (JsonException)
+            {
+                // Plain-text and malformed error bodies can still echo the submitted token.
+            }
+
+            return text.Replace(escapedToken, "[redacted]", StringComparison.Ordinal)
+                .Replace(submittedToken, "[redacted]", StringComparison.Ordinal);
         }
 
         private void LogResponse(string method, string url, HttpStatusCode statusCode, string responseBody, double durationMs, bool isError = false)
@@ -128,7 +192,7 @@ namespace HonestFlow.Infrastructure.Api
             }
         }
 
-        private async Task<ApiSimpleResponse> PostAsync(string endpoint, object data)
+        private async Task<ApiSimpleResponse> PostAsync(string endpoint, object data, string submittedToken)
         {
             EnsureClientCreated();
             var url = GetApiUrl(endpoint);
@@ -148,10 +212,11 @@ namespace HonestFlow.Infrastructure.Api
                 var durationMs = stopwatch.Elapsed.TotalMilliseconds;
                 var responseBody = await resp.Content.ReadAsStringAsync();
 
-                LogResponse("POST", url, resp.StatusCode, responseBody, durationMs, !resp.IsSuccessStatusCode);
+                string safeResponseBody = SanitizeSubmittedToken(responseBody, submittedToken);
+                LogResponse("POST", url, resp.StatusCode, safeResponseBody, durationMs, !resp.IsSuccessStatusCode);
 
                 if (resp.IsSuccessStatusCode)
-                    return ApiSimpleResponse.Success(resp.StatusCode, responseBody, durationMs);
+                    return ApiSimpleResponse.Success(resp.StatusCode, safeResponseBody, durationMs);
 
                 string errorMessage = $"HTTP {(int)resp.StatusCode}";
                 try
@@ -165,20 +230,22 @@ namespace HonestFlow.Infrastructure.Api
                     // Не смогли разобрать тело ошибки — оставляем HTTP-код.
                 }
 
-                return ApiSimpleResponse.Failure(resp.StatusCode, errorMessage, responseBody, durationMs);
+                return ApiSimpleResponse.Failure(resp.StatusCode,
+                    SanitizeSubmittedToken(errorMessage, submittedToken), safeResponseBody, durationMs);
             }
             catch (ObjectDisposedException)
             {
                 _isDisposed = true;
                 EnsureClientCreated();
                 Logger.Warning("HttpClient был уничтожен, пересоздан. Повторяем POST", ModuleName);
-                return await PostAsync(endpoint, data);
+                return await PostAsync(endpoint, data, submittedToken);
             }
             catch (Exception ex)
             {
                 var durationMs = stopwatch.Elapsed.TotalMilliseconds;
-                Logger.Error($"HTTP POST {url} -> исключение за {durationMs:F0} мс: {ex.Message}", "HTTP");
-                return ApiSimpleResponse.Failure(HttpStatusCode.ServiceUnavailable, ex.Message, null, durationMs);
+                string safeMessage = SanitizeSubmittedToken(ex.Message, submittedToken);
+                Logger.Error($"HTTP POST {url} -> исключение за {durationMs:F0} мс: {safeMessage}", "HTTP");
+                return ApiSimpleResponse.Failure(HttpStatusCode.ServiceUnavailable, safeMessage, null, durationMs);
             }
         }
 
@@ -263,7 +330,7 @@ namespace HonestFlow.Infrastructure.Api
         {
             EnsureClientCreated();
             var data = new { token };
-            return await PostAsync("init", data);
+            return await PostAsync("init", data, token);
         }
 
         public void Dispose()

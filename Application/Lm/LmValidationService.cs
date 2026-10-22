@@ -233,8 +233,8 @@ namespace HonestFlow.Application.Lm
             }
             else if (result.RuntimeStatus == "initialization")
             {
-                result.DisplayStatus = $"OK (инициализирован), версия {version ?? "не определена"}";
-                result.DecisionReason = "NeedsInstall=false: ЛМ установлен физически, версия совпадает, API initialization";
+                result.DisplayStatus = $"инициализируется, версия {version ?? "не определена"}";
+                result.DecisionReason = "NeedsInstall=false: ЛМ установлен физически, версия совпадает, API initialization ещё выполняется";
             }
             else
             {

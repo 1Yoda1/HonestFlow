@@ -3,7 +3,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Core;
 using HonestFlow.Application.Installation;
+using HonestFlow.Application.Licensing;
 using HonestFlow.Application.PointStatus;
+using HonestFlow.Models.Licensing;
 using Xunit;
 
 namespace HonestFlow.Tests
@@ -70,6 +72,54 @@ namespace HonestFlow.Tests
             Assert.False(probe.Called);
         }
 
+        [Fact]
+        public async Task RegisterAsync_ServiceRevokedDuringReadiness_DoesNotSendRequest()
+        {
+            var guard = new RevocableGuard();
+            var client = new StubRegistrationClient(TsPiotRegistrationResult.Success());
+            var probe = new StubPortProbe(EsmApiPortProbeResult.Available(51888))
+            {
+                AfterProbe = () => guard.Allowed = false
+            };
+            var workflow = new TsPiotRegistrationWorkflow(client, probe, new StubLog(), guard);
+
+            await Assert.ThrowsAsync<LicenseOperationDeniedException>(
+                () => workflow.RegisterAsync(CancellationToken.None));
+
+            Assert.True(probe.Called);
+            Assert.False(client.Called);
+            Assert.Equal(2, guard.Calls);
+        }
+
+        [Fact]
+        public async Task RegisterAsync_CancelledDuringReadiness_DoesNotSendRequest()
+        {
+            using var cancellation = new CancellationTokenSource();
+            var client = new StubRegistrationClient(TsPiotRegistrationResult.Success());
+            var probe = new StubPortProbe(EsmApiPortProbeResult.Available(51888))
+            {
+                AfterProbe = cancellation.Cancel
+            };
+            var workflow = new TsPiotRegistrationWorkflow(
+                client, probe, new StubLog(), new AllowLicenseOperationGuard());
+
+            await Assert.ThrowsAsync<OperationCanceledException>(() => workflow.RegisterAsync(cancellation.Token));
+
+            Assert.False(client.Called);
+        }
+
+        private sealed class RevocableGuard : ILicenseOperationGuard
+        {
+            public bool Allowed { get; set; } = true;
+            public int Calls { get; private set; }
+            public void Demand(LicenseOperation operation)
+            {
+                Assert.Equal(LicenseOperation.RegisterTsPiot, operation);
+                Calls++;
+                if (!Allowed) new DenyLicenseOperationGuard().Demand(operation);
+            }
+        }
+
         private sealed class StubRegistrationClient : IEsmTsPiotRegistrationClient
         {
             private readonly TsPiotRegistrationResult _result;
@@ -87,10 +137,12 @@ namespace HonestFlow.Tests
         {
             private readonly EsmApiPortProbeResult _result;
             public StubPortProbe(EsmApiPortProbeResult result) => _result = result;
+            public Action AfterProbe { get; init; }
             public Task<EsmApiPortProbeResult> CheckAsync(CancellationToken cancellationToken)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Called = true;
+                AfterProbe?.Invoke();
                 return Task.FromResult(_result);
             }
 

@@ -236,7 +236,15 @@ namespace HonestFlow.Tests
 
             string mainCode = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
             Assert.Contains("new DeveloperDiagnosticsSession(_lastDiagnostics", mainCode);
-            Assert.Contains("_pointStatusRefresh.RefreshForClientAsync", mainCode);
+            string refreshCode = mainCode.Substring(mainCode.IndexOf(
+                "private async Task<DiagnosticsSnapshot> RefreshDeveloperDiagnosticsAsync", StringComparison.Ordinal));
+            refreshCode = refreshCode.Substring(0, refreshCode.IndexOf(
+                "private void ApplyPointStatusRefresh", StringComparison.Ordinal));
+            // The service is captured before awaiting so a runtime switch cannot mix contexts.
+            Assert.Contains("PointStatusRefreshService? service = _pointStatusRefresh;", refreshCode);
+            Assert.Contains("await service.RefreshForClientAsync", refreshCode);
+            Assert.Contains("await service.RefreshLocalAsync", refreshCode);
+            Assert.Contains("if (!CanApplyRefresh(request))", refreshCode);
         }
 
         private static PointStatusResult Healthy()

@@ -75,9 +75,8 @@ namespace HonestFlow.Application.Installation
 
         public ComponentVersionStatus[] GetLocalStatuses(LocalRuntimeContext runtime)
         {
-            LocalRuntimeContext context = runtime ?? LocalRuntimeContext.CreateCurrent();
             string lmVersion = _installedLmVersion();
-            string atolVersion = _versionChecker.GetAtolDriverInfo(context.OperatingSystemArchitecture);
+            string atolVersion = _versionChecker.GetAtolDriverInfo();
             string esmVersion = _versionChecker.GetEsmVersion();
             string controllerVersion = _versionChecker.GetControllerVersion();
 

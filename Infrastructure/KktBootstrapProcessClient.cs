@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Application.Installation;
@@ -25,15 +26,7 @@ namespace HonestFlow.Infrastructure
             CancellationToken cancellationToken)
         {
             string helperPath = _extractor.Extract(architecture);
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = helperPath,
-                UseShellExecute = false,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
+            ProcessStartInfo startInfo = CreateStartInfo(helperPath);
             startInfo.ArgumentList.Add("--arch");
             startInfo.ArgumentList.Add(architecture);
             startInfo.ArgumentList.Add("--version");
@@ -81,6 +74,18 @@ namespace HonestFlow.Infrastructure
                 throw;
             }
         }
+
+        private static ProcessStartInfo CreateStartInfo(string helperPath) => new()
+        {
+            FileName = helperPath,
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            CreateNoWindow = true
+        };
 
         internal static async Task WaitForExitBoundedAsync(Process process)
         {

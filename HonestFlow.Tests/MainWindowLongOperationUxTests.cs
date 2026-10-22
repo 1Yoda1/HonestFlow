@@ -102,8 +102,11 @@ namespace HonestFlow.Tests
             Assert.Contains("if (_operationRunning || _autoFixWorkflow == null) return;", autoFix);
             Assert.Contains("_operationRunning = true;", autoFix);
             Assert.Contains("_operationRunning = false;", autoFix);
-            Assert.Contains("_autoFixWorkflow.RunAsync", autoFix);
-            Assert.Contains("_autoFixWorkflow.ContinueAsync", autoFix);
+            int capture = autoFix.IndexOf("AutoFixWorkflow workflow = _autoFixWorkflow;", StringComparison.Ordinal);
+            int run = autoFix.IndexOf("await workflow.RunAsync", StringComparison.Ordinal);
+            Assert.True(capture >= 0 && capture < run);
+            Assert.Contains("await workflow.ContinueAsync", autoFix);
+            Assert.DoesNotContain("await _autoFixWorkflow.", autoFix);
             Assert.Contains("ApplyPointStatusRefresh", autoFix);
             Assert.Contains("WpfAutoFixComposition.Create", composition);
             Assert.Contains("new AutoFixPlanner()", sharedComposition);

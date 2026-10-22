@@ -124,6 +124,7 @@ public sealed class LmDiagnosticsSemanticsTests
         Assert.Equal(LmDiagnosticProbeState.ApiUnavailable, result.LmProbe.State);
         Assert.False(result.LmProbe.HealthAvailable);
         Assert.Contains(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_API_UNAVAILABLE);
+        Assert.Equal(TopologyVisualState.Missing, new TopologyPresentationService().Create(result).LmFrame);
     }
 
     [Fact]
@@ -147,6 +148,33 @@ public sealed class LmDiagnosticsSemanticsTests
         Assert.Equal(DiagnosticSeverity.UnableToVerify, issue.Severity);
         Assert.Null(issue.SuggestedFix);
         Assert.DoesNotContain(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_API_UNAVAILABLE);
+    }
+
+    [Theory]
+    [InlineData("not_configured", LmDiagnosticProbeState.NotConfigured)]
+    [InlineData("not-configured", LmDiagnosticProbeState.NotConfigured)]
+    [InlineData("initialization", LmDiagnosticProbeState.Initializing)]
+    public async Task LmTransitionStates_AreWarningAndYellowAcrossDiagnosticsAndTopology(
+        string runtimeStatus,
+        LmDiagnosticProbeState expectedState)
+    {
+        PointStatusResult result = await CheckAsync("7707083893", "7707083893", runtimeStatus: runtimeStatus);
+        DiagnosticsSnapshot snapshot = Build(result);
+
+        Assert.Equal(NodeLevel.Warning, result.Lm.Level);
+        Assert.Equal(expectedState, result.LmProbe.State);
+        Assert.Equal(DiagnosticState.Unknown, snapshot.Lm.State);
+        Assert.Equal(TopologyVisualState.Uncertain, new TopologyPresentationService().Create(result).LmFrame);
+        Assert.Equal(TopologyVisualState.Uncertain, new TopologyPresentationService().Create(snapshot).LmFrame);
+    }
+
+    [Fact]
+    public async Task ReadyLm_IsGreenInTopology()
+    {
+        PointStatusResult result = await CheckAsync("7707083893", "7707083893");
+
+        Assert.Equal(NodeLevel.Ok, result.Lm.Level);
+        Assert.Equal(TopologyVisualState.Healthy, new TopologyPresentationService().Create(result).LmFrame);
     }
 
     private static bool IsInnIssue(DiagnosticIssue issue) =>

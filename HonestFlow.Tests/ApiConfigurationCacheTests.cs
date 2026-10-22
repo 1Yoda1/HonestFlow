@@ -21,7 +21,8 @@ namespace HonestFlow.Tests
                 {
                     Client = new ApiClientConfiguration
                     {
-                        ClientId = "client-secret", Name = "Point", Inn = "007701234567"
+                        ClientId = "client-secret", Name = "Point", Inn = "007701234567",
+                        IdentificationCode = "id-code", ChzToken = "service-chz-token"
                     },
                     Device = new ApiDeviceConfiguration { DeviceId = "device-1" },
                     Components =
@@ -41,6 +42,9 @@ namespace HonestFlow.Tests
                 ApiConfigurationResponse restored = await cache.LoadAsync("device-1", CancellationToken.None);
                 Assert.Equal("client-secret", restored.Client.ClientId);
                 Assert.Equal("007701234567", restored.Client.Inn);
+                Assert.Equal("id-code", restored.Client.IdentificationCode);
+                Assert.Equal("service-chz-token", restored.Client.ChzToken);
+                Assert.DoesNotContain("service-chz-token", persisted);
                 Assert.Equal("esm.exe", restored.Components[0].FileName);
                 Assert.Equal(1234, restored.Components[0].SizeBytes);
                 Assert.Null(await cache.LoadAsync("another-device", CancellationToken.None));

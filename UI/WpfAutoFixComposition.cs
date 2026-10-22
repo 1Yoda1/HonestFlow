@@ -30,7 +30,8 @@ internal static class WpfAutoFixComposition
         IProgressService installationProgress,
         Func<LmSystemRequirementsResult?, InstallationOptions?> resolveInstallationOptions,
         Func<ILicenseOperationGuard> createLicenseGuard,
-        Action<PointStatusRefreshResult> applyRefresh)
+        Action<PointStatusRefreshResult> applyRefresh,
+        string chzToken = null)
     {
         var dialogs = new AutoFixDialogs(owner);
         var packageSource = ApiConfigurationInstallationPackageSource.CreateRequired(startup.AuthService);
@@ -40,7 +41,8 @@ internal static class WpfAutoFixComposition
             dialogs,
             createLicenseGuard(),
             useRemoteConfigMode: false,
-            packageSource: packageSource);
+            packageSource: packageSource,
+            lmChzToken: chzToken);
         var registration = new TsPiotRegistrationWorkflow(
             new EsmTsPiotRegistrationClient(),
             new EsmApiPortProbe(),
@@ -106,7 +108,7 @@ internal static class WpfAutoFixComposition
                 return true;
             },
             [DiagnosticFixKey.InitializeLm] = async (_, _, token) =>
-                (await pointRepair.InitializeLmAsync(client.Token, null, token)).IsSuccess,
+                (await pointRepair.InitializeLmAsync(chzToken, null, token)).IsSuccess,
             [DiagnosticFixKey.RepairLmSync] = async (_, _, token) =>
             {
                 var restore = new LmDatabaseRestoreService(

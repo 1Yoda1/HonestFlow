@@ -44,7 +44,7 @@ namespace HonestFlow.Application.PointStatus
             EsmStatusDto api = status?.Software?.Data ?? status?.Data?.Software?.Data ?? status?.Data ?? status;
             return new TopologyPresentation
             {
-                LmFrame = FrameFromServices(result.Lm),
+                LmFrame = FrameFromNode(result.Lm),
                 EsmFrame = FrameFromServices(result.Esm),
                 KktFrame = FrameFromServices(result.Kkt),
                 ControllerFrame = FrameFromNode(result.Controller),

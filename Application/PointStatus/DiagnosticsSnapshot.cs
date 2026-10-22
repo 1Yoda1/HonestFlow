@@ -173,7 +173,9 @@ namespace HonestFlow.Application.PointStatus
                 : new DiagnosticComponentFact(
                     probe.State == LmDiagnosticProbeState.Available && probe.HealthAvailable
                         ? DiagnosticState.Healthy
-                        : probe.State == LmDiagnosticProbeState.Unknown
+                        : probe.State is LmDiagnosticProbeState.Unknown or
+                            LmDiagnosticProbeState.NotConfigured or
+                            LmDiagnosticProbeState.Initializing
                             ? DiagnosticState.Unknown
                             : DiagnosticState.Failed,
                     node?.Details);

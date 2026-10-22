@@ -107,10 +107,17 @@ namespace HonestFlow.Application.Installation
 
         private static bool IsBelowMinimum(string installed, string minimum)
         {
-            if (string.IsNullOrWhiteSpace(minimum)) return false;
-            return TryParseVersion(installed, out Version installedVersion) &&
-                   TryParseVersion(minimum, out Version minimumVersion) &&
-                   installedVersion < minimumVersion;
+            if (string.IsNullOrWhiteSpace(minimum) || !TryParseVersion(minimum, out Version minimumVersion))
+                return false;
+
+            // Local ATOL diagnostics can report both architectures in one display string.
+            foreach (string entry in installed.Split(" и ", StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (TryParseVersion(entry, out Version installedVersion) && installedVersion < minimumVersion)
+                    return true;
+            }
+
+            return false;
         }
 
         private static bool TryParseVersion(string value, out Version version)

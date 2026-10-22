@@ -49,6 +49,8 @@ namespace HonestFlow.Infrastructure.Api
         public string ClientId { get; set; }
         public string Name { get; set; }
         public string Inn { get; set; }
+        public string? IdentificationCode { get; set; }
+        public string? ChzToken { get; set; }
         public string Architecture { get; set; }
         public bool HasLmDatabaseBackup { get; set; }
         public bool RuDesktopEnabled { get; set; }

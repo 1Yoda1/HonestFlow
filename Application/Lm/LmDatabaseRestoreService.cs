@@ -42,88 +42,98 @@ namespace HonestFlow.Application.Lm
             _packageSource = packageSource;
         }
 
-        public async Task<bool> Restore(IPData selectedIP, CancellationToken cancellationToken = default)
+        public async Task<bool> Restore(IPData selectedIP, CancellationToken cancellationToken = default) =>
+            (await RestoreWithResult(selectedIP, cancellationToken).ConfigureAwait(false)).IsSuccess;
+
+        public async Task<LmDatabaseRestoreResult> RestoreWithResult(
+            IPData selectedIP,
+            CancellationToken cancellationToken = default)
         {
             using var audit = Logger.BeginOperation("Восстановление базы ЛМ ЧЗ", nameof(LmDatabaseRestoreService));
             if (selectedIP == null)
                 throw new ArgumentNullException(nameof(selectedIP));
             cancellationToken.ThrowIfCancellationRequested();
 
+            LmDatabaseRestoreStatus failureStatus = LmDatabaseRestoreStatus.Failed;
             try
             {
                 _licenseGuard.Demand(LicenseOperation.RestoreLmDatabase);
-            }
-            catch (LicenseOperationDeniedException ex)
-            {
-                _log.LogUser($"Восстановление базы заблокировано лицензией: {ex.TechnicalCode}", true);
-                _dialogService.ShowWarning(ex.Message, "Восстановление базы ЛМ ЧЗ");
-                return false;
-            }
 
-            if (!selectedIP.HasLmDatabaseBackup)
-            {
-                string message = $"База ЛМ ЧЗ не найдена по вашему ИНН: {MaskInn(selectedIP.Inn)}.";
-                _log.LogUser(message, true);
-                _dialogService.ShowInformation(message, "Восстановление базы ЛМ ЧЗ");
-                return false;
-            }
+                if (!selectedIP.HasLmDatabaseBackup)
+                {
+                    string message = $"База ЛМ ЧЗ не найдена по вашему ИНН: {MaskInn(selectedIP.Inn)}.";
+                    _log.LogUser(message, true);
+                    _dialogService.ShowInformation(message, "Восстановление базы ЛМ ЧЗ");
+                    return LmDatabaseRestoreResult.BackupNotFound(message);
+                }
 
-            string normalizedInn = NormalizeInn(selectedIP.Inn);
-            if (string.IsNullOrWhiteSpace(normalizedInn))
-            {
-                const string message = "Не удалось определить ИНН точки для поиска базы ЛМ ЧЗ.";
-                _log.LogUser(message, true);
-                _dialogService.ShowWarning(message, "Восстановление базы ЛМ ЧЗ");
-                return false;
-            }
+                string normalizedInn = NormalizeInn(selectedIP.Inn);
+                if (string.IsNullOrWhiteSpace(normalizedInn))
+                {
+                    const string message = "Не удалось определить ИНН точки для поиска базы ЛМ ЧЗ.";
+                    _log.LogUser(message, true);
+                    _dialogService.ShowWarning(message, "Восстановление базы ЛМ ЧЗ");
+                    return LmDatabaseRestoreResult.BackupNotFound(message);
+                }
 
-            string installFolder = FindInstalledRegimeFolder();
-            if (string.IsNullOrWhiteSpace(installFolder))
-            {
-                const string message = "Не удалось определить текущую папку ЛМ ЧЗ. Восстановление базы отменено.";
-                _log.LogUser(message, true);
-                _dialogService.ShowWarning(message, "Восстановление базы ЛМ ЧЗ");
-                return false;
-            }
+                string installFolder = FindInstalledRegimeFolder();
+                if (string.IsNullOrWhiteSpace(installFolder))
+                {
+                    const string message = "Не удалось определить текущую папку ЛМ ЧЗ. Восстановление базы отменено.";
+                    _log.LogUser(message, true);
+                    _dialogService.ShowWarning(message, "Восстановление базы ЛМ ЧЗ");
+                    return LmDatabaseRestoreResult.InstallationUnavailable(message);
+                }
 
-            _progress.SetProgress(5, "ЛМ ЧЗ: проверка данных восстановления");
-            string installerPath = await ResolveLmInstallerPath(selectedIP, cancellationToken);
-            if (string.IsNullOrWhiteSpace(installerPath) || !File.Exists(installerPath))
-            {
-                const string message = "Не найден установщик ЛМ ЧЗ для восстановления базы.";
-                _log.LogUser(message, true);
-                _dialogService.ShowWarning(message, "Восстановление базы ЛМ ЧЗ");
-                return false;
-            }
+                _progress.SetProgress(5, "ЛМ ЧЗ: проверка данных восстановления");
+                failureStatus = LmDatabaseRestoreStatus.InstallerUnavailable;
+                string installerPath = await ResolveLmInstallerPath(selectedIP, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (string.IsNullOrWhiteSpace(installerPath) || !File.Exists(installerPath))
+                {
+                    const string message = "Не найден установщик ЛМ ЧЗ для восстановления базы.";
+                    _log.LogUser(message, true);
+                    _dialogService.ShowWarning(message, "Восстановление базы ЛМ ЧЗ");
+                    return LmDatabaseRestoreResult.InstallerUnavailable(message);
+                }
 
-            string archiveName = $"Regime_{normalizedInn}.zip";
-            cancellationToken.ThrowIfCancellationRequested();
-            string archivePath = await ResolveDatabaseArchivePath(archiveName, cancellationToken);
-            if (string.IsNullOrWhiteSpace(archivePath) || !File.Exists(archivePath))
-            {
-                string message = $"База ЛМ ЧЗ не найдена по вашему ИНН: {MaskInn(selectedIP.Inn)}.";
-                _log.LogUser($"{message} Ожидался архив: {archiveName}", true);
-                _dialogService.ShowInformation(message, "Восстановление базы ЛМ ЧЗ");
-                return false;
-            }
+                string archiveName = $"Regime_{normalizedInn}.zip";
+                failureStatus = LmDatabaseRestoreStatus.DownloadFailed;
+                DatabaseArchiveResolution archive = await ResolveDatabaseArchivePath(archiveName, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (archive.DownloadFailed)
+                {
+                    const string message = "Не удалось получить резервную базу ЛМ ЧЗ. Подробности записаны в журнал.";
+                    _log.LogUser(message, true);
+                    _dialogService.ShowWarning(message, "Восстановление базы ЛМ ЧЗ");
+                    return LmDatabaseRestoreResult.DownloadFailed();
+                }
 
-            bool confirmed = _dialogService.Confirm(
-                "Будет выполнено восстановление базы ЛМ ЧЗ.\n\n" +
-                "Что произойдёт:\n" +
-                "1. Запустится удаление текущего ЛМ ЧЗ.\n" +
-                "2. В окне удаления нужно нажать \"Да\" на вопрос удаления файлов баз данных и настроек.\n" +
-                "3. HonestFlow распакует архив базы и установит ЛМ ЧЗ поверх неё.\n\n" +
-                $"Папка ЛМ ЧЗ: {installFolder}\n" +
-                $"Архив базы: {archiveName}\n\n" +
-                "Продолжить?",
-                "Восстановление базы ЛМ ЧЗ",
-                UserDialogIcon.Warning);
+                string archivePath = archive.Path;
+                if (string.IsNullOrWhiteSpace(archivePath) || !File.Exists(archivePath))
+                {
+                    string message = $"База ЛМ ЧЗ не найдена по вашему ИНН: {MaskInn(selectedIP.Inn)}.";
+                    _log.LogUser($"{message} Ожидался архив: {archiveName}", true);
+                    _dialogService.ShowInformation(message, "Восстановление базы ЛМ ЧЗ");
+                    return LmDatabaseRestoreResult.BackupNotFound(message);
+                }
 
-            if (!confirmed)
-                return false;
+                failureStatus = LmDatabaseRestoreStatus.Failed;
+                bool confirmed = _dialogService.Confirm(
+                    "Будет выполнено восстановление базы ЛМ ЧЗ.\n\n" +
+                    "Что произойдёт:\n" +
+                    "1. Запустится удаление текущего ЛМ ЧЗ.\n" +
+                    "2. В окне удаления нужно нажать \"Да\" на вопрос удаления файлов баз данных и настроек.\n" +
+                    "3. HonestFlow распакует архив базы и установит ЛМ ЧЗ поверх неё.\n\n" +
+                    $"Папка ЛМ ЧЗ: {installFolder}\n" +
+                    $"Архив базы: {archiveName}\n\n" +
+                    "Продолжить?",
+                    "Восстановление базы ЛМ ЧЗ",
+                    UserDialogIcon.Warning);
 
-            try
-            {
+                if (!confirmed)
+                    return LmDatabaseRestoreResult.Cancelled();
+
                 cancellationToken.ThrowIfCancellationRequested();
                 _log.LogUser("=== ВОССТАНОВЛЕНИЕ БАЗЫ ЛМ ЧЗ ===");
                 _log.LogDebug($"LM DB restore: inn={MaskInn(selectedIP.Inn)}, archive={archivePath}, installer={installerPath}, installFolder={installFolder}");
@@ -132,49 +142,67 @@ namespace HonestFlow.Application.Lm
 
                 _progress.SetProgress(50, "ЛМ ЧЗ: подготовка восстановления базы");
 
-                var installer = new LmModuleInstaller(installerPath, _dialogService, cancellationToken);
-                await installer.RestoreDatabaseFromArchive(
-                    archivePath,
-                    installFolder,
-                    (percent, step) => _progress.SetProgress(percent, step));
+                await RestoreDatabaseFromArchive(installerPath, archivePath, installFolder, cancellationToken);
 
                 _progress.SetProgress(100, "ЛМ ЧЗ: база восстановлена");
                 _log.LogUser("База ЛМ ЧЗ восстановлена.");
                 _dialogService.ShowInformation("База ЛМ ЧЗ восстановлена.", "Готово");
-                return true;
+                return LmDatabaseRestoreResult.Success();
             }
             catch (LicenseOperationDeniedException ex)
             {
                 _progress.SetProgress(100, "ЛМ ЧЗ: восстановление заблокировано лицензией");
                 _log.LogUser($"Восстановление базы заблокировано лицензией: {ex.TechnicalCode}", true);
                 _dialogService.ShowWarning(ex.Message, "Восстановление базы ЛМ ЧЗ");
-                return false;
+                return LmDatabaseRestoreResult.Denied(ex.Message);
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 _progress.SetProgress(100, "ЛМ ЧЗ: восстановление базы отменено");
-                _log.LogUser($"Восстановление базы ЛМ ЧЗ отменено: {ex.Message}", true);
-                _log.LogDebug($"Восстановление базы ЛМ ЧЗ отменено: {ex}");
+                _log.LogUser("Восстановление базы ЛМ ЧЗ отменено.");
                 throw;
+            }
+            catch (OperationCanceledException ex) when (failureStatus == LmDatabaseRestoreStatus.Failed)
+            {
+                // The installer can cancel after the operator declines database deletion.
+                _progress.SetProgress(100, "ЛМ ЧЗ: восстановление базы отменено");
+                _log.LogUser("Восстановление базы ЛМ ЧЗ отменено.");
+                _log.LogDebug($"Восстановление базы ЛМ ЧЗ отменено: {ex}");
+                return LmDatabaseRestoreResult.Cancelled();
             }
             catch (Exception ex)
             {
+                LmDatabaseRestoreResult result = failureStatus switch
+                {
+                    LmDatabaseRestoreStatus.InstallerUnavailable => LmDatabaseRestoreResult.InstallerUnavailable(
+                        "Не удалось получить установщик ЛМ ЧЗ для восстановления базы. Подробности записаны в журнал."),
+                    LmDatabaseRestoreStatus.DownloadFailed => LmDatabaseRestoreResult.DownloadFailed(),
+                    _ => LmDatabaseRestoreResult.Failed()
+                };
                 _progress.SetProgress(100, "ЛМ ЧЗ: ошибка восстановления базы");
-                _log.LogUser($"Ошибка восстановления базы ЛМ ЧЗ: {ex.Message}", true);
+                _log.LogUser(result.UserMessage, true);
                 _log.LogDebug($"Ошибка восстановления базы ЛМ ЧЗ: {ex}");
-                _dialogService.ShowError($"Ошибка восстановления базы ЛМ ЧЗ:\n{ex.Message}", "Ошибка");
-                return false;
+                _dialogService.ShowError(result.UserMessage, "Ошибка");
+                return result;
             }
         }
 
-        private async Task<string> ResolveDatabaseArchivePath(string archiveName, CancellationToken cancellationToken)
+        protected virtual Task RestoreDatabaseFromArchive(
+            string installerPath, string archivePath, string installFolder, CancellationToken cancellationToken)
+        {
+            var installer = new LmModuleInstaller(installerPath, _dialogService, cancellationToken);
+            return installer.RestoreDatabaseFromArchive(
+                archivePath, installFolder, (percent, step) => _progress.SetProgress(percent, step));
+        }
+
+        protected virtual async Task<DatabaseArchiveResolution> ResolveDatabaseArchivePath(string archiveName, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             string localPath = Path.Combine(ConfigManager.GetInstallersFolder(), archiveName);
             if (File.Exists(localPath))
             {
                 _log.LogDebug($"Архив базы ЛМ ЧЗ найден локально: {localPath}");
-                return localPath;
+                return DatabaseArchiveResolution.Found(localPath);
             }
 
             _progress.SetProgress(30, $"Скачивание базы ЛМ ЧЗ: {archiveName}");
@@ -185,11 +213,26 @@ namespace HonestFlow.Application.Lm
 
             bool downloaded = await ConfigManager.DownloadInstallerIfNeeded(archiveName, progress, cancellationToken);
             if (!downloaded)
-                return null;
+                return DatabaseArchiveResolution.DownloadFailure();
 
             string remotePath = AppPaths.ResolveRemoteInstallerPath(archiveName);
             _log.LogDebug($"Архив базы ЛМ ЧЗ скачан: {remotePath}");
-            return remotePath;
+            return DatabaseArchiveResolution.Found(remotePath);
+        }
+
+        protected sealed class DatabaseArchiveResolution
+        {
+            private DatabaseArchiveResolution(string path, bool downloadFailed)
+            {
+                Path = path;
+                DownloadFailed = downloadFailed;
+            }
+
+            public string Path { get; }
+            public bool DownloadFailed { get; }
+
+            public static DatabaseArchiveResolution Found(string path) => new(path, false);
+            public static DatabaseArchiveResolution DownloadFailure() => new(null, true);
         }
 
         private async Task<string> ResolveLmInstallerPath(IPData selectedIP, CancellationToken cancellationToken)
@@ -258,7 +301,7 @@ namespace HonestFlow.Application.Lm
             return result;
         }
 
-        private static string FindInstalledRegimeFolder()
+        protected virtual string FindInstalledRegimeFolder()
         {
             string location = FindInstallLocationInRegistry(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
             if (!string.IsNullOrWhiteSpace(location))

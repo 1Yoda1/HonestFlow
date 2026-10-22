@@ -34,6 +34,7 @@ namespace HonestFlow.Application.Installation
         private readonly ILicenseOperationGuard _licenseGuard;
         private readonly IInstallationPackageSource _packageSource;
         private readonly bool _initializeLm;
+        private readonly string _lmChzToken;
 
         public InstallationService(
             ILogService logService,
@@ -42,7 +43,10 @@ namespace HonestFlow.Application.Installation
             ILicenseOperationGuard licenseGuard,
             bool useRemoteConfigMode = false,
             IInstallationPackageSource packageSource = null,
-            bool initializeLm = true)
+            bool initializeLm = true,
+            string lmChzToken = null,
+            ILmValidationService lmValidator = null,
+            IVersionCheckService versionChecker = null)
         {
             _log = logService;
             _progress = progressService;
@@ -51,8 +55,9 @@ namespace HonestFlow.Application.Installation
             _licenseGuard = licenseGuard ?? throw new ArgumentNullException(nameof(licenseGuard));
             _packageSource = packageSource;
             _initializeLm = initializeLm;
-            _lmValidator = new LmValidationService(_log);
-            _versionChecker = new VersionCheckService(_log);
+            _lmChzToken = lmChzToken;
+            _lmValidator = lmValidator ?? new LmValidationService(_log);
+            _versionChecker = versionChecker ?? new VersionCheckService(_log);
         }
 
         public async Task<bool> CheckLmAndInstall(
@@ -107,7 +112,7 @@ namespace HonestFlow.Application.Installation
                     if (!confirmed)
                     {
                         _log.LogUser("Переустановка ЛМ ЧЗ отменена пользователем: организация не подтверждена.");
-                        return false;
+                        throw new OperationCanceledException("Организация ЛМ ЧЗ не подтверждена.", cancellationToken);
                     }
 
                     forceLmInstall = true;
@@ -117,7 +122,7 @@ namespace HonestFlow.Application.Installation
 
                 return await PerformInstallation(selectedIP, versions, lmCheck, forceLmInstall, lmPlanReason, options, cancellationToken);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
                 _log.LogUser("Установка прервана пользователем.");
                 throw;
@@ -170,6 +175,7 @@ namespace HonestFlow.Application.Installation
                     selectedIP,
                     effectiveVersions,
                     "РУЧНАЯ ПЕРЕУСТАНОВКА",
+                    LicenseOperation.ReinstallComponents,
                     cancellationToken);
 
                 _progress.SetProgress(100, success ? "Ручная переустановка завершена" : "Ручная переустановка завершена с ошибками");
@@ -262,6 +268,7 @@ namespace HonestFlow.Application.Installation
                 selectedIP,
                 effectiveVersions,
                 "УСТАНОВКА",
+                LicenseOperation.InstallComponents,
                 cancellationToken);
 
             _progress.SetProgress(100, success ? "Установка завершена!" : "Установка завершена с ошибками");
@@ -618,6 +625,7 @@ namespace HonestFlow.Application.Installation
             IPData selectedIP,
             VersionsData versions,
             string executionTitle,
+            LicenseOperation operation,
             CancellationToken cancellationToken = default)
         {
             int total = plan.RequiredCount;
@@ -634,6 +642,8 @@ namespace HonestFlow.Application.Installation
                 int endPercent = 70 + completed * 25 / total;
                 _progress.SetProgress(startPercent, $"{item.DisplayName}: подготовка...");
 
+                cancellationToken.ThrowIfCancellationRequested();
+                _licenseGuard.Demand(operation);
                 bool success = await InstallComponent(
                     item,
                     selectedIP,
@@ -647,7 +657,12 @@ namespace HonestFlow.Application.Installation
             return allSuccess;
         }
 
-        private async Task<bool> InstallComponent(
+        protected string ResolveLmChzToken(IPData selectedIP) =>
+            // Authenticated package-source composition uses only current configuration secrets.
+            // A missing Service token must not revive a legacy IPData token.
+            _packageSource != null ? _lmChzToken : _lmChzToken ?? selectedIP.Token;
+
+        protected virtual async Task<bool> InstallComponent(
             ComponentPlanItem item,
             IPData selectedIP,
             VersionsData versions,
@@ -678,6 +693,13 @@ namespace HonestFlow.Application.Installation
                         _log.LogUser("✅ Пакет ЛМ ЧЗ установлен без инициализации");
                         return true;
                     }
+                    string lmChzToken = ResolveLmChzToken(selectedIP);
+                    _log.LogDebug($"LM CHZ token configured: {!string.IsNullOrWhiteSpace(lmChzToken)}");
+                    if (string.IsNullOrWhiteSpace(lmChzToken))
+                    {
+                        _log.LogUser("❌ Для инициализации ЛМ ЧЗ не настроен токен.", true);
+                        return false;
+                    }
                     SetComponentProgress(progressStart, progressEnd, 5, "ЛМ ЧЗ: подготовка");
                     var lm = new LmModuleService(
                         item.InstallerPath,
@@ -689,8 +711,8 @@ namespace HonestFlow.Application.Installation
                         progressEnd,
                         cancellationToken);
                     bool lmSuccess = item.ForceReinstall
-                        ? await lm.ReinstallAndInitialize(selectedIP.Token, selectedIP.Inn, "ручная переустановка оператором")
-                        : await lm.EnsureInstalledAndInitialized(selectedIP.Token, selectedIP.Inn);
+                        ? await lm.ReinstallAndInitialize(lmChzToken, selectedIP.Inn, "ручная переустановка оператором")
+                        : await lm.EnsureInstalledAndInitialized(lmChzToken, selectedIP.Inn);
                     SetComponentProgress(progressStart, progressEnd, 100, lmSuccess ? "ЛМ ЧЗ: готов" : "ЛМ ЧЗ: ошибка");
                     string lmAction = item.NeedInstall ? "установлен" : "инициализирован";
                     _log.LogUser(

@@ -90,13 +90,13 @@ public sealed class ServiceConnectionTests
         Assert.Contains("_applicationMode = ApplicationMode.Service", activation);
         Assert.Contains("_paidExecutionEnabled = true", activation);
         Assert.Contains("_autoFixWorkflow = CreateAutoFixWorkflow();", activation);
-        Assert.Contains("RefreshTopologyAsync", activation);
+        Assert.Contains("RefreshCurrentSectionAfterRuntimeChangeAsync", activation);
         Assert.DoesNotContain("new MainWindow", activation);
         Assert.DoesNotContain("new CompactMainWindow", activation);
 
         Assert.Contains("_applicationMode = ApplicationMode.Free", deactivation);
         Assert.Contains("_pointStatusRefresh = _localContext?.PointStatusRefresh", deactivation);
-        Assert.Contains("RefreshTopologyAsync", deactivation);
+        Assert.Contains("RefreshCurrentSectionAfterRuntimeChangeAsync", deactivation);
         Assert.DoesNotContain("Close()", deactivation);
     }
 

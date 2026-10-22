@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationTokenSource? _installationCancellation;
     private TaskCompletionSource? _installationCompletion;
+    private TaskCompletionSource<TsPiotRegistrationChoice>? _installationChoice;
     private ApplicationStartupController? _startupController;
     private readonly ILogService _logService;
     private readonly ExternalApplicationLauncher _externalLauncher = new();
@@ -51,6 +52,8 @@ public partial class MainWindow : Window
     private ServiceRuntimeContext? _serviceRuntime;
     private ServiceConnectionState _serviceConnectionState = ServiceConnectionState.Disconnected;
     private CancellationTokenSource? _serviceLifetime;
+    private readonly RuntimeRefreshTracker _runtimeRefreshes = new();
+    private bool _serviceDisconnectRunning;
     private readonly SemaphoreSlim _serviceConnectionGate = new(1, 1);
     private CancellationTokenSource? _silentServiceResumeCancellation;
     private bool _silentServiceResumeStarted;
@@ -142,7 +145,8 @@ public partial class MainWindow : Window
         CloudStatusPanel.Visibility = Visibility.Collapsed;
         RemoteAccessStatusPanel.Visibility = Visibility.Collapsed;
         FreeFooterPanel.Visibility = Visibility.Visible;
-        SectionOutput.Text = "HonestFlow Free готов к локальной диагностике.";
+        if (_section != Section.Log)
+            SectionOutput.Text = "HonestFlow Free готов к локальной диагностике.";
     }
 
     private void ApplyServicePresentation()
@@ -151,10 +155,11 @@ public partial class MainWindow : Window
         ProductTitleText.Text = "HonestFlow Service";
         ApplicationVersionText.Text = $"HonestFlow Service v{GetApplicationVersion()}";
         ClientNameText.Text = string.IsNullOrWhiteSpace(_client?.Name) ? "Рабочая точка" : _client.Name;
-        ClientDetailsText.Text = string.IsNullOrWhiteSpace(_client?.Inn)
-            ? Environment.MachineName
-            : $"ИНН: {_client.Inn}";
+        ClientDetailsText.Text = string.IsNullOrWhiteSpace(_deviceId)
+            ? "Device ID: недоступен"
+            : $"Device ID: {_deviceId}";
         CopyDeviceIdButton.Visibility = Visibility.Visible;
+        CopyDeviceIdButton.IsEnabled = !string.IsNullOrWhiteSpace(_deviceId);
         LogoutButton.Content = "Отключить Service";
         LogoutButton.Visibility = Visibility.Visible;
         ConnectServiceButton.Visibility = Visibility.Collapsed;
@@ -167,17 +172,18 @@ public partial class MainWindow : Window
         SimpleFixButton.Visibility = Visibility.Visible;
         DetailedFixButton.Visibility = Visibility.Visible;
         UpdateInstructionAvailability();
-        SendDiagnosticsButton.Visibility = Visibility.Collapsed;
+        SendDiagnosticsButton.Visibility = Visibility.Visible;
         ServiceControlColumn.Visibility = Visibility.Visible;
-        RemoveEsmGuiDuplicatesButton.Visibility = Visibility.Collapsed;
-        AdminCommandPromptButton.Visibility = Visibility.Collapsed;
-        AdminPowerShellButton.Visibility = Visibility.Collapsed;
+        RemoveEsmGuiDuplicatesButton.Visibility = Visibility.Visible;
+        AdminCommandPromptButton.Visibility = Visibility.Visible;
+        AdminPowerShellButton.Visibility = Visibility.Visible;
         ExpectedVersionColumn.Visibility = Visibility.Visible;
         VersionMatchColumn.Visibility = Visibility.Visible;
         CloudStatusPanel.Visibility = Visibility.Visible;
         RemoteAccessStatusPanel.Visibility = Visibility.Visible;
         FreeFooterPanel.Visibility = Visibility.Collapsed;
-        SectionOutput.Text = "HonestFlow Service подключён. Доступны автоматическое исправление и обслуживание компонентов.";
+        if (_section != Section.Log)
+            SectionOutput.Text = "HonestFlow Service подключён. Доступны автоматическое исправление и обслуживание компонентов.";
         ShowServiceConnectionStatus(ServiceConnectionState.Active, null);
     }
 
@@ -185,8 +191,8 @@ public partial class MainWindow : Window
     {
         _serviceConnectionState = state;
         string presentation = ServiceEntitlementEvaluator.Message(state, message);
-        SectionOutput.Text = presentation;
-        HeaderStatusDescription.Text = presentation;
+        if (_section != Section.Log)
+            SectionOutput.Text = presentation;
     }
 
     public MainWindow(StartupResult startup, IPData client, LicenseObservationSnapshot? license) : this()
@@ -232,6 +238,11 @@ public partial class MainWindow : Window
         await RefreshServiceToolsAsync();
     }
     private async void ComponentsNav_Click(object sender, RoutedEventArgs e)
+    {
+        await ShowComponentsAsync();
+    }
+
+    private async Task ShowComponentsAsync()
     {
         ShowSection(
             Section.Components,
@@ -328,7 +339,8 @@ public partial class MainWindow : Window
             return;
         DiagnosticLogSelection? selection = SelectDiagnosticLogs();
         if (selection == null) return;
-        await RunOperationAsync("Собираем диагностику…", async () =>
+        long generation = _runtimeRefreshes.Generation;
+        await RunOperationAsync("Собираем диагностику…", async cancellationToken =>
         {
             if (!_paidExecutionEnabled)
             {
@@ -336,8 +348,9 @@ public partial class MainWindow : Window
                     throw new InvalidOperationException("Локальный сбор диагностики не инициализирован.");
                 DiagnosticArchiveInfo localArchive = await Task.Run(
                     () => _localDiagnosticArchive.CreateArchiveInfo(selection, pointAddress: null),
-                    _lifetime.Token);
-                SectionOutput.Text = $"Архив создан: {localArchive.ArchivePath}";
+                    cancellationToken);
+                if (IsCurrentRuntime(generation) && _section != Section.Log)
+                    SectionOutput.Text = $"Архив создан: {localArchive.ArchivePath}";
                 return;
             }
 
@@ -346,12 +359,20 @@ public partial class MainWindow : Window
                 new DiagnosticArchiveService(_logService),
                 new DiagnosticsEmailSender(_logService, ruDesktop));
             DiagnosticArchiveInfo archive = await workflow.CreateArchiveAsync(
-                selection, _license?.PointAddress, _lifetime.Token);
-            SectionOutput.Text = $"Архив создан: {archive.ArchivePath}";
+                selection, _license?.PointAddress, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsCurrentRuntime(generation)) return;
+            if (_section != Section.Log) SectionOutput.Text = $"Архив создан: {archive.ArchivePath}";
             if (send)
             {
-                await workflow.SendArchiveAsync(archive, (percent, message) => Dispatcher.Invoke(() => SectionOutput.Text = $"{message} ({percent}%)"));
-                SectionOutput.Text = "Диагностика отправлена в поддержку.";
+                CreateLicenseGuard().Demand(LicenseOperation.SendDiagnostics);
+                await workflow.SendArchiveAsync(archive, (percent, message) => Dispatcher.Invoke(() =>
+                {
+                    if (IsCurrentRuntime(generation) && !cancellationToken.IsCancellationRequested && _section != Section.Log)
+                        SectionOutput.Text = $"{message} ({percent}%)";
+                }));
+                if (IsCurrentRuntime(generation) && _section != Section.Log)
+                    SectionOutput.Text = "Диагностика отправлена в поддержку.";
             }
         });
     }
@@ -386,6 +407,13 @@ public partial class MainWindow : Window
     private async Task InstallAllAsync()
     {
         if (!_paidExecutionEnabled || _startup == null || _client == null) return;
+        TsPiotRegistrationChoice registrationChoice = await AskTsPiotRegistrationAsync();
+        if (registrationChoice == TsPiotRegistrationChoice.Cancel)
+            return;
+
+        bool registerTsPiot = registrationChoice == TsPiotRegistrationChoice.Register;
+        bool componentsInstalled = false;
+        bool cancelledBeforeInstallation = false;
         ComponentInstallationCompletionResult? completion = null;
         await RunInstallationOperationAsync(
             "Обновление компонентов",
@@ -400,14 +428,31 @@ public partial class MainWindow : Window
                         : "Не выбрана рабочая точка.");
                 InstallationOptions? options = ResolveInstallationOptions(readiness.SystemRequirements);
                 if (options == null)
+                {
+                    cancelledBeforeInstallation = true;
                     return false;
-                completion = await workflow.InstallAndRegisterTsPiotAsync(_client, cancellationToken, options);
-                return completion.IsSuccessful;
+                }
+
+                if (registerTsPiot)
+                {
+                    completion = await workflow.InstallAndRegisterTsPiotAsync(_client, cancellationToken, options);
+                    componentsInstalled = completion.ComponentsInstalled;
+                    return completion.IsSuccessful;
+                }
+
+                componentsInstalled = await workflow.InstallAsync(_client, cancellationToken, options);
+                return componentsInstalled;
             },
             "Обновление компонентов завершено.",
-            "Обновление завершено без подтверждения успеха. Проверьте журнал.",
+            "Не удалось обновить компоненты. Подробности записаны в журнал.",
             "Обновление компонентов отменено.",
-            () => FormatInstallationCompletionStatus(completion));
+            () => cancelledBeforeInstallation
+                ? "Обновление компонентов отменено."
+                : registerTsPiot
+                    ? FormatInstallationCompletionStatus(completion)
+                    : componentsInstalled
+                        ? "Компоненты обновлены."
+                        : "Не удалось обновить компоненты. Подробности записаны в журнал.");
     }
 
     private async Task RunInstallationOperationAsync(
@@ -422,9 +467,9 @@ public partial class MainWindow : Window
         if (!_paidExecutionEnabled) return;
         if (_operationRunning) return;
 
+        long generation = _runtimeRefreshes.Generation;
         _operationRunning = true;
-        CancellationTokenSource installationCancellation =
-            CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        CancellationTokenSource installationCancellation = CreateRuntimeCancellation();
         _installationCancellation = installationCancellation;
         ShowInstallationProgress(title, initialStatus);
         string finalStatus;
@@ -434,7 +479,8 @@ public partial class MainWindow : Window
             finalStatus = successStatusFactory?.Invoke() ?? (result ? successStatus : failureStatus);
             if (result) InstallationProgressBar.Value = 100;
         }
-        catch (OperationCanceledException) when (installationCancellation.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (
+            installationCancellation.IsCancellationRequested || ex.CancellationToken == installationCancellation.Token)
         {
             finalStatus = cancelledStatus;
         }
@@ -446,10 +492,11 @@ public partial class MainWindow : Window
 
         try
         {
+            if (!IsCurrentRuntime(generation)) return;
             SectionOutput.Text = finalStatus;
             InstallationProgressText.Text = finalStatus;
             await RefreshAfterComponentOperationAsync();
-            if (!_lifetime.IsCancellationRequested)
+            if (IsCurrentRuntime(generation))
                 await WaitForInstallationAcknowledgementAsync();
         }
         finally
@@ -460,6 +507,7 @@ public partial class MainWindow : Window
             if (ReferenceEquals(_installationCancellation, installationCancellation))
                 _installationCancellation = null;
             _operationRunning = false;
+            if (!_lifetime.IsCancellationRequested) SetActionsEnabled(true);
         }
     }
 
@@ -483,14 +531,20 @@ public partial class MainWindow : Window
 
     private static string FormatInstallationCompletionStatus(ComponentInstallationCompletionResult? completion)
     {
-        if (completion?.KktBootstrap != null)
-            return completion.KktBootstrap.Message;
+        if (completion == null || !completion.ComponentsInstalled)
+            return "Не удалось обновить компоненты. Подробности записаны в журнал.";
+        if (completion.PostInstallationStatus != ComponentPostInstallationStatus.None)
+            return completion.PostInstallationUserMessage;
+        if (completion.KktBootstrap != null)
+            return string.IsNullOrWhiteSpace(completion.KktBootstrap.Message)
+                ? "Компоненты обновлены. Не удалось завершить автоматическую регистрацию ТС ПИоТ."
+                : $"Компоненты установлены. {completion.KktBootstrap.Message}";
         return completion?.TsPiotRegistration?.Status switch
         {
             TsPiotRegistrationStatus.Success => "Компоненты установлены. ТС ПИоТ автоматически зарегистрирован.",
             TsPiotRegistrationStatus.EsmUnavailable => "Компоненты установлены. Автоматическая регистрация ТС ПИоТ не выполнена: ЕСМ недоступен.",
             TsPiotRegistrationStatus.KktNotDetected => "Компоненты установлены. Автоматическая регистрация ТС ПИоТ не выполнена: ККТ не обнаружена.",
-            TsPiotRegistrationStatus.RegistrationFailed => "Компоненты установлены. Автоматическая регистрация ТС ПИоТ не выполнена.",
+            TsPiotRegistrationStatus.RegistrationFailed => "Компоненты обновлены. Автоматическая регистрация ТС ПИоТ завершилась ошибкой.",
             _ => "Компоненты установлены."
         };
     }
@@ -506,9 +560,12 @@ public partial class MainWindow : Window
         InstallationProgressTitle.Text = title;
         InstallationProgressBar.Value = 0;
         InstallationProgressBar.IsIndeterminate = false;
+        InstallationProgressBar.Visibility = Visibility.Visible;
         InstallationProgressText.Text = initialStatus;
+        InstallationChoicePanel.Visibility = Visibility.Collapsed;
         AutoFixHistoryList.ItemsSource = null;
         AutoFixHistoryPanel.Visibility = Visibility.Collapsed;
+        InstallationCancelButton.Visibility = Visibility.Visible;
         InstallationCancelButton.Content = "Отменить";
         InstallationCancelButton.IsEnabled = true;
         MainWindowInteractiveContent.IsEnabled = false;
@@ -523,9 +580,12 @@ public partial class MainWindow : Window
         InstallationProgressTitle.Text = "Обновление компонентов";
         InstallationProgressBar.Value = 0;
         InstallationProgressBar.IsIndeterminate = false;
+        InstallationProgressBar.Visibility = Visibility.Visible;
         InstallationProgressText.Text = "Подготовка…";
+        InstallationChoicePanel.Visibility = Visibility.Collapsed;
         AutoFixHistoryList.ItemsSource = null;
         AutoFixHistoryPanel.Visibility = Visibility.Collapsed;
+        InstallationCancelButton.Visibility = Visibility.Visible;
         InstallationCancelButton.Content = "Отменить";
         InstallationCancelButton.IsEnabled = true;
     }
@@ -545,8 +605,43 @@ public partial class MainWindow : Window
         _installationCancellation.Cancel();
     }
 
+    private async Task<TsPiotRegistrationChoice> AskTsPiotRegistrationAsync()
+    {
+        var choice = new TaskCompletionSource<TsPiotRegistrationChoice>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _installationChoice = choice;
+        InstallationProgressTitle.Text = "Обновление компонентов";
+        InstallationProgressBar.Visibility = Visibility.Collapsed;
+        InstallationProgressText.Text = "После обновления компонентов выполнить автоматическую регистрацию ТС ПИоТ?";
+        InstallationChoicePanel.Visibility = Visibility.Visible;
+        InstallationCancelButton.Visibility = Visibility.Collapsed;
+        MainWindowInteractiveContent.IsEnabled = false;
+        InstallationBusyOverlay.Visibility = Visibility.Visible;
+        RegisterTsPiotButton.Focus();
+
+        try
+        {
+            return await choice.Task;
+        }
+        finally
+        {
+            if (ReferenceEquals(_installationChoice, choice))
+                _installationChoice = null;
+            HideInstallationProgress();
+        }
+    }
+
+    private void RegisterTsPiot_Click(object sender, RoutedEventArgs e) =>
+        _installationChoice?.TrySetResult(TsPiotRegistrationChoice.Register);
+
+    private void InstallOnly_Click(object sender, RoutedEventArgs e) =>
+        _installationChoice?.TrySetResult(TsPiotRegistrationChoice.InstallOnly);
+
+    private void CancelInstallationChoice_Click(object sender, RoutedEventArgs e) =>
+        _installationChoice?.TrySetResult(TsPiotRegistrationChoice.Cancel);
+
     private Task WaitForInstallationAcknowledgementAsync()
     {
+        if (_lifetime.IsCancellationRequested) return Task.CompletedTask;
         _installationCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         InstallationCancelButton.Content = "ОК";
         InstallationCancelButton.IsEnabled = true;
@@ -577,23 +672,34 @@ public partial class MainWindow : Window
 
     private async Task LoadComponentVersionsAsync()
     {
-        if (_componentVersionStatusService == null) return;
+        ComponentVersionStatusService? service = _componentVersionStatusService;
+        if (service == null || _lifetime.IsCancellationRequested) return;
+        ApplicationMode mode = _applicationMode;
+        IPData? client = _client;
+        VersionsData? versions = _startup?.RemoteVersions;
+        LocalRuntimeContext localRuntime = _localRuntime ?? LocalRuntimeContext.CreateCurrent();
+        RuntimeRefreshTracker.Request request = _runtimeRefreshes.Begin("Components");
+        using CancellationTokenSource cancellation = CreateRuntimeCancellation();
         try
         {
-            _componentStatuses = await Task.Run(
-                () => _applicationMode == ApplicationMode.Free
-                    ? _componentVersionStatusService.GetLocalStatuses(_localRuntime ?? LocalRuntimeContext.CreateCurrent())
-                    : _client == null
+            ComponentVersionStatus[] statuses = await Task.Run(
+                () => mode == ApplicationMode.Free
+                    ? service.GetLocalStatuses(localRuntime)
+                    : client == null
                         ? Array.Empty<ComponentVersionStatus>()
-                        : _componentVersionStatusService.GetClientStatuses(_client, _startup?.RemoteVersions),
-                _lifetime.Token);
+                        : service.GetClientStatuses(client, versions),
+                cancellation.Token);
+            if (!CanApplyRefresh(request)) return;
+            _componentStatuses = statuses;
             PopulateComponentVersions();
         }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            if (!CanApplyRefresh(request)) return;
             Logger.LogException(ex, "WPF component version refresh failed", nameof(MainWindow));
-            SectionDescription.Text = "Не удалось определить версии компонентов: " + ex.Message;
+            if (_section == Section.Components)
+                SectionDescription.Text = "Не удалось определить версии компонентов: " + ex.Message;
         }
     }
 
@@ -614,7 +720,7 @@ public partial class MainWindow : Window
                 ComponentVersionState.NotInstalled => "Не установлен",
                 _ => "Неизвестно"
             },
-            CanUpdate = _paidExecutionEnabled && status.State != ComponentVersionState.Current,
+            CanUpdate = _paidExecutionEnabled,
             ActionText = _paidExecutionEnabled ? "Переустановить" : "Недоступно",
             ActionTooltip = !_paidExecutionEnabled
                 ? "Управление компонентами доступно в HonestFlow Service"
@@ -631,7 +737,18 @@ public partial class MainWindow : Window
 
     private async void UpdateComponent_Click(object sender, RoutedEventArgs e)
     {
-        if (!_paidExecutionEnabled || _client == null || sender is not Button { Tag: InstallationComponent component }) return;
+        if (!_paidExecutionEnabled)
+            return;
+
+        if (_client == null || sender is not Button { Tag: InstallationComponent component })
+        {
+            const string message = "Переустановка компонента недоступна: Service-сессия не инициализирована.";
+            Logger.Warning(message, nameof(MainWindow));
+            SectionOutput.Text = message;
+            MessageBox.Show(this, message, "Компоненты", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         string componentName = ComponentDisplayName(component);
         await RunInstallationOperationAsync(
             $"Переустановка: {componentName}",
@@ -759,6 +876,7 @@ public partial class MainWindow : Window
     private async Task RestoreLmDatabaseAsync()
     {
         if (!_paidExecutionEnabled || _startup == null || _client == null) return;
+        LmDatabaseRestoreResult restoreResult = null;
         await RunInstallationOperationAsync(
             "Восстановление ЛМ ЧЗ",
             "Проверка резервной базы…",
@@ -774,20 +892,25 @@ public partial class MainWindow : Window
                     guard,
                     useRemoteConfigMode: false,
                     packageSource: ApiConfigurationInstallationPackageSource.CreateRequired(_startup.AuthService));
-                return await service.Restore(_client, cancellationToken);
+                restoreResult = await service.RestoreWithResult(_client, cancellationToken);
+                return restoreResult.IsSuccess;
             },
             "База ЛМ ЧЗ восстановлена.",
-            "Восстановление ЛМ ЧЗ не завершено. Проверьте журнал.",
-            "Восстановление ЛМ ЧЗ отменено.");
+            "Не удалось восстановить базу ЛМ ЧЗ. Подробности записаны в журнал.",
+            "Восстановление базы ЛМ ЧЗ отменено.",
+            () => restoreResult?.UserMessage ?? "Не удалось восстановить базу ЛМ ЧЗ. Подробности записаны в журнал.");
     }
 
     private async Task RefreshLicenseAsync()
     {
         if (_startup == null || _client == null) return;
-        await RunOperationAsync("Проверяем лицензию…", async () =>
+        long generation = _runtimeRefreshes.Generation;
+        await RunOperationAsync("Проверяем лицензию…", async cancellationToken =>
         {
             var workflow = new LicenseRefreshWorkflow(_startup.AuthService, _logService);
-            _license = await workflow.RefreshAsync(_client, null, _lifetime.Token);
+            LicenseObservationSnapshot snapshot = await workflow.RefreshAsync(_client, null, cancellationToken);
+            if (!IsCurrentRuntime(generation)) return;
+            _license = snapshot;
             UpdateLicenseSummary();
             string message = string.IsNullOrWhiteSpace(_license?.Message)
                 ? "Проверка лицензии завершена."
@@ -801,7 +924,10 @@ public partial class MainWindow : Window
                 return;
             }
 
-            ReturnToStartupForDeniedLicense(_license);
+            if (_serviceRuntime != null)
+                await DeactivateServiceAsync(ServiceEntitlementEvaluator.Evaluate(_license), _license?.Message, logout: false);
+            else
+                ReturnToStartupForDeniedLicense(_license);
         });
     }
 
@@ -819,21 +945,29 @@ public partial class MainWindow : Window
             !string.Equals(snapshot.ClientId, _client?.ClientId, StringComparison.Ordinal))
             return;
 
-        if (_serviceRuntime is not null)
+        ServiceRuntimeContext? runtime = _serviceRuntime;
+        if (runtime is not null)
         {
             ServiceConnectionState state = ServiceEntitlementEvaluator.Evaluate(snapshot);
             if (state == ServiceConnectionState.Active &&
-                string.Equals(snapshot.DeviceId, _serviceRuntime.DeviceId, StringComparison.Ordinal))
+                string.Equals(snapshot.DeviceId, runtime.DeviceId, StringComparison.Ordinal))
             {
                 _license = snapshot;
-                _serviceRuntime.Entitlement = snapshot;
+                runtime.Entitlement = snapshot;
                 return;
             }
 
             if (state == ServiceConnectionState.Active)
                 state = ServiceConnectionState.Unavailable;
 
-            Dispatcher.BeginInvoke(async () => await DeactivateServiceAsync(state, snapshot.Message, logout: false));
+            else
+                runtime.Entitlement = snapshot;
+
+            Dispatcher.BeginInvoke(async () =>
+            {
+                if (ReferenceEquals(_serviceRuntime, runtime) && !_lifetime.IsCancellationRequested)
+                    await DeactivateServiceAsync(state, snapshot.Message, logout: false);
+            });
             return;
         }
 
@@ -890,14 +1024,17 @@ public partial class MainWindow : Window
     private async Task SendHelpAsync()
     {
         if (!_paidExecutionEnabled || _startup == null || _client == null || _license == null) return;
-        await RunOperationAsync("Отправляем запрос помощи…", async () =>
+        long generation = _runtimeRefreshes.Generation;
+        await RunOperationAsync("Отправляем запрос помощи…", async cancellationToken =>
         {
             var session = new ApplicationStartupSession(
                 _startup,
                 _logService,
                 new HonestFlow.Application.Auth.SellerAuthenticationWorkflow(_startup.AuthService, LicenseObservationSnapshotStore.Instance));
-            await _startupController!.SendHelpRequestAsync(session, _license, _lifetime.Token);
-            SectionOutput.Text = "Запрос помощи отправлен.";
+            CreateLicenseGuard().Demand(LicenseOperation.RequestHelp);
+            await _startupController!.SendHelpRequestAsync(session, _license, cancellationToken);
+            if (IsCurrentRuntime(generation) && _section != Section.Log)
+                SectionOutput.Text = "Запрос помощи отправлен.";
         });
     }
 
@@ -906,6 +1043,7 @@ public partial class MainWindow : Window
 
     private async void Logout_Click(object sender, RoutedEventArgs e)
     {
+        if (_serviceDisconnectRunning || _lifetime.IsCancellationRequested) return;
         if (_serviceRuntime is not null)
         {
             await DeactivateServiceAsync(
@@ -939,9 +1077,11 @@ public partial class MainWindow : Window
     private async void Rate_Click(object sender, RoutedEventArgs e)
     {
         if (_client == null) return;
-        await RunOperationAsync("Отправляем оценку…", async () =>
+        long generation = _runtimeRefreshes.Generation;
+        await RunOperationAsync("Отправляем оценку…", async cancellationToken =>
         {
             await new AppRatingEmailSender(_logService).Send(_client.Name, _license?.PointAddress);
+            if (!IsCurrentRuntime(generation) || cancellationToken.IsCancellationRequested) return;
             _ratingSent = true;
             RateButton.Content = "♥  Спасибо за оценку";
             RateButton.IsEnabled = false;
@@ -960,7 +1100,8 @@ public partial class MainWindow : Window
             new WpfDialogs(this, suppressInformationMessages: showInstallationProgress),
             CreateLicenseGuard(),
             useRemoteConfigMode: false,
-            packageSource: packageSource);
+            packageSource: packageSource,
+            lmChzToken: _serviceRuntime?.ChzToken);
         var registration = new TsPiotRegistrationWorkflow(
             new EsmTsPiotRegistrationClient(),
             new EsmApiPortProbe(),
@@ -976,7 +1117,7 @@ public partial class MainWindow : Window
                 _pointStatusRefresh,
                 progress,
                 CreateLicenseGuard,
-                ApplyPointStatusRefresh);
+                CreateRuntimeRefreshCallback());
         return new ComponentInstallationWorkflow(
             service,
             Utils.IsAdministrator,
@@ -988,20 +1129,45 @@ public partial class MainWindow : Window
     private ILicenseOperationGuard CreateLicenseGuard() =>
         new ServiceOperationGuard(() => _serviceRuntime);
 
-    private async Task RunOperationAsync(string status, Func<Task> operation)
+    private CancellationTokenSource CreateRuntimeCancellation() =>
+        CancellationTokenSource.CreateLinkedTokenSource(
+            _lifetime.Token, _serviceLifetime?.Token ?? CancellationToken.None);
+
+    private bool IsCurrentRuntime(long generation) =>
+        !_lifetime.IsCancellationRequested && _runtimeRefreshes.IsCurrent(generation);
+
+    private bool CanApplyRefresh(RuntimeRefreshTracker.Request request) =>
+        !_lifetime.IsCancellationRequested && request.IsCurrent;
+
+    private Action<PointStatusRefreshResult> CreateRuntimeRefreshCallback()
     {
-        if (_operationRunning) return;
+        long generation = _runtimeRefreshes.Generation;
+        return refresh =>
+        {
+            if (IsCurrentRuntime(generation)) ApplyPointStatusRefresh(refresh);
+        };
+    }
+
+    private async Task RunOperationAsync(string status, Func<CancellationToken, Task> operation)
+    {
+        if (_operationRunning || _lifetime.IsCancellationRequested) return;
+        long generation = _runtimeRefreshes.Generation;
+        using CancellationTokenSource cancellation = CreateRuntimeCancellation();
         _operationRunning = true;
         SetActionsEnabled(false);
         SectionOutput.Text = status;
-        try { await operation(); }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        try { await operation(cancellation.Token); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception ex)
         {
             Logger.LogException(ex, status, nameof(MainWindow));
-            SectionOutput.Text = ex.Message;
+            if (IsCurrentRuntime(generation) && _section != Section.Log) SectionOutput.Text = ex.Message;
         }
-        finally { _operationRunning = false; SetActionsEnabled(true); }
+        finally
+        {
+            _operationRunning = false;
+            if (!_lifetime.IsCancellationRequested) SetActionsEnabled(true);
+        }
     }
 
     private void SetActionsEnabled(bool enabled)
@@ -1025,7 +1191,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { SectionOutput.Text = ex.Message; }
     }
 
-    private async void RefreshTopology_Click(object sender, RoutedEventArgs e) => await RefreshTopologyAsync();
+    private async void RefreshTopology_Click(object sender, RoutedEventArgs e) => await RefreshTopologyAsync(allowDuringOperation: false);
 
     private void SimpleView_Click(object sender, RoutedEventArgs e) => ShowSimpleView();
     private void DetailedView_Click(object sender, RoutedEventArgs e) => ShowDetailedView();
@@ -1047,8 +1213,16 @@ public partial class MainWindow : Window
         if (!_paidExecutionEnabled) return;
         if (_operationRunning || _autoFixWorkflow == null) return;
 
+        AutoFixWorkflow workflow = _autoFixWorkflow;
+        long generation = _runtimeRefreshes.Generation;
+        string clientName = _client?.Name ?? "текущий клиент";
         _operationRunning = true;
-        CancellationTokenSource autoFixCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        CancellationTokenSource autoFixCancellation = CreateRuntimeCancellation();
+        Action<AutoFixProgress> reportProgress = progress => Dispatcher.Invoke(() =>
+        {
+            if (IsCurrentRuntime(generation) && !autoFixCancellation.IsCancellationRequested)
+                SetAutoFixProgress(progress);
+        });
         _installationCancellation = autoFixCancellation;
         SetActionsEnabled(false);
         RefreshTopologyButton.IsEnabled = false;
@@ -1056,17 +1230,21 @@ public partial class MainWindow : Window
         InstallationProgressBar.IsIndeterminate = true;
         try
         {
-            AutoFixResult result = await _autoFixWorkflow.RunAsync(SetAutoFixProgress, autoFixCancellation.Token);
+            AutoFixResult result = await workflow.RunAsync(reportProgress, autoFixCancellation.Token);
+            if (!IsCurrentRuntime(generation)) return;
             while (result.Status == AutoFixStatus.RequiresConfirmation && result.Continuation != null)
             {
                 bool confirmed = MessageBox.Show(this,
-                    $"ЛМ ЧЗ настроен для другой организации.\n\nВы точно работаете под «{_client?.Name ?? "текущий клиент"}» на этом рабочем месте?\n\n" +
+                    $"ЛМ ЧЗ настроен для другой организации.\n\nВы точно работаете под «{clientName}» на этом рабочем месте?\n\n" +
                     "При подтверждении будет переустановлен только ЛМ ЧЗ.",
                     "Подтверждение организации ЛМ ЧЗ",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning) == MessageBoxResult.Yes;
-                result = await _autoFixWorkflow.ContinueAsync(
-                    result.Continuation, confirmed, SetAutoFixProgress, autoFixCancellation.Token);
+                autoFixCancellation.Token.ThrowIfCancellationRequested();
+                if (!IsCurrentRuntime(generation)) return;
+                result = await workflow.ContinueAsync(
+                    result.Continuation, confirmed, reportProgress, autoFixCancellation.Token);
+                if (!IsCurrentRuntime(generation)) return;
             }
 
             if (result.State?.Refresh != null)
@@ -1081,12 +1259,14 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException) when (autoFixCancellation.IsCancellationRequested)
         {
-            SectionOutput.Text = "Автоматическое исправление отменено.";
+            if (IsCurrentRuntime(generation) && _section != Section.Log)
+                SectionOutput.Text = "Автоматическое исправление отменено.";
         }
         catch (Exception ex)
         {
             Logger.LogException(ex, "WPF AutoFix failed", nameof(MainWindow));
-            SectionOutput.Text = "Не удалось выполнить автоматическое исправление: " + ex.Message;
+            if (IsCurrentRuntime(generation) && _section != Section.Log)
+                SectionOutput.Text = "Не удалось выполнить автоматическое исправление: " + ex.Message;
         }
         finally
         {
@@ -1096,8 +1276,11 @@ public partial class MainWindow : Window
             if (ReferenceEquals(_installationCancellation, autoFixCancellation))
                 _installationCancellation = null;
             _operationRunning = false;
-            RefreshTopologyButton.IsEnabled = true;
-            SetActionsEnabled(true);
+            if (!_lifetime.IsCancellationRequested)
+            {
+                if (IsCurrentRuntime(generation)) RefreshTopologyButton.IsEnabled = true;
+                SetActionsEnabled(true);
+            }
         }
     }
 
@@ -1114,7 +1297,8 @@ public partial class MainWindow : Window
             new MainWindowProgress(this, showInstallationProgress: true),
             ResolveInstallationOptions,
             CreateLicenseGuard,
-            ApplyPointStatusRefresh);
+            CreateRuntimeRefreshCallback(),
+            _serviceRuntime?.ChzToken);
     }
 
     private void SetAutoFixProgress(AutoFixProgress progress)
@@ -1135,8 +1319,8 @@ public partial class MainWindow : Window
         DetailedProblemPanel.Visibility = Visibility.Collapsed;
         TopologyInfoIcon.Visibility = Visibility.Collapsed;
         StatusSectionTitle.Text = "Состояние рабочего места";
-        SimpleViewButton.Background = BrushFrom("#0868D9");
-        SimpleViewButton.Foreground = Brushes.White;
+        SimpleViewButton.Background = BrushFrom("#EDF4FD");
+        SimpleViewButton.Foreground = BrushFrom("#075CB8");
         DetailedViewButton.Background = Brushes.White;
         DetailedViewButton.Foreground = BrushFrom("#111827");
     }
@@ -1148,52 +1332,78 @@ public partial class MainWindow : Window
         DetailedProblemPanel.Visibility = Visibility.Visible;
         TopologyInfoIcon.Visibility = Visibility.Visible;
         StatusSectionTitle.Text = "Схема кассового узла";
-        DetailedViewButton.Background = BrushFrom("#0868D9");
-        DetailedViewButton.Foreground = Brushes.White;
+        DetailedViewButton.Background = BrushFrom("#EDF4FD");
+        DetailedViewButton.Foreground = BrushFrom("#075CB8");
         SimpleViewButton.Background = Brushes.White;
         SimpleViewButton.Foreground = BrushFrom("#111827");
     }
 
-    private async Task RefreshTopologyAsync(bool allowDuringOperation = false)
+    // Only the user refresh button opts out while an operation owns the window.
+    private async Task RefreshTopologyAsync(bool allowDuringOperation = true)
     {
-        if (_pointStatusRefresh == null || (_operationRunning && !allowDuringOperation)) return;
+        PointStatusRefreshService? service = _pointStatusRefresh;
+        if (service == null || _lifetime.IsCancellationRequested || (_operationRunning && !allowDuringOperation)) return;
+        ApplicationMode mode = _applicationMode;
+        IPData? client = _client;
+        VersionsData? versions = _startup?.RemoteVersions;
+        RuntimeRefreshTracker.Request request = _runtimeRefreshes.Begin("Topology");
+        using CancellationTokenSource cancellation = CreateRuntimeCancellation();
         RefreshTopologyButton.IsEnabled = false;
         try
         {
             SetTopologyChecking();
-            PointStatusRefreshResult refresh = _applicationMode == ApplicationMode.Free
-                ? await _pointStatusRefresh.RefreshLocalAsync(
+            PointStatusRefreshResult refresh = mode == ApplicationMode.Free
+                ? await service.RefreshLocalAsync(
                     _localRuntime ?? LocalRuntimeContext.CreateCurrent(),
-                    _lifetime.Token)
-                : await _pointStatusRefresh.RefreshForClientAsync(
-                    _client ?? throw new InvalidOperationException("Service client is not initialized."),
-                    _startup?.RemoteVersions,
-                    _lifetime.Token);
-            ApplyPointStatusRefresh(refresh);
+                    cancellation.Token)
+                : await service.RefreshForClientAsync(
+                    client ?? throw new InvalidOperationException("Service client is not initialized."),
+                    versions,
+                    cancellation.Token);
+            if (CanApplyRefresh(request)) ApplyPointStatusRefresh(refresh);
         }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception ex)
         {
+            if (!CanApplyRefresh(request)) return;
             Logger.LogException(ex, "WPF topology refresh failed", nameof(MainWindow));
-            SectionOutput.Text = ex.Message;
+            if (_section == Section.Home) SectionOutput.Text = ex.Message;
         }
-        finally { RefreshTopologyButton.IsEnabled = true; }
+        finally
+        {
+            if (CanApplyRefresh(request)) RefreshTopologyButton.IsEnabled = true;
+        }
     }
 
     private async Task<DiagnosticsSnapshot> RefreshDeveloperDiagnosticsAsync(CancellationToken cancellationToken)
     {
-        if (_pointStatusRefresh == null)
+        PointStatusRefreshService? service = _pointStatusRefresh;
+        if (service == null)
             throw new InvalidOperationException("Diagnostics refresh is not initialized.");
-        PointStatusRefreshResult refresh = _applicationMode == ApplicationMode.Free
-            ? await _pointStatusRefresh.RefreshLocalAsync(
-                _localRuntime ?? LocalRuntimeContext.CreateCurrent(),
-                cancellationToken)
-            : await _pointStatusRefresh.RefreshForClientAsync(
-                _client ?? throw new InvalidOperationException("Service client is not initialized."),
-                _startup?.RemoteVersions,
-                cancellationToken);
-        ApplyPointStatusRefresh(refresh);
-        return refresh.Diagnostics;
+        ApplicationMode mode = _applicationMode;
+        IPData? client = _client;
+        VersionsData? versions = _startup?.RemoteVersions;
+        RuntimeRefreshTracker.Request request = _runtimeRefreshes.Begin("Topology");
+        using CancellationTokenSource runtimeCancellation = CreateRuntimeCancellation();
+        using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            runtimeCancellation.Token, cancellationToken);
+        try
+        {
+            PointStatusRefreshResult refresh = mode == ApplicationMode.Free
+                ? await service.RefreshLocalAsync(
+                    _localRuntime ?? LocalRuntimeContext.CreateCurrent(), cancellation.Token)
+                : await service.RefreshForClientAsync(
+                    client ?? throw new InvalidOperationException("Service client is not initialized."),
+                    versions, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (!CanApplyRefresh(request)) throw new OperationCanceledException("Runtime refresh was superseded.");
+            ApplyPointStatusRefresh(refresh);
+            return refresh.Diagnostics;
+        }
+        finally
+        {
+            if (CanApplyRefresh(request)) RefreshTopologyButton.IsEnabled = true;
+        }
     }
 
     private void ApplyPointStatusRefresh(PointStatusRefreshResult refresh)
@@ -1208,12 +1418,12 @@ public partial class MainWindow : Window
         string checkedAt = DateTime.Now.ToString("d MMMM yyyy, HH:mm:ss");
         LastCheckText.Text = checkedAt;
         SimpleLastCheckText.Text = $"Последняя проверка: {checkedAt}";
-        SectionOutput.Text = "Проверка связей завершена.";
+        if (_section == Section.Home && !_operationRunning)
+            SectionOutput.Text = "Проверка связей завершена.";
         bool canAutoFix = _paidExecutionEnabled &&
             !_operationRunning && refresh.Diagnostics.Issues.Any(issue => issue.SuggestedFix.HasValue);
         SimpleFixButton.IsEnabled = canAutoFix;
         DetailedFixButton.IsEnabled = canAutoFix;
-        UpdateHeaderWorkState(refresh.Diagnostics);
     }
 
     private void UpdateInstructionAvailability() =>
@@ -1272,6 +1482,14 @@ public partial class MainWindow : Window
 
     private void ApplyDetailedProblems(DiagnosticIssuePresentation issue)
     {
+        WorkState? workState = _lastDiagnostics?.WorkState;
+        DetailedProblemIcon.Text = workState == WorkState.Ready ? "\uE73E" : "\uE7BA";
+        DetailedProblemIcon.Foreground = BrushFrom(workState switch
+        {
+            WorkState.Ready => "#0E9F6E",
+            WorkState.WorkImpossible => "#D91532",
+            _ => "#E3A008"
+        });
         DetailedProblemTitle.Text = issue.Title;
         DetailedProblemReasons.Text = string.IsNullOrWhiteSpace(issue.Recommendation)
             ? issue.Description
@@ -1368,25 +1586,6 @@ public partial class MainWindow : Window
         SimpleHelpButton.Visibility = showHelp ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void UpdateHeaderWorkState(DiagnosticsSnapshot diagnostics)
-    {
-        if (_applicationMode != ApplicationMode.Free || diagnostics == null)
-            return;
-
-        (string icon, string title, string description, string background, string foreground) = diagnostics.WorkState switch
-        {
-            WorkState.Ready => ("✓", "Готово к работе", "Локальная проверка завершена", "#E8F8F1", "#0E9F6E"),
-            WorkState.Attention => ("!", "Требуется внимание", "Есть рекомендации по локальным компонентам", "#FFF6D8", "#B77900"),
-            WorkState.WorkImpossible => ("×", "Работа невозможна", "Один из обязательных компонентов недоступен", "#FDE8EC", "#D91532"),
-            _ => ("?", "Не удалось проверить", "Повторите локальную проверку", "#F4F7FB", "#68748A")
-        };
-        HeaderStatusIcon.Text = icon;
-        HeaderStatusTitle.Text = title;
-        HeaderStatusDescription.Text = description;
-        HeaderStatusBorder.Background = BrushFrom(background);
-        HeaderStatusIcon.Foreground = HeaderStatusTitle.Foreground = HeaderStatusDescription.Foreground = BrushFrom(foreground);
-    }
-
     private void ApplyFrame(
         Border border,
         Border icon,
@@ -1457,20 +1656,28 @@ public partial class MainWindow : Window
 
     private async Task RefreshServiceToolsAsync()
     {
+        if (_lifetime.IsCancellationRequested) return;
+        RuntimeRefreshTracker.Request request = _runtimeRefreshes.Begin("Tools");
+        using CancellationTokenSource cancellation = CreateRuntimeCancellation();
         try
         {
-            ServiceSnapshot[] snapshots = await _serviceSnapshotProvider.GetSnapshotsAsync(_lifetime.Token);
+            ServiceSnapshot[] snapshots = await _serviceSnapshotProvider.GetSnapshotsAsync(cancellation.Token);
+            if (!CanApplyRefresh(request)) return;
             string[] fixedNames = { "regime", "yenisei", "esm-orchestrator", "esm-lm-controller", "uem-agent", "uem-updater", "atol-grpc-service" };
             var rows = fixedNames.Select(name => ServiceToolRow.From(name, snapshots.FirstOrDefault(snapshot =>
-                string.Equals(snapshot.ServiceName, name, StringComparison.OrdinalIgnoreCase)))).ToList();
+                string.Equals(snapshot.ServiceName, name, StringComparison.OrdinalIgnoreCase)), _paidExecutionEnabled)).ToList();
             ServiceSnapshot? esmCm = snapshots.FirstOrDefault(snapshot => snapshot.ServiceName.StartsWith("esm-cm-", StringComparison.OrdinalIgnoreCase));
             rows.Insert(3, esmCm == null
                 ? new ServiceToolRow { DisplayName = "ЕСМ CM", ServiceName = "esm-cm-*", Status = "Не найдена", CanControl = false }
-                : ServiceToolRow.From(esmCm.ServiceName, esmCm));
+                : ServiceToolRow.From(esmCm.ServiceName, esmCm, _paidExecutionEnabled));
+
             ServiceToolsGrid.ItemsSource = rows;
         }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        catch (Exception ex) { ShowToolError(ex); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            if (CanApplyRefresh(request) && _section == Section.Diagnostics) ShowToolError(ex);
+        }
     }
 
     private void ServiceToolsGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -1488,10 +1695,13 @@ public partial class MainWindow : Window
         if (!_paidExecutionEnabled) return;
         if (sender is not Button { Tag: string serviceName } || serviceName.EndsWith("*", StringComparison.Ordinal)) return;
         if (_operationRunning) return;
+        long generation = _runtimeRefreshes.Generation;
         if (action == ServiceAction.Stop && MessageBox.Show(this,
                 $"Остановить службу {serviceName}? Работа связанного компонента будет прервана.",
                 "Остановка службы", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        if (!IsCurrentRuntime(generation) || !_paidExecutionEnabled) return;
 
+        using CancellationTokenSource cancellation = CreateRuntimeCancellation();
         _operationRunning = true;
         ServiceToolsGrid.IsEnabled = false;
         SectionDescription.Text = $"{ServiceActionText(action)} службу «{serviceName}»…";
@@ -1502,36 +1712,41 @@ public partial class MainWindow : Window
             {
                 case ServiceAction.Start:
                     await serviceControl.StartServiceAsync(serviceName,
-                        HonestFlow.Models.Licensing.LicenseOperation.ManageServices, _lifetime.Token);
+                        HonestFlow.Models.Licensing.LicenseOperation.ManageServices, cancellation.Token);
                     break;
                 case ServiceAction.Stop:
                     await serviceControl.StopServiceAsync(serviceName,
-                        HonestFlow.Models.Licensing.LicenseOperation.ManageServices, _lifetime.Token);
+                        HonestFlow.Models.Licensing.LicenseOperation.ManageServices, cancellation.Token);
                     break;
                 case ServiceAction.Restart:
                     await serviceControl.RestartServiceAsync(serviceName,
-                        HonestFlow.Models.Licensing.LicenseOperation.ManageServices, _lifetime.Token);
+                        HonestFlow.Models.Licensing.LicenseOperation.ManageServices, cancellation.Token);
                     break;
             }
+            if (!IsCurrentRuntime(generation)) return;
             await RefreshServiceToolsAsync();
-            SectionDescription.Text = $"Служба «{serviceName}»: состояние обновлено.";
+            if (IsCurrentRuntime(generation) && _section == Section.Diagnostics)
+                SectionDescription.Text = $"Служба «{serviceName}»: состояние обновлено.";
         }
         catch (WindowsServiceControlException ex)
         {
+            if (!IsCurrentRuntime(generation)) return;
             Logger.LogException(ex, $"Service control failed: {serviceName}", nameof(MainWindow));
             await RefreshServiceToolsAsync();
+            if (!IsCurrentRuntime(generation) || _section != Section.Diagnostics) return;
             SectionDescription.Text = ex.Message;
             MessageBox.Show(this, ex.Message, "Управление службой", MessageBoxButton.OK,
                 ex.Failure == WindowsServiceControlFailure.AccessDenied
                     ? MessageBoxImage.Warning
                     : MessageBoxImage.Information);
         }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        catch (Exception ex) { ShowToolError(ex); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception ex) { if (IsCurrentRuntime(generation)) ShowToolError(ex); }
         finally
         {
             ServiceToolsGrid.IsEnabled = true;
             _operationRunning = false;
+            if (!_lifetime.IsCancellationRequested) SetActionsEnabled(true);
         }
     }
 
@@ -1595,6 +1810,7 @@ public partial class MainWindow : Window
     private void RemoveEsmGuiDuplicates_Click(object sender, RoutedEventArgs e)
     {
         if (!_paidExecutionEnabled) return;
+        long generation = _runtimeRefreshes.Generation;
         Process[] processes = Process.GetProcessesByName("esm-gui");
         try
         {
@@ -1607,6 +1823,8 @@ public partial class MainWindow : Window
             Process keep = processes.OrderBy(process => TryGetStartTime(process)).First();
             foreach (Process process in processes.Where(process => process.Id != keep.Id))
             {
+                if (!IsCurrentRuntime(generation)) return;
+                CreateLicenseGuard().Demand(LicenseOperation.OpenLocalTools);
                 process.Kill(entireProcessTree: true);
                 process.WaitForExit(5000);
             }
@@ -1621,7 +1839,7 @@ public partial class MainWindow : Window
     private async void ToolsCollect_Click(object sender, RoutedEventArgs e) => await RunDiagnosticsAsync(send: false);
     private async void ConnectService_Click(object sender, RoutedEventArgs e)
     {
-        if (_applicationMode != ApplicationMode.Free || _operationRunning || _manualServiceConnectionRunning)
+        if (_applicationMode != ApplicationMode.Free || _operationRunning || _manualServiceConnectionRunning || _serviceDisconnectRunning)
             return;
 
         _manualServiceConnectionRunning = true;
@@ -1665,7 +1883,11 @@ public partial class MainWindow : Window
                 _serviceConnectionGate.Release();
             _manualServiceConnectionRunning = false;
             _operationRunning = false;
-            ConnectServiceButton.IsEnabled = true;
+            if (!_lifetime.IsCancellationRequested)
+            {
+                ConnectServiceButton.IsEnabled = !_serviceDisconnectRunning;
+                SetActionsEnabled(true);
+            }
         }
     }
 
@@ -1689,7 +1911,7 @@ public partial class MainWindow : Window
         {
             await _serviceConnectionGate.WaitAsync(cancellationToken);
             gateEntered = true;
-            if (_applicationMode != ApplicationMode.Free)
+            if (_applicationMode != ApplicationMode.Free || _serviceDisconnectRunning)
                 return;
 
             ServiceConnectionResult result = await RememberedServiceResumeService
@@ -1720,9 +1942,16 @@ public partial class MainWindow : Window
     internal async Task ActivateServiceAsync(ServiceRuntimeContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        if (_lifetime.IsCancellationRequested || _serviceDisconnectRunning) return;
+        _runtimeRefreshes.Advance();
+        long generation = _runtimeRefreshes.Generation;
         _serviceLifetime?.Cancel();
         _serviceLifetime?.Dispose();
         _serviceLifetime = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        CancellationToken serviceToken = _serviceLifetime.Token;
+        _lastPointStatus = null;
+        _lastDiagnostics = null;
+        _componentStatuses = Array.Empty<ComponentVersionStatus>();
 
         LicenseObservationSnapshotStore.Instance.SnapshotChanged -= LicenseSnapshotChanged;
         _serviceRuntime = context;
@@ -1740,47 +1969,98 @@ public partial class MainWindow : Window
         _autoFixWorkflow = CreateAutoFixWorkflow();
 
         ApplyServicePresentation();
-        await RefreshTopologyAsync();
-        _ = RunPeriodicLicenseRefreshAsync(_serviceLifetime.Token);
+        SetActionsEnabled(!_operationRunning);
+        await RefreshCurrentSectionAfterRuntimeChangeAsync();
+        if (IsCurrentRuntime(generation) && !serviceToken.IsCancellationRequested && ReferenceEquals(_serviceRuntime, context))
+            _ = RunPeriodicLicenseRefreshAsync(serviceToken);
     }
 
     private async Task DeactivateServiceAsync(ServiceConnectionState state, string? message, bool logout)
     {
         ServiceRuntimeContext? service = _serviceRuntime;
-        if (service is null)
+        if (service is null || _serviceDisconnectRunning)
             return;
 
-        _serviceLifetime?.Cancel();
-        _serviceLifetime?.Dispose();
-        _serviceLifetime = null;
+        _serviceDisconnectRunning = true;
+        _runtimeRefreshes.Advance();
+        long generation = _runtimeRefreshes.Generation;
         LicenseObservationSnapshotStore.Instance.SnapshotChanged -= LicenseSnapshotChanged;
         _serviceRuntime = null;
         _paidExecutionEnabled = false;
-
-        if (logout)
-        {
-            try
-            {
-                await service.Controller.LogoutAsync(service.Session, _lifetime.Token);
-            }
-            catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
-            {
-            }
-        }
+        _serviceLifetime?.Cancel();
+        _serviceLifetime?.Dispose();
+        _serviceLifetime = null;
+        _installationChoice?.TrySetResult(TsPiotRegistrationChoice.Cancel);
+        _installationCompletion?.TrySetResult();
 
         _startupController = null;
         _startup = null;
         _client = null;
         _license = null;
         _deviceId = null;
+        _autoFixWorkflow = null;
+        _lastPointStatus = null;
+        _lastDiagnostics = null;
+        _componentStatuses = Array.Empty<ComponentVersionStatus>();
         _applicationMode = ApplicationMode.Free;
         _serviceConnectionState = state;
         _pointStatusRefresh = _localContext?.PointStatusRefresh;
         _componentVersionStatusService = _localContext?.ComponentVersionStatus;
 
         ApplyFreePresentation();
-        await RefreshTopologyAsync();
-        ShowServiceConnectionStatus(state, message);
+        SetActionsEnabled(!_operationRunning);
+        ConnectServiceButton.IsEnabled = false;
+        try
+        {
+            Task logoutTask = LogoutSessionAsync();
+            await RefreshCurrentSectionAfterRuntimeChangeAsync();
+            await logoutTask;
+            if (IsCurrentRuntime(generation)) ShowServiceConnectionStatus(state, message);
+        }
+        finally
+        {
+            _serviceDisconnectRunning = false;
+            if (!_lifetime.IsCancellationRequested)
+                ConnectServiceButton.IsEnabled = !_manualServiceConnectionRunning;
+        }
+
+        async Task LogoutSessionAsync()
+        {
+            if (!logout) return;
+            try
+            {
+                await service.Controller.LogoutAsync(service.Session, _lifetime.Token);
+            }
+            catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                Logger.LogException(ex, "Service logout failed; local Free mode retained", nameof(MainWindow));
+            }
+        }
+    }
+
+    private async Task RefreshCurrentSectionAfterRuntimeChangeAsync()
+    {
+        // Home must be refreshed even while a different section is visible.
+        Task topologyRefresh = _section == Section.Home
+            ? Task.CompletedTask
+            : RefreshTopologyAsync(allowDuringOperation: true);
+        switch (_section)
+        {
+            case Section.Home:
+                await RefreshTopologyAsync();
+                break;
+            case Section.Diagnostics:
+                await RefreshServiceToolsAsync();
+                break;
+            case Section.Components:
+                await ShowComponentsAsync();
+                break;
+            case Section.Log:
+                UpdateLiveLog(force: true);
+                break;
+        }
+        await topologyRefresh;
     }
     private void ShowToolError(Exception ex)
     {
@@ -1877,11 +2157,15 @@ public partial class MainWindow : Window
     private void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     protected override void OnClosed(EventArgs e)
     {
+        _runtimeRefreshes.Advance();
+        _installationChoice?.TrySetResult(TsPiotRegistrationChoice.Cancel);
+        _installationCompletion?.TrySetResult();
         LicenseObservationSnapshotStore.Instance.SnapshotChanged -= LicenseSnapshotChanged;
         _silentServiceResumeCancellation?.Cancel();
         _silentServiceResumeCancellation?.Dispose();
         _serviceLifetime?.Cancel();
         _serviceLifetime?.Dispose();
+        _serviceLifetime = null;
         _logTimer.Stop();
         _lifetime.Cancel();
         base.OnClosed(e);
@@ -1891,15 +2175,18 @@ public partial class MainWindow : Window
     {
         private readonly MainWindow _window;
         private readonly bool _showInstallationProgress;
+        private readonly long _generation;
 
         public MainWindowProgress(MainWindow window, bool showInstallationProgress = false)
         {
             _window = window;
             _showInstallationProgress = showInstallationProgress;
+            _generation = window._runtimeRefreshes.Generation;
         }
 
         public void SetProgress(int percent, string stepName) => _window.Dispatcher.Invoke(() =>
         {
+            if (!_window.IsCurrentRuntime(_generation)) return;
             int value = Math.Clamp(percent, 0, 100);
             if (_showInstallationProgress)
             {
@@ -1909,7 +2196,8 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _window.SectionOutput.Text = $"{stepName} ({value}%)";
+            if (_window._section != Section.Log)
+                _window.SectionOutput.Text = $"{stepName} ({value}%)";
         });
     }
 
@@ -1942,7 +2230,7 @@ public partial class MainWindow : Window
         public string Status { get; init; } = string.Empty;
         public bool CanControl { get; init; }
 
-        public static ServiceToolRow From(string name, ServiceSnapshot? snapshot) => new()
+        public static ServiceToolRow From(string name, ServiceSnapshot? snapshot, bool canControl) => new()
         {
             DisplayName = name.ToLowerInvariant() switch
             {
@@ -1966,11 +2254,13 @@ public partial class MainWindow : Window
                 null => "Не найдена",
                 _ => snapshot.State
             },
-            CanControl = snapshot != null
+            CanControl = canControl && snapshot != null
         };
     }
 
     private enum ServiceAction { Start, Stop, Restart }
+
+    private enum TsPiotRegistrationChoice { Register, InstallOnly, Cancel }
 
     private sealed class ComponentVersionRow
     {
