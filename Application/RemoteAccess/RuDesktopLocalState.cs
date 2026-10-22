@@ -6,6 +6,11 @@ namespace HonestFlow.Application.RemoteAccess
     {
         public string LastKnownId { get; set; }
         public bool PasswordConfiguredByHonestFlow { get; set; }
+        public string SyncedCredentialId { get; set; }
+        public string CredentialClientId { get; set; }
+        public string PendingRevocationClientId { get; set; }
+        public bool RevocationPending { get; set; }
+        public bool LocalAccessDisabled { get; set; }
         public string PasswordFingerprint { get; set; }
         public DateTime? PasswordConfiguredAt { get; set; }
         public bool SuppressPasswordSetupPrompt { get; set; }

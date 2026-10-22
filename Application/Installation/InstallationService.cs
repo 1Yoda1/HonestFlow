@@ -75,12 +75,13 @@ namespace HonestFlow.Application.Installation
                 _progress.SetProgress(6, "Загрузка конфигурации версий...");
                 var versions = LoadVersions();
                 options ??= InstallationOptions.Default;
-                string expectedLmVersion = options.SkipLmStack ? null : EnsureLmVersionConfigured(versions);
+                bool includeLm = !options.SkipLmStack && options.Includes(InstallationComponent.LmModule);
+                string expectedLmVersion = includeLm ? EnsureLmVersionConfigured(versions) : null;
 
                 _log.LogDebug($"Ожидаемая версия ЛМ ЧЗ: {expectedLmVersion}");
 
                 _progress.SetProgress(8, "Проверка статуса ЛМ ЧЗ...");
-                var lmCheck = options.SkipLmStack ? null : await _lmValidator.CheckLmStatus(expectedLmVersion);
+                var lmCheck = includeLm ? await _lmValidator.CheckLmStatus(expectedLmVersion) : null;
                 var status = lmCheck?.ApiStatus;
 
                 if (lmCheck != null)
@@ -298,16 +299,22 @@ namespace HonestFlow.Application.Installation
             var plan = new InstallationPlan();
             var effectiveVersions = ApplyClientVersionOverrides(selectedIP, versions);
             options ??= InstallationOptions.Default;
-            string expectedLmVersion = options.SkipLmStack ? null : EnsureLmVersionConfigured(effectiveVersions);
+            bool includeLm = !options.SkipLmStack && options.Includes(InstallationComponent.LmModule);
+            string expectedLmVersion = includeLm ? EnsureLmVersionConfigured(effectiveVersions) : null;
+            bool includeAtol = options.Includes(InstallationComponent.AtolDriver);
+            bool includeEsm = options.Includes(InstallationComponent.Esm);
+            bool includeController = !options.SkipLmStack && options.Includes(InstallationComponent.Controller);
 
             bool needLmInstall;
             bool needLmInitialize = false;
             string lmStatusText;
 
-            if (options.SkipLmStack)
+            if (!includeLm)
             {
                 needLmInstall = false;
-                lmStatusText = "пропущен по выбору пользователя";
+                lmStatusText = options.SkipLmStack
+                    ? "пропущен по выбору пользователя"
+                    : "не требуется для выбранного исправления";
             }
             else if (forceLmInstall)
             {
@@ -355,33 +362,35 @@ namespace HonestFlow.Application.Installation
                 ExpectedVersion = expectedLmVersion
             });
 
-            bool needAtolInstall = _versionChecker.NeedAtolInstall(selectedIP, effectiveVersions?.AtolDriver);
+            bool needAtolInstall = includeAtol && _versionChecker.NeedAtolInstall(selectedIP, effectiveVersions?.AtolDriver);
             plan.Items.Add(new ComponentPlanItem
             {
                 Component = InstallationComponent.AtolDriver,
                 DisplayName = "Драйвер АТОЛ",
                 NeedInstall = needAtolInstall,
-                StatusText = needAtolInstall ? "требуется установка" : "OK",
+                StatusText = !includeAtol ? "не требуется для выбранного исправления" : needAtolInstall ? "требуется установка" : "OK",
                 ExpectedVersion = effectiveVersions?.AtolDriver
             });
 
-            bool needEsmInstall = _versionChecker.NeedEsmInstall(effectiveVersions?.ESM);
+            bool needEsmInstall = includeEsm && _versionChecker.NeedEsmInstall(effectiveVersions?.ESM);
             plan.Items.Add(new ComponentPlanItem
             {
                 Component = InstallationComponent.Esm,
                 DisplayName = "ЕСМ",
                 NeedInstall = needEsmInstall,
-                StatusText = needEsmInstall ? "требуется установка" : "OK",
+                StatusText = !includeEsm ? "не требуется для выбранного исправления" : needEsmInstall ? "требуется установка" : "OK",
                 ExpectedVersion = effectiveVersions?.ESM
             });
 
-            bool needControllerInstall = !options.SkipLmStack && _versionChecker.NeedControllerInstall(effectiveVersions?.Controller);
+            bool needControllerInstall = includeController && _versionChecker.NeedControllerInstall(effectiveVersions?.Controller);
             plan.Items.Add(new ComponentPlanItem
             {
                 Component = InstallationComponent.Controller,
                 DisplayName = "Контроллер",
                 NeedInstall = needControllerInstall,
-                StatusText = options.SkipLmStack ? "пропущен по выбору пользователя" : needControllerInstall ? "требуется установка" : "OK",
+                StatusText = !includeController
+                    ? options.SkipLmStack ? "пропущен по выбору пользователя" : "не требуется для выбранного исправления"
+                    : needControllerInstall ? "требуется установка" : "OK",
                 ExpectedVersion = effectiveVersions?.Controller
             });
 

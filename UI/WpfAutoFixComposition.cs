@@ -69,9 +69,15 @@ internal static class WpfAutoFixComposition
 
         var actions = new Dictionary<DiagnosticFixKey, AutoFixAction>
         {
-            [DiagnosticFixKey.RunSmartInstallation] = async (_, _, token) =>
+            [DiagnosticFixKey.RunSmartInstallation] = async (state, _, token) =>
             {
-                ComponentOperationReadiness readiness = installation.CheckReadiness(client, checkLmRequirements: true);
+                InstallationComponent[] components = AutoFixInstallationSelection.From(state.Snapshot).ToArray();
+                if (components.Length == 0)
+                    throw new InvalidOperationException("Не удалось определить компонент для автоматической установки.");
+
+                ComponentOperationReadiness readiness = installation.CheckReadiness(
+                    client,
+                    checkLmRequirements: components.Contains(InstallationComponent.LmModule));
                 if (!readiness.CanContinue)
                     throw new InvalidOperationException(readiness.Status == ComponentOperationReadinessStatus.AdministratorRequired
                         ? "Запустите HonestFlow от имени администратора."
@@ -79,6 +85,11 @@ internal static class WpfAutoFixComposition
                 InstallationOptions? options = owner.Dispatcher.Invoke(
                     () => resolveInstallationOptions(readiness.SystemRequirements));
                 if (options == null) throw new OperationCanceledException(token);
+                options = new InstallationOptions
+                {
+                    SkipLmStack = options.SkipLmStack,
+                    RequestedComponents = components
+                };
                 ComponentInstallationCompletionResult completion =
                     await installation.InstallAndRegisterTsPiotAsync(client, token, options);
                 return completion.IsSuccessful;

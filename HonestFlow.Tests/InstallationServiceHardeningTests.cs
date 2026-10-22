@@ -82,6 +82,25 @@ public sealed class InstallationServiceHardeningTests
         Assert.Single(service.Installed);
     }
 
+    [Fact]
+    public async Task TargetedAtolUpdate_DoesNotQueryLmOrInstallOtherComponents()
+    {
+        var validation = new StubLmValidation();
+        var service = new ProbeInstallationService(
+            new StubPackages(), new StubDialogs(), new RecordingGuard(), validation);
+
+        bool result = await service.CheckLmAndInstall(
+            new IPData { Architecture = "x64" },
+            new InstallationOptions
+            {
+                RequestedComponents = new[] { InstallationComponent.AtolDriver }
+            });
+
+        Assert.True(result);
+        Assert.Equal(0, validation.CheckCalls);
+        Assert.Equal(new[] { InstallationComponent.AtolDriver }, service.Installed);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -157,7 +176,12 @@ public sealed class InstallationServiceHardeningTests
     private sealed class StubLmValidation : ILmValidationService
     {
         public LmValidationResult Result { get; init; } = new();
-        public Task<LmValidationResult> CheckLmStatus(string version) => Task.FromResult(Result);
+        public int CheckCalls { get; private set; }
+        public Task<LmValidationResult> CheckLmStatus(string version)
+        {
+            CheckCalls++;
+            return Task.FromResult(Result);
+        }
         public Task<LmStatus> GetLmStatus(string version) => Task.FromResult(Result.ApiStatus);
         public Task<(bool NeedInstall, string DisplayStatus)> GetLmStatusInfo(string version) =>
             Task.FromResult((Result.NeedsInstall, Result.DisplayStatus));

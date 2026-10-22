@@ -104,7 +104,7 @@ namespace HonestFlow.Application.PointStatus
             }
             Task<LmDiagnosticProbeResult> lmTask = CheckLmStatusAsync(services, currentClient);
             Task<NodeStatus> cloudTask = CheckCloudStatusAsync(cancellationToken);
-            Task<NodeStatus> ruDesktopTask = CheckRuDesktopStatusAsync();
+            Task<RuDesktopStatus> ruDesktopTask = CheckRuDesktopStatusAsync();
             Task<KktPnpResult> kktPnpTask = DetectKktPnpAsync(cancellationToken);
             string requiredKktArchitecture = !string.IsNullOrWhiteSpace(currentClient?.Architecture)
                 ? currentClient.Architecture
@@ -124,6 +124,7 @@ namespace HonestFlow.Application.PointStatus
             NodeStatus lmStatus = lmProbe.Status;
             lmStatus = ApplyLmSystemRequirements(lmStatus, LmSystemRequirements.Check());
 
+            RuDesktopStatus ruDesktopStatus = await ruDesktopTask.ConfigureAwait(false);
             return new PointStatusResult
             {
                 Lm = lmStatus,
@@ -138,7 +139,8 @@ namespace HonestFlow.Application.PointStatus
                     await kktPortTask.ConfigureAwait(false),
                     null),
                 Cloud = await cloudTask.ConfigureAwait(false),
-                RuDesktop = await ruDesktopTask.ConfigureAwait(false),
+                RuDesktop = BuildRuDesktopStatus(ruDesktopStatus),
+                RuDesktopProbe = ruDesktopStatus,
                 EsmApiStatus = controllerTask.Result,
                 GisMtDiagnostics = gisMtDiagnostics,
                 EsmRegistration = esmRegistration,
@@ -400,12 +402,35 @@ namespace HonestFlow.Application.PointStatus
                 ? "Unknown"
                 : (version.State == ComponentVersionState.Current).ToString();
 
-        private async Task<NodeStatus> CheckRuDesktopStatusAsync()
+        private async Task<RuDesktopStatus> CheckRuDesktopStatusAsync()
         {
             if (_ruDesktopService == null)
-                return new NodeStatus(NodeLevel.Warning, "Не проверено", "Сервис проверки RuDesktop не инициализирован");
+                return new RuDesktopStatus
+                {
+                    InstallationState = RuDesktopInstallationState.CheckFailed,
+                    ErrorMessage = "Сервис проверки RuDesktop не инициализирован"
+                };
 
-            var status = await _ruDesktopService.GetStatus().ConfigureAwait(false);
+            try
+            {
+                return await _ruDesktopService.GetStatus().ConfigureAwait(false) ?? new RuDesktopStatus
+                {
+                    InstallationState = RuDesktopInstallationState.CheckFailed,
+                    ErrorMessage = "Проверка RuDesktop не вернула состояние"
+                };
+            }
+            catch (Exception ex)
+            {
+                return new RuDesktopStatus
+                {
+                    InstallationState = RuDesktopInstallationState.CheckFailed,
+                    ErrorMessage = ex.Message
+                };
+            }
+        }
+
+        private static NodeStatus BuildRuDesktopStatus(RuDesktopStatus status)
+        {
             if (!string.IsNullOrWhiteSpace(status.ErrorMessage))
             {
                 return new NodeStatus(
@@ -465,10 +490,9 @@ namespace HonestFlow.Application.PointStatus
             string passwordText = status.PasswordConfiguredByHonestFlow ? "пароль применён" : "пароль не применялся";
             return new NodeStatus(
                 level,
-                "Запросить помощь",
+                "RuDesktop установлен",
                 $"RuDesktop установлен\nID: {status.Id}\nСлужба: {FormatServiceStatus(status)}\nПароль HonestFlow: {passwordText}",
-                statusText: $"ID: {status.Id}\n{passwordText}",
-                actionKind: NodeActionKind.RequestRuDesktopHelp);
+                statusText: $"ID: {status.Id}\n{passwordText}");
         }
 
         private async Task<LmDiagnosticProbeResult> CheckLmStatusAsync(ServiceSnapshot[] services, IPData currentClient)

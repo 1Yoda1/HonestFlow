@@ -161,6 +161,26 @@ namespace HonestFlow.Tests
             Assert.False(registrationClient.Called);
         }
 
+        [Fact]
+        public async Task InstallAndRegisterTsPiotAsync_LmOnlyRepair_DoesNotRegisterTsPiot()
+        {
+            var registrationClient = new StubRegistrationClient(TsPiotRegistrationResult.Success());
+            var workflow = new ComponentInstallationWorkflow(
+                new StubInstallationService { InstallResult = true },
+                () => true,
+                () => new LmSystemRequirementsResult(Array.Empty<string>(), Array.Empty<string>()),
+                RegistrationWorkflow(registrationClient));
+
+            ComponentInstallationCompletionResult result = await workflow.InstallAndRegisterTsPiotAsync(
+                new IPData(),
+                CancellationToken.None,
+                new InstallationOptions { RequestedComponents = new[] { InstallationComponent.LmModule } });
+
+            Assert.True(result.ComponentsInstalled);
+            Assert.Null(result.TsPiotRegistration);
+            Assert.False(registrationClient.Called);
+        }
+
         private static TsPiotRegistrationWorkflow RegistrationWorkflow(TsPiotRegistrationResult result) =>
             RegistrationWorkflow(new StubRegistrationClient(result));
 

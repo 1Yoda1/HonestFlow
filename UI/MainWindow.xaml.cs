@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -67,6 +68,7 @@ public partial class MainWindow : Window
     private readonly TopologyPresentationService _topologyPresentation = new();
     private readonly DiagnosticIssuePresentationMapper _diagnosticPresentation = new();
     private PointStatusRefreshService? _pointStatusRefresh;
+    private ApiServerConnectivityProbe? _apiServerConnectivityProbe;
     private AutoFixWorkflow? _autoFixWorkflow;
     private PointStatusResult? _lastPointStatus;
     private DiagnosticsSnapshot? _lastDiagnostics;
@@ -75,6 +77,9 @@ public partial class MainWindow : Window
     private string? _deviceId;
     private bool _ratingSent;
     private ComponentVersionStatus[] _componentStatuses = Array.Empty<ComponentVersionStatus>();
+    private RuDesktopActionKind _ruDesktopActionKind = RuDesktopActionKind.None;
+    private bool _ruDesktopRebootRequired;
+    private bool _ruDesktopReadyForHelp;
     private readonly WindowsServiceSnapshotProvider _serviceSnapshotProvider;
     private readonly bool _diagnosticsDebugEnabled = DiagnosticsDebugMode.IsEnabled(Environment.GetCommandLineArgs());
 
@@ -144,7 +149,9 @@ public partial class MainWindow : Window
         VersionMatchColumn.Visibility = Visibility.Collapsed;
         CloudStatusPanel.Visibility = Visibility.Collapsed;
         RemoteAccessStatusPanel.Visibility = Visibility.Collapsed;
+        _ruDesktopActionKind = RuDesktopActionKind.None;
         FreeFooterPanel.Visibility = Visibility.Visible;
+        _ = RefreshFreeRevokeAvailabilityAsync();
         if (_section != Section.Log)
             SectionOutput.Text = "HonestFlow Free готов к локальной диагностике.";
     }
@@ -180,7 +187,11 @@ public partial class MainWindow : Window
         ExpectedVersionColumn.Visibility = Visibility.Visible;
         VersionMatchColumn.Visibility = Visibility.Visible;
         CloudStatusPanel.Visibility = Visibility.Visible;
+        CloudStatusText.Text = _apiServerConnectivityProbe is null
+            ? "Облако: состояние не получено"
+            : "Облако: проверяем связь с сервером…";
         RemoteAccessStatusPanel.Visibility = Visibility.Visible;
+        ApplyRuDesktopAction(null);
         FreeFooterPanel.Visibility = Visibility.Collapsed;
         if (_section != Section.Log)
             SectionOutput.Text = "HonestFlow Service подключён. Доступны автоматическое исправление и обслуживание компонентов.";
@@ -469,6 +480,7 @@ public partial class MainWindow : Window
 
         long generation = _runtimeRefreshes.Generation;
         _operationRunning = true;
+        SetActionsEnabled(false);
         CancellationTokenSource installationCancellation = CreateRuntimeCancellation();
         _installationCancellation = installationCancellation;
         ShowInstallationProgress(title, initialStatus);
@@ -1027,18 +1039,267 @@ public partial class MainWindow : Window
         long generation = _runtimeRefreshes.Generation;
         await RunOperationAsync("Отправляем запрос помощи…", async cancellationToken =>
         {
-            var session = new ApplicationStartupSession(
-                _startup,
-                _logService,
-                new HonestFlow.Application.Auth.SellerAuthenticationWorkflow(_startup.AuthService, LicenseObservationSnapshotStore.Instance));
             CreateLicenseGuard().Demand(LicenseOperation.RequestHelp);
-            await _startupController!.SendHelpRequestAsync(session, _license, cancellationToken);
+            RuDesktopStatus status = await new RuDesktopService(_logService).GetStatus();
+            if (string.IsNullOrWhiteSpace(status.SyncedCredentialId) || status.RevocationPending ||
+                (!string.IsNullOrWhiteSpace(status.CredentialClientId) &&
+                 status.CredentialClientId != _client.ClientId))
+                throw new InvalidOperationException("Сначала настройте доступ HonestDesk для этого компьютера.");
+            var api = GetRemoteAccessApiClient();
+            RemoteAccessCredentialStatusDto remote = await api.GetStatusAsync(cancellationToken);
+            if (!remote.IsActive || remote.CredentialId != status.SyncedCredentialId ||
+                remote.RuDesktopId != status.Id)
+                throw new InvalidOperationException("Пароль HonestDesk не синхронизирован. Настройте доступ заново.");
+            await api.RequestHelpAsync(status.SyncedCredentialId, "Запрос удалённой помощи",
+                "Пользователь запросил помощь через HonestFlow.",
+                string.IsNullOrWhiteSpace(_client.Name) ? "HonestFlow" : _client.Name,
+                Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown", cancellationToken);
             if (IsCurrentRuntime(generation) && _section != Section.Log)
                 SectionOutput.Text = "Запрос помощи отправлен.";
         });
     }
 
     private async void RequestHelp_Click(object sender, RoutedEventArgs e) => await SendHelpAsync();
+    private async void RuDesktopAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_paidExecutionEnabled || _operationRunning) return;
+        switch (_ruDesktopActionKind)
+        {
+            case RuDesktopActionKind.Refresh:
+                await RefreshRuDesktopStatusAsync();
+                break;
+            case RuDesktopActionKind.Install:
+            case RuDesktopActionKind.Reinstall:
+                await InstallRuDesktopAsync(_ruDesktopActionKind == RuDesktopActionKind.Reinstall);
+                break;
+            case RuDesktopActionKind.StartService:
+                await StartRuDesktopServiceAsync();
+                break;
+            case RuDesktopActionKind.SetupPassword:
+                await SetupRuDesktopAccessAsync();
+                break;
+            case RuDesktopActionKind.RequestHelp:
+                await SendHelpAsync();
+                break;
+        }
+    }
+
+    private RemoteAccessApiClient GetRemoteAccessApiClient()
+    {
+        if ((_startup?.AuthService as IApiSessionProvider)?.ApiSessionService is not { } session)
+            throw new InvalidOperationException("Для удалённой помощи требуется подключение к HonestFlow Service.");
+        return new RemoteAccessApiClient(session);
+    }
+
+    private async Task SetupRuDesktopAccessAsync()
+    {
+        await RunOperationAsync("Настраиваем доступ HonestDesk…", async token =>
+        {
+            CreateLicenseGuard().Demand(LicenseOperation.AutomateRuDesktop);
+            var api = GetRemoteAccessApiClient();
+            RemoteAccessKeyDto key = await api.GetTrustedKeyAsync(token);
+            RuDesktopStatus local = await new RuDesktopService(_logService).GetStatus();
+            if (local.RevocationPending && !string.IsNullOrWhiteSpace(local.PendingRevocationClientId) &&
+                local.PendingRevocationClientId != _client.ClientId)
+                throw new InvalidOperationException("Сначала завершите отзыв доступа предыдущего клиента.");
+            RemoteAccessCredentialStatusDto previous = await api.GetStatusAsync(token);
+            if (previous.IsActive)
+                await api.RevokeAsync(token);
+            string password = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+            var service = new RuDesktopService(_logService);
+            RuDesktopSetupResult setup = await service.ConfigurePermanentPassword(password);
+            if (!setup.Success) throw new InvalidOperationException(setup.ErrorMessage);
+            string credentialId = Guid.NewGuid().ToString("D");
+            string cipher = RemoteAccessApiClient.EncryptPassword(key, password);
+            await api.PutCredentialAsync(credentialId, key.KeyId, setup.Id, cipher, token);
+            service.MarkCredentialSynced(credentialId, _client.ClientId);
+            await RefreshRuDesktopStatusAsync(allowDuringOperation: true);
+        });
+    }
+
+    private async void RuDesktopRevoke_Click(object sender, RoutedEventArgs e)
+    {
+        if (_operationRunning || !_paidExecutionEnabled) return;
+        if (MessageBox.Show(this,
+                "Отзыв доступа отменит открытую заявку помощи. Продолжить?",
+                "Отключить быстрый доступ HonestDesk", MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        await RunOperationAsync("Отзываем доступ HonestDesk…", async token =>
+        {
+            var service = new RuDesktopService(_logService);
+            RuDesktopStatus status = await service.GetStatus();
+            if (!status.RevocationPending) service.MarkRevocationPending();
+            status = await service.GetStatus();
+            bool localDisabled = status.LocalAccessDisabled || await service.DisablePermanentPasswordAsync();
+            if (localDisabled) service.MarkLocalAccessDisabled();
+            bool serverRevoked = false;
+            try
+            {
+                if (string.IsNullOrWhiteSpace(status.PendingRevocationClientId) ||
+                    status.PendingRevocationClientId == _client.ClientId)
+                {
+                    await GetRemoteAccessApiClient().RevokeAsync(token);
+                    serverRevoked = true;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logger.LogException(ex, "RuDesktop credential revocation sync failed", nameof(MainWindow));
+            }
+            if (localDisabled && serverRevoked) service.MarkRevocationComplete();
+            await RefreshRuDesktopStatusAsync(allowDuringOperation: true);
+            if (!localDisabled)
+                throw new InvalidOperationException("RuDesktop не подтвердил отключение прежнего пароля. Проверьте его настройки вручную.");
+            if (!serverRevoked)
+                throw new InvalidOperationException("Доступ на ПК отключён. Для отмены заявки подключите прежнего клиента Service и повторите отзыв.");
+        });
+    }
+
+    private async Task RefreshFreeRevokeAvailabilityAsync()
+    {
+        try
+        {
+            RuDesktopStatus status = await new RuDesktopService(_logService).GetStatus();
+            if (_applicationMode == ApplicationMode.Free && !_lifetime.IsCancellationRequested)
+                FreeRevokeButton.Visibility = status.PasswordConfiguredByHonestFlow || status.RevocationPending
+                    ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogException(ex, "Free RuDesktop status check failed", nameof(MainWindow));
+        }
+    }
+
+    private async void FreeRevoke_Click(object sender, RoutedEventArgs e)
+    {
+        if (_applicationMode != ApplicationMode.Free || _operationRunning) return;
+        if (MessageBox.Show(this,
+                "Быстрый доступ HonestDesk будет отключён на этом ПК. Серверная заявка отменится после восстановления Service. Продолжить?",
+                "Отключить доступ", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        await RunOperationAsync("Отключаем доступ HonestDesk на этом ПК…", async token =>
+        {
+            var service = new RuDesktopService(_logService);
+            RuDesktopStatus status = await service.GetStatus();
+            if (!status.RevocationPending) service.MarkRevocationPending();
+            if (!status.LocalAccessDisabled)
+            {
+                if (!await service.DisablePermanentPasswordAsync())
+                    throw new InvalidOperationException("RuDesktop не подтвердил отключение прежнего пароля.");
+                service.MarkLocalAccessDisabled();
+            }
+            SectionOutput.Text = "Доступ на этом ПК отключён. Серверный отзыв ожидает подключения Service.";
+            await RefreshFreeRevokeAvailabilityAsync();
+        });
+    }
+
+    private async Task InstallRuDesktopAsync(bool reinstall)
+    {
+        RuDesktopWorkflowInstallResult? completion = null;
+        long generation = _runtimeRefreshes.Generation;
+        await RunInstallationOperationAsync(
+            reinstall ? "Переустановка RuDesktop" : "Установка RuDesktop",
+            "Подготовка RuDesktop…",
+            async cancellationToken =>
+            {
+                var workflow = new RuDesktopWorkflow(
+                    new RuDesktopService(_logService),
+                    new RuDesktopInstaller(_logService),
+                    _logService,
+                    CreateLicenseGuard());
+                var progress = new Progress<RuDesktopInstallProgress>(update =>
+                {
+                    if (!IsCurrentRuntime(generation) || !_operationRunning) return;
+                    InstallationProgressBar.Value = update.Percent;
+                    InstallationProgressText.Text = update.Message;
+                });
+                completion = await workflow.InstallAsync(progress, cancellationToken);
+                if (IsCurrentRuntime(generation) &&
+                    completion.InstallResult.Status == RuDesktopInstallStatus.RebootRequired)
+                    _ruDesktopRebootRequired = true;
+                return completion.InstallResult.IsSuccess;
+            },
+            "RuDesktop установлен.",
+            "Не удалось установить RuDesktop.",
+            "Установка RuDesktop отменена.",
+            () => completion?.InstallResult.Message ?? "Не удалось завершить установку RuDesktop.");
+    }
+
+    private async Task StartRuDesktopServiceAsync()
+    {
+        long generation = _runtimeRefreshes.Generation;
+        await RunOperationAsync("Запускаем службу RuDesktop…", async cancellationToken =>
+        {
+            var serviceControl = new WindowsServiceControlService(CreateLicenseGuard());
+            await serviceControl.StartServiceAsync("RuDesktop", LicenseOperation.ManageServices, cancellationToken);
+            await RefreshRuDesktopStatusAsync(allowDuringOperation: true);
+            if (IsCurrentRuntime(generation) && _section != Section.Log)
+                SectionOutput.Text = "Команда запуска службы RuDesktop выполнена.";
+        });
+    }
+
+    private async Task RefreshRuDesktopStatusAsync(bool allowDuringOperation = false)
+    {
+        if (_applicationMode != ApplicationMode.Service || _lifetime.IsCancellationRequested ||
+            (_operationRunning && !allowDuringOperation)) return;
+
+        RuntimeRefreshTracker.Request request = _runtimeRefreshes.Begin("RuDesktop");
+        _ruDesktopActionKind = RuDesktopActionKind.None;
+        RuDesktopActionButton.Content = "Проверяем RuDesktop…";
+        RuDesktopActionButton.IsEnabled = false;
+        try
+        {
+            var service = new RuDesktopService(_logService);
+            RuDesktopStatus status = await service.GetStatus();
+            if (status.RevocationPending && status.LocalAccessDisabled)
+            {
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(status.PendingRevocationClientId) &&
+                        status.PendingRevocationClientId != _client?.ClientId)
+                        status.ErrorMessage = "Для отмены заявки подключите прежнего клиента Service.";
+                    else
+                    {
+                        await GetRemoteAccessApiClient().RevokeAsync(_lifetime.Token);
+                        service.MarkRevocationComplete();
+                        status = await service.GetStatus();
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    status.ErrorMessage = "Ожидается отзыв доступа на сервере: " + ex.Message;
+                }
+            }
+            else if (!status.RevocationPending)
+            {
+                try
+                {
+                    RemoteAccessCredentialStatusDto remote = await GetRemoteAccessApiClient()
+                        .GetStatusAsync(_lifetime.Token);
+                    status.ServerCredentialActive = remote.IsActive;
+                    status.RemoteCredentialSynced = remote.IsActive &&
+                        remote.CredentialId == status.SyncedCredentialId && remote.RuDesktopId == status.Id &&
+                        (string.IsNullOrWhiteSpace(status.CredentialClientId) ||
+                         status.CredentialClientId == _client?.ClientId);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    status.ErrorMessage = "Не удалось проверить доступ HonestDesk: " + ex.Message;
+                }
+            }
+            if (CanApplyRefresh(request)) ApplyRuDesktopAction(status);
+        }
+        catch (Exception ex)
+        {
+            if (!CanApplyRefresh(request)) return;
+            Logger.LogException(ex, "RuDesktop status refresh failed", nameof(MainWindow));
+            ApplyRuDesktopAction(new RuDesktopStatus
+            {
+                InstallationState = RuDesktopInstallationState.CheckFailed,
+                ErrorMessage = ex.Message
+            });
+        }
+    }
+
     private async void RefreshLicense_Click(object sender, RoutedEventArgs e) => await RefreshLicenseAsync();
 
     private async void Logout_Click(object sender, RoutedEventArgs e)
@@ -1176,7 +1437,12 @@ public partial class MainWindow : Window
         SecondaryActionButton.IsEnabled = enabled;
         TertiaryActionButton.IsEnabled = enabled;
         QuaternaryActionButton.IsEnabled = enabled;
-        FooterHelpButton.IsEnabled = enabled;
+        FooterHelpButton.IsEnabled = enabled && _ruDesktopReadyForHelp;
+        SimpleHelpButton.IsEnabled = enabled && _ruDesktopReadyForHelp;
+        RuDesktopRevokeButton.IsEnabled = enabled;
+        FreeRevokeButton.IsEnabled = enabled;
+        RuDesktopActionButton.IsEnabled = enabled && _paidExecutionEnabled &&
+            _ruDesktopActionKind != RuDesktopActionKind.None;
         RefreshLicenseButton.IsEnabled = enabled;
         bool canAutoFix = _paidExecutionEnabled &&
             enabled && _lastDiagnostics?.Issues.Any(issue => issue.SuggestedFix.HasValue) == true;
@@ -1346,12 +1612,16 @@ public partial class MainWindow : Window
         ApplicationMode mode = _applicationMode;
         IPData? client = _client;
         VersionsData? versions = _startup?.RemoteVersions;
+        ApiServerConnectivityProbe? cloudProbe = mode == ApplicationMode.Service
+            ? _apiServerConnectivityProbe
+            : null;
         RuntimeRefreshTracker.Request request = _runtimeRefreshes.Begin("Topology");
         using CancellationTokenSource cancellation = CreateRuntimeCancellation();
         RefreshTopologyButton.IsEnabled = false;
         try
         {
             SetTopologyChecking();
+            Task<HonestFlowCloudStatus>? cloudStatusTask = cloudProbe?.CheckAsync(cancellation.Token);
             PointStatusRefreshResult refresh = mode == ApplicationMode.Free
                 ? await service.RefreshLocalAsync(
                     _localRuntime ?? LocalRuntimeContext.CreateCurrent(),
@@ -1360,7 +1630,12 @@ public partial class MainWindow : Window
                     client ?? throw new InvalidOperationException("Service client is not initialized."),
                     versions,
                     cancellation.Token);
-            if (CanApplyRefresh(request)) ApplyPointStatusRefresh(refresh);
+            if (!CanApplyRefresh(request)) return;
+            ApplyPointStatusRefresh(refresh);
+            if (cloudStatusTask is not null)
+                ApplyCloudStatus(await cloudStatusTask);
+            if (mode == ApplicationMode.Service)
+                await RefreshRuDesktopStatusAsync(allowDuringOperation: true);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception ex)
@@ -1368,11 +1643,22 @@ public partial class MainWindow : Window
             if (!CanApplyRefresh(request)) return;
             Logger.LogException(ex, "WPF topology refresh failed", nameof(MainWindow));
             if (_section == Section.Home) SectionOutput.Text = ex.Message;
+            if (mode == ApplicationMode.Service) ApplyRuDesktopAction(null);
         }
         finally
         {
             if (CanApplyRefresh(request)) RefreshTopologyButton.IsEnabled = true;
         }
+    }
+
+    private void ApplyCloudStatus(HonestFlowCloudStatus status)
+    {
+        CloudStatusText.Text = status switch
+        {
+            HonestFlowCloudStatus.Available => "Облако: сервер доступен",
+            HonestFlowCloudStatus.Unavailable => "Облако: сервер недоступен",
+            _ => "Облако: сервер ответил, доступ не подтверждён"
+        };
     }
 
     private async Task<DiagnosticsSnapshot> RefreshDeveloperDiagnosticsAsync(CancellationToken cancellationToken)
@@ -1409,6 +1695,8 @@ public partial class MainWindow : Window
     private void ApplyPointStatusRefresh(PointStatusRefreshResult refresh)
     {
         _lastPointStatus = refresh.PointStatus;
+        if (_applicationMode == ApplicationMode.Service)
+            ApplyRuDesktopAction(refresh.PointStatus.RuDesktopProbe);
         _lastDiagnostics = refresh.Diagnostics;
         UpdateInstructionAvailability();
         TopologyPresentation presentation = _topologyPresentation.Create(refresh.Diagnostics);
@@ -1433,6 +1721,12 @@ public partial class MainWindow : Window
 
     private void SetTopologyChecking()
     {
+        if (_applicationMode == ApplicationMode.Service)
+        {
+            _ruDesktopActionKind = RuDesktopActionKind.None;
+            RuDesktopActionButton.Content = "Проверяем RuDesktop…";
+            RuDesktopActionButton.IsEnabled = false;
+        }
         Brush neutral = BrushFrom("#94A3B8");
         SimpleStatusHalo.Fill = BrushFrom("#EEF2F7");
         SimpleStatusLamp.Fill = neutral;
@@ -1449,6 +1743,24 @@ public partial class MainWindow : Window
         foreach (Border marker in new[] { CloudEsmMarker, EsmControllerMarker, ControllerLmMarker, EsmKktMarker }) marker.Visibility = Visibility.Collapsed;
         EsmNodeStatusText.Text = ControllerNodeStatusText.Text = LmNodeStatusText.Text = KktNodeStatusText.Text = "Проверка…";
         GismtNodeStatusText.Text = "Проверка…";
+    }
+
+    private void ApplyRuDesktopAction(RuDesktopStatus? status)
+    {
+        _ruDesktopReadyForHelp = status?.RemoteCredentialSynced == true &&
+            status.InstallationState == RuDesktopInstallationState.Ready && !status.RevocationPending;
+        FooterHelpButton.IsEnabled = _paidExecutionEnabled && !_operationRunning && _ruDesktopReadyForHelp;
+        SimpleHelpButton.IsEnabled = _paidExecutionEnabled && !_operationRunning && _ruDesktopReadyForHelp;
+        RuDesktopRevokeButton.Visibility = status?.ServerCredentialActive == true ||
+            status?.PasswordConfiguredByHonestFlow == true ||
+            status?.RevocationPending == true ? Visibility.Visible : Visibility.Collapsed;
+        RuDesktopRevokeButton.IsEnabled = _paidExecutionEnabled && !_operationRunning;
+        RuDesktopActionPresentation action = RuDesktopActionPresentation.Create(
+            status, _client?.RuDesktop?.Enabled == true, _ruDesktopRebootRequired);
+        _ruDesktopActionKind = action.Action;
+        RuDesktopActionButton.Content = action.Text;
+        RuDesktopActionButton.ToolTip = action.Hint;
+        RuDesktopActionButton.IsEnabled = _paidExecutionEnabled && !_operationRunning && action.IsEnabled;
     }
 
     private void ApplyTopology(TopologyPresentation presentation)
@@ -1584,6 +1896,7 @@ public partial class MainWindow : Window
         DetailedFixButton.IsEnabled = _paidExecutionEnabled &&
             !_operationRunning && _lastDiagnostics?.Issues.Any(issue => issue.SuggestedFix.HasValue) == true;
         SimpleHelpButton.Visibility = showHelp ? Visibility.Visible : Visibility.Collapsed;
+        SimpleHelpButton.IsEnabled = showHelp && _ruDesktopReadyForHelp && !_operationRunning;
     }
 
     private void ApplyFrame(
@@ -1952,6 +2265,7 @@ public partial class MainWindow : Window
         _lastPointStatus = null;
         _lastDiagnostics = null;
         _componentStatuses = Array.Empty<ComponentVersionStatus>();
+        _ruDesktopRebootRequired = false;
 
         LicenseObservationSnapshotStore.Instance.SnapshotChanged -= LicenseSnapshotChanged;
         _serviceRuntime = context;
@@ -1961,6 +2275,9 @@ public partial class MainWindow : Window
         _license = context.Entitlement;
         _deviceId = context.DeviceId;
         _pointStatusRefresh = context.PointStatusRefresh;
+        _apiServerConnectivityProbe = (context.Session.Startup.AuthService as IApiSessionProvider)?.ApiSessionService is { } apiSession
+            ? new ApiServerConnectivityProbe(apiSession)
+            : null;
         _componentVersionStatusService = context.ComponentVersionStatus;
         _applicationMode = ApplicationMode.Service;
         _paidExecutionEnabled = true;
@@ -1986,6 +2303,7 @@ public partial class MainWindow : Window
         long generation = _runtimeRefreshes.Generation;
         LicenseObservationSnapshotStore.Instance.SnapshotChanged -= LicenseSnapshotChanged;
         _serviceRuntime = null;
+        _apiServerConnectivityProbe = null;
         _paidExecutionEnabled = false;
         _serviceLifetime?.Cancel();
         _serviceLifetime?.Dispose();
@@ -2002,6 +2320,7 @@ public partial class MainWindow : Window
         _lastPointStatus = null;
         _lastDiagnostics = null;
         _componentStatuses = Array.Empty<ComponentVersionStatus>();
+        _ruDesktopRebootRequired = false;
         _applicationMode = ApplicationMode.Free;
         _serviceConnectionState = state;
         _pointStatusRefresh = _localContext?.PointStatusRefresh;

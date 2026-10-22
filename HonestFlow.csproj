@@ -65,6 +65,8 @@
 
 	<PropertyGroup>
 		<KktBootstrapOutputRoot>$(MSBuildProjectDirectory)\.build\kkt\$(Configuration)</KktBootstrapOutputRoot>
+		<!-- The helpers use the locally installed .NET 10 Desktop Runtime too. -->
+		<KktBootstrapSelfContained>false</KktBootstrapSelfContained>
 	</PropertyGroup>
 	<ItemGroup>
 		<EmbeddedResource Include="$(KktBootstrapOutputRoot)\x86\KktBootstrap.x86.exe"
@@ -73,15 +75,15 @@
 		                  LogicalName="HonestFlow.KktBootstrap.x64.exe" />
 	</ItemGroup>
 
-	<Target Name="PublishAndEmbedKktBootstrapHelpers" BeforeTargets="PrepareResources">
+	<Target Name="PublishAndEmbedKktBootstrapHelpers" BeforeTargets="PrepareResources" Condition="'$(SkipKktBootstrapHelpers)' != 'true'">
 		<MSBuild Projects="$(MSBuildProjectDirectory)\KktBootstrap\KktBootstrap.x86\KktBootstrap.x86.csproj"
 		         Targets="Restore;Publish"
 		         RemoveProperties="OutputPath;BaseOutputPath;IntermediateOutputPath;BaseIntermediateOutputPath"
-		         Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x86;PlatformTarget=x86;SelfContained=true;PublishDir=$(KktBootstrapOutputRoot)\x86\" />
+		         Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x86;PlatformTarget=x86;SelfContained=$(KktBootstrapSelfContained);PublishDir=$(KktBootstrapOutputRoot)\x86\" />
 		<MSBuild Projects="$(MSBuildProjectDirectory)\KktBootstrap\KktBootstrap.x64\KktBootstrap.x64.csproj"
 		         Targets="Restore;Publish"
 		         RemoveProperties="OutputPath;BaseOutputPath;IntermediateOutputPath;BaseIntermediateOutputPath"
-		         Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;PlatformTarget=x64;SelfContained=true;PublishDir=$(KktBootstrapOutputRoot)\x64\" />
+		         Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x64;PlatformTarget=x64;SelfContained=$(KktBootstrapSelfContained);PublishDir=$(KktBootstrapOutputRoot)\x64\" />
 	</Target>
 
 	<ItemGroup>

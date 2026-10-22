@@ -199,7 +199,7 @@ namespace HonestFlow.Tests
                 int machine = BitConverter.ToUInt16(bytes, peOffset + 4);
 
                 Assert.Equal(expectedMachine, machine);
-                Assert.True(bytes.Length > 1_000_000);
+                Assert.True(bytes.Length > 100_000);
             }
             finally
             {

@@ -35,15 +35,19 @@ namespace HonestFlow.Application.RemoteAccess
             CancellationToken cancellationToken)
         {
             _operationGuard.Demand(LicenseOperation.AutomateRuDesktop);
-            RuDesktopInstallResult install = await _installer.InstallAsync(progress);
+            RuDesktopInstallResult install = await _installer.InstallAsync(progress, cancellationToken);
             if (!install.IsSuccess)
                 return new RuDesktopWorkflowInstallResult(install, null);
 
-            cancellationToken.ThrowIfCancellationRequested();
             _service.ResetLocalConfigurationAfterInstallation();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (install.Status == RuDesktopInstallStatus.RebootRequired)
+                return new RuDesktopWorkflowInstallResult(install, null);
+
             RuDesktopStatus status = await _service.WaitForReady(
                 timeout: TimeSpan.FromSeconds(15),
-                pollInterval: TimeSpan.FromSeconds(1));
+                pollInterval: TimeSpan.FromSeconds(1),
+                cancellationToken: cancellationToken);
             return new RuDesktopWorkflowInstallResult(install, status);
         }
 

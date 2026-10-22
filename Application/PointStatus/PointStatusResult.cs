@@ -10,6 +10,7 @@
         public NodeStatus Kkt { get; set; }
         public NodeStatus Cloud { get; set; }
         public NodeStatus RuDesktop { get; set; }
+        public HonestFlow.Application.RemoteAccess.RuDesktopStatus RuDesktopProbe { get; set; }
         public EsmStatusResult EsmApiStatus { get; set; }
         public GisMtDiagnosticResult GisMtDiagnostics { get; set; }
         public EsmRegistrationResult EsmRegistration { get; set; }

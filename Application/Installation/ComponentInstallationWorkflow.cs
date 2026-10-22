@@ -60,6 +60,9 @@ namespace HonestFlow.Application.Installation
             if (!installed)
                 return ComponentInstallationCompletionResult.InstallationFailed();
 
+            if (!(options ?? InstallationOptions.Default).RequiresKktBootstrap)
+                return ComponentInstallationCompletionResult.Installed(null);
+
             // Installation has already succeeded. A later cancellation/registration error
             // must not erase that result or suggest that the installers need to run again.
             try

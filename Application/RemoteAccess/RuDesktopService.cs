@@ -159,8 +159,17 @@ namespace HonestFlow.Application.RemoteAccess
             if (state == null)
                 throw new ArgumentNullException(nameof(state));
 
+            bool revocationPending = state.RevocationPending ||
+                                     !string.IsNullOrWhiteSpace(state.SyncedCredentialId);
+            string revocationClientId = state.PendingRevocationClientId ?? state.CredentialClientId;
+            bool localAccessDisabled = state.LocalAccessDisabled;
             state.LastKnownId = null;
             state.PasswordConfiguredByHonestFlow = false;
+            state.SyncedCredentialId = null;
+            state.CredentialClientId = null;
+            state.PendingRevocationClientId = revocationPending ? revocationClientId : null;
+            state.RevocationPending = revocationPending;
+            state.LocalAccessDisabled = revocationPending && localAccessDisabled;
             state.PasswordFingerprint = null;
             state.PasswordConfiguredAt = null;
             state.SuppressPasswordSetupPrompt = false;
@@ -248,7 +257,7 @@ namespace HonestFlow.Application.RemoteAccess
                     status.ServiceInstalled,
                     status.ServiceRunning);
 
-                if (status.IsInstalled)
+                if (status.InstallationState == RuDesktopInstallationState.Ready)
                     status.Id = await GetId();
 
                 var state = LoadState();
@@ -260,10 +269,17 @@ namespace HonestFlow.Application.RemoteAccess
                      state.SuppressPasswordSetupPrompt))
                 {
                     ResetInstallationDependentState(state);
+                    if (state.RevocationPending)
+                        state.LocalAccessDisabled = true;
                     SaveState(state);
                 }
 
                 status.PasswordConfiguredByHonestFlow = state.PasswordConfiguredByHonestFlow;
+                status.SyncedCredentialId = state.SyncedCredentialId;
+                status.CredentialClientId = state.CredentialClientId;
+                status.PendingRevocationClientId = state.PendingRevocationClientId;
+                status.RevocationPending = state.RevocationPending;
+                status.LocalAccessDisabled = state.LocalAccessDisabled;
             }
             catch (Exception ex)
             {
@@ -297,7 +313,7 @@ namespace HonestFlow.Application.RemoteAccess
                 return new RuDesktopSetupResult
                 {
                     Success = false,
-                    ErrorMessage = "В карточке клиента не указан постоянный пароль RuDesktop."
+                    ErrorMessage = "Постоянный пароль RuDesktop не указан."
                 };
             }
 
@@ -328,7 +344,7 @@ namespace HonestFlow.Application.RemoteAccess
                 logArguments: "--password ***");
             if (!result.IsSuccess)
             {
-                _log.LogDebug($"RuDesktop: не удалось задать постоянный пароль. ExitCode={result.ExitCode}, Error={result.StandardError}");
+                _log.LogDebug($"RuDesktop: не удалось задать постоянный пароль. ExitCode={result.ExitCode}");
                 return new RuDesktopSetupResult
                 {
                     Success = false,
@@ -337,9 +353,23 @@ namespace HonestFlow.Application.RemoteAccess
                 };
             }
 
+            var verification = await ProcessRunner.RunDetailed(exePath,
+                "--set-option verification-method both", timeoutSeconds: CommandTimeoutSeconds);
+            if (!verification.IsSuccess)
+                return new RuDesktopSetupResult
+                {
+                    Success = false, Id = id,
+                    ErrorMessage = "Пароль задан, но RuDesktop не включил вход по постоянному паролю."
+                };
+
             var state = LoadState();
             state.LastKnownId = id;
             state.PasswordConfiguredByHonestFlow = true;
+            state.SyncedCredentialId = null;
+            state.CredentialClientId = null;
+            state.PendingRevocationClientId = null;
+            state.RevocationPending = false;
+            state.LocalAccessDisabled = false;
             state.PasswordFingerprint = GetPasswordFingerprint(password);
             state.PasswordConfiguredAt = DateTime.Now;
             SaveState(state);
@@ -351,6 +381,63 @@ namespace HonestFlow.Application.RemoteAccess
                 Success = true,
                 Id = id
             };
+        }
+
+        public void MarkCredentialSynced(string credentialId, string clientId)
+        {
+            var state = LoadState();
+            state.SyncedCredentialId = credentialId;
+            state.CredentialClientId = clientId;
+            state.PendingRevocationClientId = null;
+            state.RevocationPending = false;
+            state.LocalAccessDisabled = false;
+            SaveState(state);
+        }
+
+        public void MarkRevocationPending()
+        {
+            var state = LoadState();
+            state.PendingRevocationClientId = state.CredentialClientId;
+            state.SyncedCredentialId = null;
+            state.RevocationPending = true;
+            state.LocalAccessDisabled = false;
+            SaveState(state);
+        }
+
+        public void MarkLocalAccessDisabled()
+        {
+            var state = LoadState();
+            state.LocalAccessDisabled = true;
+            SaveState(state);
+        }
+
+        public void MarkRevocationComplete()
+        {
+            var state = LoadState();
+            state.PasswordConfiguredByHonestFlow = false;
+            state.PasswordFingerprint = null;
+            state.SyncedCredentialId = null;
+            state.CredentialClientId = null;
+            state.PendingRevocationClientId = null;
+            state.RevocationPending = false;
+            state.LocalAccessDisabled = false;
+            SaveState(state);
+        }
+
+        public async Task<bool> DisablePermanentPasswordAsync()
+        {
+            string exePath = FindExecutablePath();
+            if (string.IsNullOrWhiteSpace(exePath)) return false;
+            // RuDesktop has no documented clear-password CLI. Replace the known password,
+            // then allow only temporary passwords, so the old credential cannot be reused.
+            string replacement = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+            var rotated = await ProcessRunner.RunDetailed(exePath, $"--password {replacement}",
+                timeoutSeconds: CommandTimeoutSeconds, logArguments: "--password ***");
+            if (!rotated.IsSuccess) return false;
+            var switched = await ProcessRunner.RunDetailed(exePath,
+                "--set-option verification-method use-temporary-password",
+                timeoutSeconds: CommandTimeoutSeconds);
+            return switched.IsSuccess;
         }
 
         private static string ExtractId(string output)

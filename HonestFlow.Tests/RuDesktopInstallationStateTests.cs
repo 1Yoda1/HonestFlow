@@ -77,5 +77,23 @@ namespace HonestFlow.Tests
             Assert.False(state.SuppressPasswordSetupPrompt);
             Assert.Same(lastClient, state.LastAuthorizedClient);
         }
+
+        [Fact]
+        public void ResetInstallationDependentState_PreservesPendingServerRevocation()
+        {
+            var state = new RuDesktopLocalState
+            {
+                SyncedCredentialId = System.Guid.NewGuid().ToString("D"),
+                CredentialClientId = "client-a",
+                PasswordConfiguredByHonestFlow = true
+            };
+
+            RuDesktopService.ResetInstallationDependentState(state);
+
+            Assert.True(state.RevocationPending);
+            Assert.Equal("client-a", state.PendingRevocationClientId);
+            Assert.Null(state.SyncedCredentialId);
+            Assert.False(state.LocalAccessDisabled);
+        }
     }
 }

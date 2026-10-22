@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using HonestFlow.Application.Installation;
+using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Application.PointStatus;
 using Xunit;
 
@@ -70,6 +73,15 @@ namespace HonestFlow.Tests
                 Issue(DiagnosticIssueCode.LM_INN_MISMATCH, DiagnosticFixKey.ConfirmLmClientMismatch)));
 
             Assert.True(step.RequiresConfirmation);
+        }
+
+        [Fact]
+        public void SmartInstallationSelection_UsesOnlyAffectedComponents()
+        {
+            IReadOnlyCollection<InstallationComponent> components = AutoFixInstallationSelection.From(Snapshot(
+                Issue(DiagnosticIssueCode.ATOL_DRIVER_TOO_OLD, DiagnosticFixKey.RunSmartInstallation)));
+
+            Assert.Equal(new[] { InstallationComponent.AtolDriver }, components.OrderBy(component => component));
         }
 
         internal static DiagnosticIssue Issue(DiagnosticIssueCode code, DiagnosticFixKey? fix) =>
