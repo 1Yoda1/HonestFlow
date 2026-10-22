@@ -405,11 +405,7 @@ namespace HonestFlow.Application.PointStatus
         private async Task<RuDesktopStatus> CheckRuDesktopStatusAsync()
         {
             if (_ruDesktopService == null)
-                return new RuDesktopStatus
-                {
-                    InstallationState = RuDesktopInstallationState.CheckFailed,
-                    ErrorMessage = "Сервис проверки RuDesktop не инициализирован"
-                };
+                return null;
 
             try
             {
@@ -431,6 +427,9 @@ namespace HonestFlow.Application.PointStatus
 
         private static NodeStatus BuildRuDesktopStatus(RuDesktopStatus status)
         {
+            if (status == null)
+                return null;
+
             if (!string.IsNullOrWhiteSpace(status.ErrorMessage))
             {
                 return new NodeStatus(

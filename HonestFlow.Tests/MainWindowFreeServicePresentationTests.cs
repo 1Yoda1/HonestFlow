@@ -99,6 +99,28 @@ public sealed class MainWindowFreeServicePresentationTests
         Assert.Contains("<WrapPanel VerticalAlignment=\"Center\">", xaml);
     }
 
+    [Fact]
+    public void RemoteSupport_IsAbsentFromFree_AndRequestHelpHasOneButtonInService()
+    {
+        string xaml = ReadProjectFile("UI", "MainWindow.xaml");
+        string source = ReadProjectFile("UI", "MainWindow.xaml.cs");
+        string localBootstrap = ReadProjectFile("Application", "Bootstrap", "LocalApplicationBootstrap.cs");
+        string refresh = ReadProjectFile("Application", "PointStatus", "PointStatusRefreshService.cs");
+        string free = Segment(source, "private void ApplyFreePresentation()", "private void ApplyServicePresentation()");
+        string remoteAction = Segment(source, "private void ApplyRuDesktopAction", "private void ApplyTopology");
+
+        Assert.DoesNotContain("FreeRevokeButton", xaml);
+        Assert.DoesNotContain("FreeRevoke_Click", source);
+        Assert.DoesNotContain("RefreshFreeRevokeAvailabilityAsync", source);
+        Assert.Contains("RemoteAccessStatusPanel.Visibility = Visibility.Collapsed", free);
+        Assert.Contains("FooterHelpButton.Visibility = Visibility.Collapsed", free);
+        Assert.Contains("action.Action == RuDesktopActionKind.RequestHelp", remoteAction);
+        Assert.Contains("? Visibility.Collapsed", remoteAction);
+        Assert.DoesNotContain("RuDesktopService", localBootstrap);
+        Assert.Contains("includeRemoteAccess: false", refresh);
+        Assert.Contains("includeRemoteAccess: true", refresh);
+    }
+
     private static string Segment(string source, string startMarker, string endMarker)
     {
         int start = source.IndexOf(startMarker, StringComparison.Ordinal);

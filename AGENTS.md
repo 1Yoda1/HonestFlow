@@ -153,6 +153,19 @@ Schema initialization/update is in `Data/DatabaseSchema.cs`; integration tests u
 
 ## Rules for Codex
 
+## Build-output convention
+
+When the user asks to "build the project" (including «собери проект»), treat it
+as a request for a runnable `.exe`, not merely compilation validation. Build the
+Debug configuration into the project's ordinary output directory and report the
+exact executable path. Do not redirect output to temporary, validation, or
+custom directories unless the user explicitly asks for that.
+
+For the root HonestFlow WPF project, the expected location is
+`C:\Work\HonestFlow\bin\Debug\` (under its target-framework subdirectory when
+applicable). For sibling repositories, use their corresponding normal project
+`bin\Debug` directory.
+
 ## Task Decision Policy
 
 Before modifying code, internally evaluate the task using this 10-point Prompt Score. Do not show the score to the user unless they explicitly ask for it.

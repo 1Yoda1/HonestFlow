@@ -34,6 +34,7 @@ namespace HonestFlow.Application.PointStatus
                 () => _pointStatusService.CheckLocalAsync(runtime ?? LocalRuntimeContext.CreateCurrent(), cancellationToken),
                 () => _componentVersionStatusService.GetLocalStatuses(runtime ?? LocalRuntimeContext.CreateCurrent()),
                 includeCloudInOverallLevel: false,
+                includeRemoteAccess: false,
                 cancellationToken);
 
         public Task<PointStatusRefreshResult> RefreshForClientAsync(
@@ -46,6 +47,7 @@ namespace HonestFlow.Application.PointStatus
                 () => _pointStatusService.CheckForClientAsync(selectedClient, cancellationToken),
                 () => _componentVersionStatusService.GetClientStatuses(selectedClient, configuredVersions),
                 includeCloudInOverallLevel: true,
+                includeRemoteAccess: true,
                 cancellationToken);
         }
 
@@ -53,6 +55,7 @@ namespace HonestFlow.Application.PointStatus
             Func<Task<PointStatusResult>> refreshPointStatus,
             Func<ComponentVersionStatus[]> getVersionStatuses,
             bool includeCloudInOverallLevel,
+            bool includeRemoteAccess,
             CancellationToken cancellationToken)
         {
             Task<PointStatusResult> pointStatusTask = refreshPointStatus();
@@ -95,24 +98,15 @@ namespace HonestFlow.Application.PointStatus
                     kktDriverVersion);
             }
 
-            NodeStatus[] visibleStatuses = includeCloudInOverallLevel
-                ? new[]
-                {
-                    pointStatus.Lm,
-                    pointStatus.Controller,
-                    pointStatus.Esm,
-                    pointStatus.Kkt,
-                    pointStatus.Cloud,
-                    pointStatus.RuDesktop
-                }
-                : new[]
-                {
+            NodeStatus[] visibleStatuses = new[]
+            {
                 pointStatus.Lm,
                 pointStatus.Controller,
                 pointStatus.Esm,
                 pointStatus.Kkt,
-                pointStatus.RuDesktop
-                };
+                includeCloudInOverallLevel ? pointStatus.Cloud : null,
+                includeRemoteAccess ? pointStatus.RuDesktop : null
+            };
 
             DiagnosticsSnapshot diagnostics = new DiagnosticsSnapshotBuilder().Create(pointStatus, versionStatuses);
             foreach (DiagnosticIssue issue in diagnostics.Issues)
@@ -120,7 +114,7 @@ namespace HonestFlow.Application.PointStatus
             return new PointStatusRefreshResult(
                 pointStatus,
                 versionStatuses,
-                _reportBuilder.Build(pointStatus),
+                _reportBuilder.Build(pointStatus, includeRemoteAccess: includeRemoteAccess),
                 GetOverallLevel(visibleStatuses),
                 diagnostics);
         }

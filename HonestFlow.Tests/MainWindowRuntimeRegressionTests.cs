@@ -199,8 +199,8 @@ public sealed class MainWindowRuntimeRegressionTests
         Assert.Contains("if (!IsCurrentRuntime(generation)) return;", cleanup);
         string upload = Segment(source, "private async Task RunDiagnosticsAsync", "private async Task InstallAsync");
         guard = upload.IndexOf("CreateLicenseGuard().Demand(LicenseOperation.SendDiagnostics)", StringComparison.Ordinal);
-        Assert.True(guard > upload.IndexOf("await workflow.CreateArchiveAsync", StringComparison.Ordinal));
-        Assert.True(guard < upload.IndexOf("await workflow.SendArchiveAsync", StringComparison.Ordinal));
+        Assert.True(guard > upload.IndexOf("CreateArchiveInfo(selection", StringComparison.Ordinal));
+        Assert.True(guard < upload.IndexOf("await api.UploadAsync", StringComparison.Ordinal));
         Assert.Contains("cancellationToken.ThrowIfCancellationRequested();", upload);
     }
 

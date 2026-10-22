@@ -6,7 +6,6 @@ using HonestFlow.Application.DeviceIdentity;
 using HonestFlow.Application.Diagnostics;
 using HonestFlow.Application.Installation;
 using HonestFlow.Application.PointStatus;
-using HonestFlow.Application.RemoteAccess;
 
 namespace HonestFlow.Application.Bootstrap;
 
@@ -26,7 +25,6 @@ public sealed class LocalApplicationBootstrap
             remoteConfigLoaded: false,
             ipCount: 0,
             clients: Array.Empty<Models.IPData>(),
-            ruDesktopService: new RuDesktopService(log),
             serviceSnapshotProvider: services,
             cloudConnectivityProbe: new OfflineFreeCloudProbe());
         var refresh = new PointStatusRefreshService(

@@ -80,6 +80,8 @@ public partial class MainWindow : Window
     private RuDesktopActionKind _ruDesktopActionKind = RuDesktopActionKind.None;
     private bool _ruDesktopRebootRequired;
     private bool _ruDesktopReadyForHelp;
+    private int? _activeSupportRequestId;
+    private DateTimeOffset? _activeSupportRequestCreatedAtUtc;
     private readonly WindowsServiceSnapshotProvider _serviceSnapshotProvider;
     private readonly bool _diagnosticsDebugEnabled = DiagnosticsDebugMode.IsEnabled(Environment.GetCommandLineArgs());
 
@@ -136,7 +138,9 @@ public partial class MainWindow : Window
         TariffText.Visibility = Visibility.Collapsed;
         RefreshLicenseButton.Visibility = Visibility.Collapsed;
         FooterHelpButton.Visibility = Visibility.Collapsed;
-        SimpleHelpButton.Visibility = Visibility.Collapsed;
+        FooterHelpStatusText.Visibility = Visibility.Collapsed;
+        _activeSupportRequestId = null;
+        _activeSupportRequestCreatedAtUtc = null;
         SimpleFixButton.Visibility = Visibility.Collapsed;
         DetailedFixButton.Visibility = Visibility.Collapsed;
         UpdateInstructionAvailability();
@@ -151,7 +155,6 @@ public partial class MainWindow : Window
         RemoteAccessStatusPanel.Visibility = Visibility.Collapsed;
         _ruDesktopActionKind = RuDesktopActionKind.None;
         FreeFooterPanel.Visibility = Visibility.Visible;
-        _ = RefreshFreeRevokeAvailabilityAsync();
         if (_section != Section.Log)
             SectionOutput.Text = "HonestFlow Free готов к локальной диагностике.";
     }
@@ -174,8 +177,7 @@ public partial class MainWindow : Window
         TariffText.Text = "HonestFlow Service подключён";
         TariffText.Visibility = Visibility.Visible;
         RefreshLicenseButton.Visibility = Visibility.Collapsed;
-        FooterHelpButton.Visibility = Visibility.Collapsed;
-        SimpleHelpButton.Visibility = Visibility.Collapsed;
+        ApplyHelpRequestPresentation();
         SimpleFixButton.Visibility = Visibility.Visible;
         DetailedFixButton.Visibility = Visibility.Visible;
         UpdateInstructionAvailability();
@@ -239,6 +241,7 @@ public partial class MainWindow : Window
             await RefreshTopologyAsync();
             _logTimer.Start();
             _ = RunPeriodicLicenseRefreshAsync(_lifetime.Token);
+            _ = RunPeriodicSupportRequestRefreshAsync(_lifetime.Token);
         };
     }
 
@@ -365,25 +368,30 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var ruDesktop = new RuDesktopService(_logService);
-            var workflow = new DiagnosticWorkflowService(
-                new DiagnosticArchiveService(_logService),
-                new DiagnosticsEmailSender(_logService, ruDesktop));
-            DiagnosticArchiveInfo archive = await workflow.CreateArchiveAsync(
-                selection, _license?.PointAddress, cancellationToken);
+            DiagnosticArchiveInfo archive = await Task.Run(
+                () => new DiagnosticArchiveService(_logService)
+                    .CreateArchiveInfo(selection, _license?.PointAddress),
+                cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsCurrentRuntime(generation)) return;
             if (_section != Section.Log) SectionOutput.Text = $"Архив создан: {archive.ArchivePath}";
             if (send)
             {
                 CreateLicenseGuard().Demand(LicenseOperation.SendDiagnostics);
-                await workflow.SendArchiveAsync(archive, (percent, message) => Dispatcher.Invoke(() =>
+                if ((_startup?.AuthService as IApiSessionProvider)?.ApiSessionService is not { } apiSession)
+                    throw new InvalidOperationException("Для отправки диагностики требуется подключение к HonestFlow Service.");
+                var api = new DiagnosticArchiveApiClient(apiSession);
+                DiagnosticUploadResult uploaded = await api.UploadAsync(
+                    archive.ArchivePath,
+                    GetApplicationVersion(),
+                    (percent, message) => Dispatcher.Invoke(() =>
                 {
                     if (IsCurrentRuntime(generation) && !cancellationToken.IsCancellationRequested && _section != Section.Log)
                         SectionOutput.Text = $"{message} ({percent}%)";
-                }));
+                }), cancellationToken);
                 if (IsCurrentRuntime(generation) && _section != Section.Log)
-                    SectionOutput.Text = "Диагностика отправлена в поддержку.";
+                    SectionOutput.Text = $"Диагностика №{uploaded.Id} отправлена в поддержку. " +
+                        $"Архив будет удалён {uploaded.ArchiveExpiresAtUtc.ToLocalTime():dd.MM.yyyy HH:mm}.";
             }
         });
     }
@@ -951,6 +959,53 @@ public partial class MainWindow : Window
         await workflow.RunPeriodicAsync(() => _client, cancellationToken);
     }
 
+    private async Task RunPeriodicSupportRequestRefreshAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+                if (_applicationMode != ApplicationMode.Service || !_paidExecutionEnabled) continue;
+                RemoteAccessCredentialStatusDto remote = await GetRemoteAccessApiClient()
+                    .GetStatusAsync(cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                ApplyRemoteSupportRequest(remote);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logService.LogDebug($"Не удалось обновить состояние заявки помощи: {ex.Message}");
+            }
+        }
+    }
+
+    private void ApplyRemoteSupportRequest(RemoteAccessCredentialStatusDto remote)
+    {
+        _activeSupportRequestId = remote.ActiveRequestId;
+        _activeSupportRequestCreatedAtUtc = remote.ActiveRequestCreatedAtUtc;
+        ApplyHelpRequestPresentation();
+    }
+
+    private void ApplyHelpRequestPresentation()
+    {
+        bool isService = _applicationMode == ApplicationMode.Service && _paidExecutionEnabled;
+        bool hasActiveRequest = _activeSupportRequestId.HasValue;
+        FooterHelpButton.Visibility = isService && !hasActiveRequest
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        FooterHelpButton.IsEnabled = isService && !_operationRunning && _ruDesktopReadyForHelp;
+        FooterHelpStatusText.Visibility = isService && hasActiveRequest
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        FooterHelpStatusText.Text = hasActiveRequest
+            ? $"Запрос помощи отправлен {_activeSupportRequestCreatedAtUtc?.ToLocalTime():dd.MM.yyyy HH:mm}"
+            : string.Empty;
+    }
+
     private void LicenseSnapshotChanged(LicenseObservationSnapshot snapshot)
     {
         if (_returningToStartup || snapshot == null ||
@@ -1036,6 +1091,10 @@ public partial class MainWindow : Window
     private async Task SendHelpAsync()
     {
         if (!_paidExecutionEnabled || _startup == null || _client == null || _license == null) return;
+        if (_activeSupportRequestId.HasValue) return;
+        var dialog = new SupportRequestDialog { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        string problemDescription = dialog.ProblemDescription;
         long generation = _runtimeRefreshes.Generation;
         await RunOperationAsync("Отправляем запрос помощи…", async cancellationToken =>
         {
@@ -1050,12 +1109,18 @@ public partial class MainWindow : Window
             if (!remote.IsActive || remote.CredentialId != status.SyncedCredentialId ||
                 remote.RuDesktopId != status.Id)
                 throw new InvalidOperationException("Пароль HonestDesk не синхронизирован. Настройте доступ заново.");
-            await api.RequestHelpAsync(status.SyncedCredentialId, "Запрос удалённой помощи",
-                "Пользователь запросил помощь через HonestFlow.",
+            SupportRequestAcceptedDto accepted = await api.RequestHelpAsync(
+                status.SyncedCredentialId, "Запрос удалённой помощи", problemDescription,
                 string.IsNullOrWhiteSpace(_client.Name) ? "HonestFlow" : _client.Name,
                 Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "unknown", cancellationToken);
-            if (IsCurrentRuntime(generation) && _section != Section.Log)
-                SectionOutput.Text = "Запрос помощи отправлен.";
+            if (IsCurrentRuntime(generation))
+            {
+                _activeSupportRequestId = accepted.Id;
+                _activeSupportRequestCreatedAtUtc = accepted.CreatedAtUtc;
+                ApplyHelpRequestPresentation();
+                if (_section != Section.Log)
+                    SectionOutput.Text = $"Запрос помощи отправлен {accepted.CreatedAtUtc.ToLocalTime():dd.MM.yyyy HH:mm}.";
+            }
         });
     }
 
@@ -1155,43 +1220,6 @@ public partial class MainWindow : Window
         });
     }
 
-    private async Task RefreshFreeRevokeAvailabilityAsync()
-    {
-        try
-        {
-            RuDesktopStatus status = await new RuDesktopService(_logService).GetStatus();
-            if (_applicationMode == ApplicationMode.Free && !_lifetime.IsCancellationRequested)
-                FreeRevokeButton.Visibility = status.PasswordConfiguredByHonestFlow || status.RevocationPending
-                    ? Visibility.Visible : Visibility.Collapsed;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogException(ex, "Free RuDesktop status check failed", nameof(MainWindow));
-        }
-    }
-
-    private async void FreeRevoke_Click(object sender, RoutedEventArgs e)
-    {
-        if (_applicationMode != ApplicationMode.Free || _operationRunning) return;
-        if (MessageBox.Show(this,
-                "Быстрый доступ HonestDesk будет отключён на этом ПК. Серверная заявка отменится после восстановления Service. Продолжить?",
-                "Отключить доступ", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-        await RunOperationAsync("Отключаем доступ HonestDesk на этом ПК…", async token =>
-        {
-            var service = new RuDesktopService(_logService);
-            RuDesktopStatus status = await service.GetStatus();
-            if (!status.RevocationPending) service.MarkRevocationPending();
-            if (!status.LocalAccessDisabled)
-            {
-                if (!await service.DisablePermanentPasswordAsync())
-                    throw new InvalidOperationException("RuDesktop не подтвердил отключение прежнего пароля.");
-                service.MarkLocalAccessDisabled();
-            }
-            SectionOutput.Text = "Доступ на этом ПК отключён. Серверный отзыв ожидает подключения Service.";
-            await RefreshFreeRevokeAvailabilityAsync();
-        });
-    }
-
     private async Task InstallRuDesktopAsync(bool reinstall)
     {
         RuDesktopWorkflowInstallResult? completion = null;
@@ -1280,6 +1308,7 @@ public partial class MainWindow : Window
                         remote.CredentialId == status.SyncedCredentialId && remote.RuDesktopId == status.Id &&
                         (string.IsNullOrWhiteSpace(status.CredentialClientId) ||
                          status.CredentialClientId == _client?.ClientId);
+                    ApplyRemoteSupportRequest(remote);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -1438,9 +1467,7 @@ public partial class MainWindow : Window
         TertiaryActionButton.IsEnabled = enabled;
         QuaternaryActionButton.IsEnabled = enabled;
         FooterHelpButton.IsEnabled = enabled && _ruDesktopReadyForHelp;
-        SimpleHelpButton.IsEnabled = enabled && _ruDesktopReadyForHelp;
         RuDesktopRevokeButton.IsEnabled = enabled;
-        FreeRevokeButton.IsEnabled = enabled;
         RuDesktopActionButton.IsEnabled = enabled && _paidExecutionEnabled &&
             _ruDesktopActionKind != RuDesktopActionKind.None;
         RefreshLicenseButton.IsEnabled = enabled;
@@ -1734,7 +1761,6 @@ public partial class MainWindow : Window
         SimpleStatusTitle.Text = "Проверяем рабочее место…";
         SimpleStatusDescription.Text = "Пожалуйста, подождите. HonestFlow проверяет готовность кассы и маркировки.";
         SimpleFixButton.Visibility = Visibility.Collapsed;
-        SimpleHelpButton.Visibility = Visibility.Collapsed;
         foreach (Border border in new[] { GismtNodeBorder, EsmNodeBorder, ControllerNodeBorder, LmNodeBorder, KktNodeBorder }) border.BorderBrush = neutral;
         foreach (Ellipse dot in new[] { GismtNodeStatusDot, EsmNodeStatusDot, ControllerNodeStatusDot, LmNodeStatusDot, KktNodeStatusDot }) dot.Fill = neutral;
         foreach (Border icon in new[] { GismtNodeIcon, EsmNodeIcon, ControllerNodeIcon, LmNodeIcon, KktNodeIcon }) SetTopologyIconBrush(icon, neutral);
@@ -1749,8 +1775,7 @@ public partial class MainWindow : Window
     {
         _ruDesktopReadyForHelp = status?.RemoteCredentialSynced == true &&
             status.InstallationState == RuDesktopInstallationState.Ready && !status.RevocationPending;
-        FooterHelpButton.IsEnabled = _paidExecutionEnabled && !_operationRunning && _ruDesktopReadyForHelp;
-        SimpleHelpButton.IsEnabled = _paidExecutionEnabled && !_operationRunning && _ruDesktopReadyForHelp;
+        ApplyHelpRequestPresentation();
         RuDesktopRevokeButton.Visibility = status?.ServerCredentialActive == true ||
             status?.PasswordConfiguredByHonestFlow == true ||
             status?.RevocationPending == true ? Visibility.Visible : Visibility.Collapsed;
@@ -1760,6 +1785,9 @@ public partial class MainWindow : Window
         _ruDesktopActionKind = action.Action;
         RuDesktopActionButton.Content = action.Text;
         RuDesktopActionButton.ToolTip = action.Hint;
+        RuDesktopActionButton.Visibility = action.Action == RuDesktopActionKind.RequestHelp
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         RuDesktopActionButton.IsEnabled = _paidExecutionEnabled && !_operationRunning && action.IsEnabled;
     }
 
@@ -1833,18 +1861,18 @@ public partial class MainWindow : Window
             switch (_lastDiagnostics.WorkState)
             {
                 case WorkState.WorkImpossible:
-                    SetSimpleStatus("#FDE8EC", "#D91532", "×", "Работа невозможна", description, true, true);
+                    SetSimpleStatus("#FDE8EC", "#D91532", "×", "Работа невозможна", description, true);
                     return;
                 case WorkState.UnableToVerify:
                     SetSimpleStatus("#FFF6D8", "#E3A008", "!", "Не удалось подтвердить готовность",
-                        description, false, false);
+                        description, false);
                     return;
                 case WorkState.Attention:
-                    SetSimpleStatus("#FFF6D8", "#E3A008", "!", "Требуется внимание", description, true, false);
+                    SetSimpleStatus("#FFF6D8", "#E3A008", "!", "Требуется внимание", description, true);
                     return;
                 case WorkState.Ready:
                     SetSimpleStatus("#E8F8F1", "#0E9F6E", "✓", "Всё готово к работе",
-                        description, false, false);
+                        description, false);
                     return;
             }
         }
@@ -1866,26 +1894,25 @@ public partial class MainWindow : Window
         {
             SetSimpleStatus("#FDE8EC", "#D91532", "×", "Работа невозможна",
                 "Один из необходимых компонентов не работает или отсутствует. HonestFlow может попробовать восстановить его автоматически.",
-                showFix: true, showHelp: true);
+                showFix: true);
         }
         else if (yellow)
         {
             SetSimpleStatus("#FFF6D8", "#E3A008", "!", "Требуется внимание",
                 "Работа может быть затруднена: одна из программ отвечает нестабильно. Можно посмотреть подробности или запустить исправление.",
-                showFix: true, showHelp: false);
+                showFix: true);
         }
         else
         {
             SetSimpleStatus("#E8F8F1", "#0E9F6E", "✓", "Всё готово к работе",
                 "Касса и маркировка работают нормально. Можно продолжать работу.",
-                showFix: false, showHelp: false);
+                showFix: false);
         }
     }
 
-    private void SetSimpleStatus(string halo, string lamp, string symbol, string title, string description, bool showFix, bool showHelp)
+    private void SetSimpleStatus(string halo, string lamp, string symbol, string title, string description, bool showFix)
     {
         showFix = showFix && _paidExecutionEnabled;
-        showHelp = showHelp && _paidExecutionEnabled;
         SimpleStatusHalo.Fill = BrushFrom(halo);
         SimpleStatusLamp.Fill = BrushFrom(lamp);
         SimpleStatusSymbol.Text = symbol;
@@ -1895,8 +1922,6 @@ public partial class MainWindow : Window
         SimpleFixButton.IsEnabled = showFix && !_operationRunning && _lastDiagnostics?.Issues.Any(issue => issue.SuggestedFix.HasValue) == true;
         DetailedFixButton.IsEnabled = _paidExecutionEnabled &&
             !_operationRunning && _lastDiagnostics?.Issues.Any(issue => issue.SuggestedFix.HasValue) == true;
-        SimpleHelpButton.Visibility = showHelp ? Visibility.Visible : Visibility.Collapsed;
-        SimpleHelpButton.IsEnabled = showHelp && _ruDesktopReadyForHelp && !_operationRunning;
     }
 
     private void ApplyFrame(
@@ -2266,6 +2291,8 @@ public partial class MainWindow : Window
         _lastDiagnostics = null;
         _componentStatuses = Array.Empty<ComponentVersionStatus>();
         _ruDesktopRebootRequired = false;
+        _activeSupportRequestId = null;
+        _activeSupportRequestCreatedAtUtc = null;
 
         LicenseObservationSnapshotStore.Instance.SnapshotChanged -= LicenseSnapshotChanged;
         _serviceRuntime = context;
@@ -2289,7 +2316,10 @@ public partial class MainWindow : Window
         SetActionsEnabled(!_operationRunning);
         await RefreshCurrentSectionAfterRuntimeChangeAsync();
         if (IsCurrentRuntime(generation) && !serviceToken.IsCancellationRequested && ReferenceEquals(_serviceRuntime, context))
+        {
             _ = RunPeriodicLicenseRefreshAsync(serviceToken);
+            _ = RunPeriodicSupportRequestRefreshAsync(serviceToken);
+        }
     }
 
     private async Task DeactivateServiceAsync(ServiceConnectionState state, string? message, bool logout)
@@ -2321,6 +2351,8 @@ public partial class MainWindow : Window
         _lastDiagnostics = null;
         _componentStatuses = Array.Empty<ComponentVersionStatus>();
         _ruDesktopRebootRequired = false;
+        _activeSupportRequestId = null;
+        _activeSupportRequestCreatedAtUtc = null;
         _applicationMode = ApplicationMode.Free;
         _serviceConnectionState = state;
         _pointStatusRefresh = _localContext?.PointStatusRefresh;

@@ -127,7 +127,7 @@ public sealed class FreeProductionStartupTests
         foreach (string control in new[]
         {
             "LogoutButton", "RateButton", "RefreshLicenseButton", "FooterHelpButton",
-            "SimpleHelpButton", "SimpleFixButton", "DetailedFixButton", "SendDiagnosticsButton",
+            "SimpleFixButton", "DetailedFixButton", "SendDiagnosticsButton",
             "ServiceControlColumn", "ExpectedVersionColumn", "VersionMatchColumn"
         })
         {

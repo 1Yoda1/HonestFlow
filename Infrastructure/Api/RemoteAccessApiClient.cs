@@ -56,10 +56,21 @@ public sealed class RemoteAccessApiClient
     public Task RevokeAsync(CancellationToken token) =>
         SendAsync(HttpMethod.Delete, "api/support/remote-access/current", null, token);
 
-    public Task RequestHelpAsync(string credentialId, string subject, string message,
-        string contact, string honestFlowVersion, CancellationToken token) =>
-        SendAsync(HttpMethod.Post, "api/support/remote-requests",
-            new { credentialId, subject, message, contact, honestFlowVersion }, token);
+    public async Task<SupportRequestAcceptedDto> RequestHelpAsync(string credentialId, string subject,
+        string message, string contact, string honestFlowVersion, CancellationToken token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/support/remote-requests")
+        {
+            Content = new StringContent(JsonConvert.SerializeObject(
+                new { credentialId, subject, message, contact, honestFlowVersion }),
+                Encoding.UTF8, "application/json")
+        };
+        using HttpResponseMessage response = await _session.SendAuthorizedAsync(request, token);
+        response.EnsureSuccessStatusCode();
+        return JsonConvert.DeserializeObject<SupportRequestAcceptedDto>(
+                   await response.Content.ReadAsStringAsync(token))
+               ?? throw new InvalidOperationException("Сервер не вернул созданную заявку помощи.");
+    }
 
     private async Task<T> GetAsync<T>(string path, CancellationToken token)
     {
@@ -93,4 +104,13 @@ public sealed class RemoteAccessCredentialStatusDto
     public string CredentialId { get; set; }
     public string RuDesktopId { get; set; }
     public string KeyId { get; set; }
+    public int? ActiveRequestId { get; set; }
+    public DateTimeOffset? ActiveRequestCreatedAtUtc { get; set; }
+}
+
+public sealed class SupportRequestAcceptedDto
+{
+    public int Id { get; set; }
+    public string Status { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; }
 }

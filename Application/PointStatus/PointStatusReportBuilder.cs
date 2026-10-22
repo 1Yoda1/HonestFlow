@@ -5,7 +5,10 @@ namespace HonestFlow.Application.PointStatus
 {
     public sealed class PointStatusReportBuilder
     {
-        public string Build(PointStatusResult result, DateTimeOffset? generatedAt = null)
+        public string Build(
+            PointStatusResult result,
+            DateTimeOffset? generatedAt = null,
+            bool includeRemoteAccess = true)
         {
             if (result == null)
                 throw new ArgumentNullException(nameof(result));
@@ -21,7 +24,8 @@ namespace HonestFlow.Application.PointStatus
             AppendNode(report, "ЕСМ", result.Esm);
             AppendNode(report, "ККТ", result.Kkt);
             AppendNode(report, "Облако", result.Cloud);
-            AppendNode(report, "RuDesktop", result.RuDesktop);
+            if (includeRemoteAccess)
+                AppendNode(report, "RuDesktop", result.RuDesktop);
             return report.ToString();
         }
 
