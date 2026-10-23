@@ -57,13 +57,15 @@ namespace HonestFlow.Application.PointStatus
             IReadOnlyList<DiagnosticIssueCode> issueCodes,
             AutoFixExecutionStatus executionStatus,
             string description,
-            string error = null)
+            string error = null,
+            string details = null)
         {
             FixKey = fixKey;
             IssueCodes = issueCodes ?? Array.Empty<DiagnosticIssueCode>();
             ExecutionStatus = executionStatus;
             Description = description ?? string.Empty;
             Error = error;
+            Details = details ?? string.Empty;
         }
 
         public DiagnosticFixKey FixKey { get; }
@@ -71,18 +73,21 @@ namespace HonestFlow.Application.PointStatus
         public AutoFixExecutionStatus ExecutionStatus { get; }
         public string Description { get; }
         public string Error { get; }
+        public string Details { get; }
     }
 
     public sealed class AutoFixProgress
     {
-        public AutoFixProgress(string currentStep, IReadOnlyList<AutoFixStepResult> history)
+        public AutoFixProgress(string currentStep, IReadOnlyList<AutoFixStepResult> history, string details = null)
         {
             CurrentStep = currentStep ?? string.Empty;
             History = history ?? Array.Empty<AutoFixStepResult>();
+            Details = details ?? string.Empty;
         }
 
         public string CurrentStep { get; }
         public IReadOnlyList<AutoFixStepResult> History { get; }
+        public string Details { get; }
     }
 
     public sealed class AutoFixExecutionResult

@@ -520,7 +520,7 @@
             Panel.ZIndex="1000"
             Background="#DDF7F8FB"
             Visibility="Collapsed">
-        <Border Width="520"
+        <Border Width="600"
                 Padding="32"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
@@ -547,6 +547,17 @@
                        FontSize="15"
                        TextAlignment="Center"
                        TextWrapping="Wrap"/>
+            <Border x:Name="InstallationProgressDetailsPanel"
+                    Margin="0,14,0,0"
+                    Padding="12,10"
+                    Background="#F6F8FB"
+                    CornerRadius="8"
+                    Visibility="Collapsed">
+              <TextBlock x:Name="InstallationProgressDetailsText"
+                         Foreground="#526079"
+                         FontSize="13"
+                         TextWrapping="Wrap"/>
+            </Border>
             <StackPanel x:Name="InstallationChoicePanel"
                         Margin="0,24,0,0"
                         Visibility="Collapsed">

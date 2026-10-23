@@ -152,16 +152,22 @@ internal static class WpfAutoFixComposition
             createLicenseGuard());
     }
 
-    public static string ResultMessage(AutoFixResult result) => result.Status switch
+    public static string ResultMessage(AutoFixResult result)
     {
-        AutoFixStatus.Success => "Автоматическое исправление завершено. Рабочее место проверено.",
-        AutoFixStatus.NoFixNeeded => "Автоматическое исправление не требуется.",
-        AutoFixStatus.RequiresUserAction => result.Message,
-        AutoFixStatus.UnableToFix => result.Message,
-        AutoFixStatus.Failed => "Не удалось выполнить исправление: " + result.Message,
-        AutoFixStatus.Cancelled => "Автоматическое исправление отменено.",
-        _ => result.Message
-    };
+        string message = result.Status switch
+        {
+            AutoFixStatus.Success => "Автоматическое исправление завершено. Рабочее место проверено.",
+            AutoFixStatus.NoFixNeeded => "Автоматическое исправление не требуется.",
+            AutoFixStatus.RequiresUserAction => result.Message,
+            AutoFixStatus.UnableToFix => result.Message,
+            AutoFixStatus.Failed => "Не удалось выполнить исправление: " + result.Message,
+            AutoFixStatus.Cancelled => "Автоматическое исправление отменено.",
+            _ => result.Message
+        };
+        if (result.RemainingIssues.Count > 0 && result.Status is not AutoFixStatus.Success and not AutoFixStatus.NoFixNeeded)
+            message += " Осталось проблем: " + result.RemainingIssues.Count + ".";
+        return message;
+    }
 
     public static string[] HistoryLines(IEnumerable<AutoFixStepResult> history) =>
         (history ?? Array.Empty<AutoFixStepResult>()).Select(step =>
@@ -173,7 +179,9 @@ internal static class WpfAutoFixComposition
                 AutoFixExecutionStatus.Unsupported => "!",
                 _ => "×"
             };
-            return $"{marker}  {step.Description}";
+            string details = string.IsNullOrWhiteSpace(step.Details) ? string.Empty : "\n    " + step.Details;
+            string error = string.IsNullOrWhiteSpace(step.Error) ? string.Empty : "\n    Причина: " + step.Error;
+            return $"{marker}  {step.Description}{details}{error}";
         }).ToArray();
 
     private static async Task<bool> ExecuteServiceActionAsync(

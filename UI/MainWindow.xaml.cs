@@ -349,49 +349,70 @@ public partial class MainWindow : Window
 
     private async Task RunDiagnosticsAsync(bool send)
     {
-        if (!_paidExecutionEnabled && send)
+        if (_operationRunning || (!_paidExecutionEnabled && send))
             return;
         DiagnosticLogSelection? selection = SelectDiagnosticLogs();
         if (selection == null) return;
         long generation = _runtimeRefreshes.Generation;
+        var progressWindow = new DiagnosticUploadProgressWindow(send) { Owner = this };
+        progressWindow.Show();
         await RunOperationAsync("Собираем диагностику…", async cancellationToken =>
         {
-            if (!_paidExecutionEnabled)
+            try
             {
-                if (_localDiagnosticArchive == null)
-                    throw new InvalidOperationException("Локальный сбор диагностики не инициализирован.");
-                DiagnosticArchiveInfo localArchive = await Task.Run(
-                    () => _localDiagnosticArchive.CreateArchiveInfo(selection, pointAddress: null),
-                    cancellationToken);
-                if (IsCurrentRuntime(generation) && _section != Section.Log)
-                    SectionOutput.Text = $"Архив создан: {localArchive.ArchivePath}";
-                return;
-            }
-
-            DiagnosticArchiveInfo archive = await Task.Run(
-                () => new DiagnosticArchiveService(_logService)
-                    .CreateArchiveInfo(selection, _license?.PointAddress),
-                cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!IsCurrentRuntime(generation)) return;
-            if (_section != Section.Log) SectionOutput.Text = $"Архив создан: {archive.ArchivePath}";
-            if (send)
-            {
-                CreateLicenseGuard().Demand(LicenseOperation.SendDiagnostics);
-                if ((_startup?.AuthService as IApiSessionProvider)?.ApiSessionService is not { } apiSession)
-                    throw new InvalidOperationException("Для отправки диагностики требуется подключение к HonestFlow Service.");
-                var api = new DiagnosticArchiveApiClient(apiSession);
-                DiagnosticUploadResult uploaded = await api.UploadAsync(
-                    archive.ArchivePath,
-                    GetApplicationVersion(),
-                    (percent, message) => Dispatcher.Invoke(() =>
+                progressWindow?.ReportBuildStarted();
+                if (!_paidExecutionEnabled)
                 {
-                    if (IsCurrentRuntime(generation) && !cancellationToken.IsCancellationRequested && _section != Section.Log)
-                        SectionOutput.Text = $"{message} ({percent}%)";
-                }), cancellationToken);
-                if (IsCurrentRuntime(generation) && _section != Section.Log)
-                    SectionOutput.Text = $"Диагностика №{uploaded.Id} отправлена в поддержку. " +
-                        $"Архив будет удалён {uploaded.ArchiveExpiresAtUtc.ToLocalTime():dd.MM.yyyy HH:mm}.";
+                    if (_localDiagnosticArchive == null)
+                        throw new InvalidOperationException("Локальный сбор диагностики не инициализирован.");
+                    DiagnosticArchiveInfo localArchive = await Task.Run(
+                        () => _localDiagnosticArchive.CreateArchiveInfo(selection, pointAddress: null),
+                        cancellationToken);
+                    progressWindow.CompleteLocalArchive(localArchive.ArchivePath);
+                    if (IsCurrentRuntime(generation) && _section != Section.Log)
+                        SectionOutput.Text = $"Архив создан: {localArchive.ArchivePath}";
+                    return;
+                }
+
+                DiagnosticArchiveInfo archive = await Task.Run(
+                    () => new DiagnosticArchiveService(_logService)
+                        .CreateArchiveInfo(selection, _license?.PointAddress),
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!IsCurrentRuntime(generation)) return;
+                if (_section != Section.Log) SectionOutput.Text = $"Архив создан: {archive.ArchivePath}";
+                if (send)
+                {
+                    CreateLicenseGuard().Demand(LicenseOperation.SendDiagnostics);
+                    if ((_startup?.AuthService as IApiSessionProvider)?.ApiSessionService is not { } apiSession)
+                        throw new InvalidOperationException("Для отправки диагностики требуется подключение к HonestFlow Service.");
+                    var api = new DiagnosticArchiveApiClient(apiSession);
+                    DiagnosticUploadResult uploaded = await api.UploadAsync(
+                        archive.ArchivePath,
+                        GetApplicationVersion(),
+                        (percent, message) =>
+                    {
+                        progressWindow?.ReportUploadProgress(percent, message);
+                        Dispatcher.Invoke(() =>
+                        {
+                            if (IsCurrentRuntime(generation) && !cancellationToken.IsCancellationRequested && _section != Section.Log)
+                                SectionOutput.Text = $"{message} ({percent}%)";
+                        });
+                    }, cancellationToken);
+                    progressWindow.CompleteUpload(uploaded.ArchiveExpiresAtUtc);
+                    if (IsCurrentRuntime(generation) && _section != Section.Log)
+                        SectionOutput.Text = $"Диагностика №{uploaded.Id} отправлена в поддержку. " +
+                            $"Архив будет удалён {uploaded.ArchiveExpiresAtUtc.ToLocalTime():dd.MM.yyyy HH:mm}.";
+                }
+                else
+                {
+                    progressWindow.CompleteLocalArchive(archive.ArchivePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                progressWindow.Fail(ex.Message);
+                throw;
             }
         });
     }
@@ -582,6 +603,8 @@ public partial class MainWindow : Window
         InstallationProgressBar.IsIndeterminate = false;
         InstallationProgressBar.Visibility = Visibility.Visible;
         InstallationProgressText.Text = initialStatus;
+        InstallationProgressDetailsText.Text = string.Empty;
+        InstallationProgressDetailsPanel.Visibility = Visibility.Collapsed;
         InstallationChoicePanel.Visibility = Visibility.Collapsed;
         AutoFixHistoryList.ItemsSource = null;
         AutoFixHistoryPanel.Visibility = Visibility.Collapsed;
@@ -602,6 +625,8 @@ public partial class MainWindow : Window
         InstallationProgressBar.IsIndeterminate = false;
         InstallationProgressBar.Visibility = Visibility.Visible;
         InstallationProgressText.Text = "Подготовка…";
+        InstallationProgressDetailsText.Text = string.Empty;
+        InstallationProgressDetailsPanel.Visibility = Visibility.Collapsed;
         InstallationChoicePanel.Visibility = Visibility.Collapsed;
         AutoFixHistoryList.ItemsSource = null;
         AutoFixHistoryPanel.Visibility = Visibility.Collapsed;
@@ -1600,6 +1625,10 @@ public partial class MainWindow : Window
         {
             SectionOutput.Text = progress.CurrentStep;
             InstallationProgressText.Text = progress.CurrentStep;
+            InstallationProgressDetailsText.Text = progress.Details;
+            InstallationProgressDetailsPanel.Visibility = string.IsNullOrWhiteSpace(progress.Details)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
             AutoFixHistoryList.ItemsSource = WpfAutoFixComposition.HistoryLines(progress.History);
             AutoFixHistoryPanel.Visibility = progress.History.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         });

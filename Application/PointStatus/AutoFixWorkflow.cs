@@ -34,7 +34,8 @@ namespace HonestFlow.Application.PointStatus
         public async Task<AutoFixResult> RunAsync(Action<AutoFixProgress> progress, CancellationToken cancellationToken)
         {
             _operationGuard.Demand(LicenseOperation.AutoFix);
-            Report(progress, "Проверяем состояние…", Array.Empty<AutoFixStepResult>());
+            Report(progress, "Проверяем состояние…", Array.Empty<AutoFixStepResult>(),
+                "Проверяем службы, компоненты и связи кассового узла.");
             AutoFixDiagnosticState initial;
             try
             {
@@ -120,17 +121,20 @@ namespace HonestFlow.Application.PointStatus
                 }
 
                 session.AttemptedFixes.Add(next.FixKey);
+                string issueDetails = DescribeIssues(current.Snapshot, next.IssueCodes);
                 AutoFixExecutionResult execution = await _executor.ExecuteAsync(
                     next, current, confirmationGranted,
-                    message => Report(progress, message, session.History),
+                    message => Report(progress, message, session.History, issueDetails),
                     cancellationToken).ConfigureAwait(false);
                 session.History.Add(new AutoFixStepResult(
                     next.FixKey, next.IssueCodes, execution.Status,
                     execution.Status == AutoFixExecutionStatus.Success
                         ? AutoFixDescriptions.CompletedFor(next.FixKey)
                         : next.Description.TrimEnd('…'),
-                    execution.Error));
-                Report(progress, "Проверяем результат…", session.History);
+                    execution.Error,
+                    issueDetails));
+                Report(progress, "Проверяем результат…", session.History,
+                    "Повторно проверяем: " + issueDetails);
 
                 if (execution.Status == AutoFixExecutionStatus.Cancelled)
                     return Result(AutoFixStatus.Cancelled, current, session.History, "Автоматическое исправление отменено.");
@@ -172,10 +176,25 @@ namespace HonestFlow.Application.PointStatus
             IReadOnlyList<AutoFixStepResult> history,
             string message) => new(status, state, history.ToArray(), message);
 
+        private static string DescribeIssues(DiagnosticsSnapshot snapshot, IReadOnlyList<DiagnosticIssueCode> issueCodes)
+        {
+            if (snapshot == null || issueCodes == null || issueCodes.Count == 0)
+                return "Причина не определена.";
+
+            string[] descriptions = snapshot.Issues
+                .Where(issue => issueCodes.Contains(issue.Code))
+                .Select(issue => string.IsNullOrWhiteSpace(issue.UserMessage) ? issue.Title : issue.UserMessage)
+                .Where(message => !string.IsNullOrWhiteSpace(message))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            return descriptions.Length == 0 ? "Причина не определена." : string.Join(" ", descriptions);
+        }
+
         private static void Report(
             Action<AutoFixProgress> progress,
             string currentStep,
-            IReadOnlyList<AutoFixStepResult> history) =>
-            progress?.Invoke(new AutoFixProgress(currentStep, history.ToArray()));
+            IReadOnlyList<AutoFixStepResult> history,
+            string details = null) =>
+            progress?.Invoke(new AutoFixProgress(currentStep, history.ToArray(), details));
     }
 }
