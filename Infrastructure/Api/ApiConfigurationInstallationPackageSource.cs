@@ -90,14 +90,26 @@ namespace HonestFlow.Infrastructure.Api
             {
                 if (component is null || !TryMapComponent(component.Component, out InstallationComponent installationComponent))
                     continue;
-                string runtimeArchitecture = Environment.Is64BitOperatingSystem ? "x64" : "x86";
+                // Configuration/current already selected the asset for this client. Its architecture
+                // is therefore the signed contract we must verify, rather than the architecture of
+                // the current Windows process. A 64-bit workstation can legitimately be configured
+                // to receive an x86 component installer.
+                string expectedArchitecture = GetExpectedArchitecture(component.Architecture);
                 result[installationComponent] = SignedAssetMetadata.Resolve(
                     component.Component, component.EffectiveVersion, component.FileName,
                     component.DownloadUrl, component.Sha256, component.SizeBytes,
-                    runtimeArchitecture, component.ReleaseKeyId, component.ManifestBase64,
+                    expectedArchitecture, component.ReleaseKeyId, component.ManifestBase64,
                     component.ReleaseSignatureBase64, verifier, requireSignedManifest);
             }
             return result;
+        }
+
+        private static string GetExpectedArchitecture(string? architecture)
+        {
+            string normalized = architecture?.Trim().ToLowerInvariant() ?? string.Empty;
+            return normalized is "x86" or "x64" or "any"
+                ? normalized
+                : Environment.Is64BitOperatingSystem ? "x64" : "x86";
         }
 
         private static VersionsData ToVersions(IEnumerable<ApiComponentConfiguration> components)

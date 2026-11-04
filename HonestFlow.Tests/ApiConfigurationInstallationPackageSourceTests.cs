@@ -119,6 +119,40 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task SignedComponent_UsesServerSelectedArchitectureInsteadOfWindowsArchitecture()
+        {
+            string selectedArchitecture = Environment.Is64BitOperatingSystem ? "x86" : "x64";
+            byte[] bytes = "server-selected architecture"u8.ToArray();
+            string sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            byte[] manifest = Encoding.UTF8.GetBytes(
+                $"{{\"component\":\"ESM\",\"version\":\"4.3.0\",\"fileName\":\"esm.exe\",\"architecture\":\"{selectedArchitecture}\",\"sizeBytes\":{bytes.Length},\"sha256\":\"{sha}\"}}");
+            using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var verifier = new ReleaseManifestVerifier(new Dictionary<string, byte[]>
+            {
+                ["release-test"] = key.ExportSubjectPublicKeyInfo()
+            });
+            var source = new ApiConfigurationInstallationPackageSource(new BytesSession(bytes), new ApiConfigurationResponse
+            {
+                Components =
+                {
+                    new ApiComponentConfiguration
+                    {
+                        Component = "ESM", EffectiveVersion = "4.3.0", FileName = "esm.exe",
+                        DownloadUrl = "https://api.honestflow.ru/api/assets/ESM/4.3.0/download",
+                        Sha256 = sha, SizeBytes = bytes.Length, Architecture = selectedArchitecture,
+                        ReleaseKeyId = "release-test", ManifestBase64 = Convert.ToBase64String(manifest),
+                        ReleaseSignatureBase64 = Convert.ToBase64String(key.SignData(manifest,
+                            HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence))
+                    }
+                }
+            }, cacheFolder: _folder, releaseVerifier: verifier, requireSignedManifest: true);
+
+            string path = await source.ResolveInstallerAsync(InstallationComponent.Esm, null, CancellationToken.None);
+
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(path));
+        }
+
+        [Fact]
         public void SignedManifestForDifferentVersion_IsRejectedBeforeDownload()
         {
             byte[] bytes = "signed component"u8.ToArray();

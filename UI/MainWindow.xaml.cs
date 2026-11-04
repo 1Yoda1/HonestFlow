@@ -233,7 +233,7 @@ public partial class MainWindow : Window
             _componentVersionStatusService,
             new PointStatusReportBuilder(),
             _logService);
-        _autoFixWorkflow = CreateAutoFixWorkflow();
+        TryCreateAutoFixWorkflow();
         _logTimer.Tick += (_, _) => UpdateLiveLog();
         LicenseObservationSnapshotStore.Instance.SnapshotChanged += LicenseSnapshotChanged;
         Loaded += async (_, _) =>
@@ -1623,6 +1623,20 @@ public partial class MainWindow : Window
             _serviceRuntime?.ChzToken);
     }
 
+    private void TryCreateAutoFixWorkflow()
+    {
+        try
+        {
+            _autoFixWorkflow = CreateAutoFixWorkflow();
+        }
+        catch (Exception ex)
+        {
+            _autoFixWorkflow = null;
+            Logger.LogException(ex, "Автоисправления недоступны: не удалось проверить каталог дистрибутивов.",
+                nameof(MainWindow));
+        }
+    }
+
     private void SetAutoFixProgress(AutoFixProgress progress)
     {
         Dispatcher.Invoke(() =>
@@ -2343,7 +2357,7 @@ public partial class MainWindow : Window
         _paidExecutionEnabled = true;
         _serviceConnectionState = ServiceConnectionState.Active;
         LicenseObservationSnapshotStore.Instance.SnapshotChanged += LicenseSnapshotChanged;
-        _autoFixWorkflow = CreateAutoFixWorkflow();
+        TryCreateAutoFixWorkflow();
 
         ApplyServicePresentation();
         SetActionsEnabled(!_operationRunning);
