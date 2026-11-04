@@ -384,6 +384,9 @@ licenses.json.sig
 # Local release output created by scripts/publish-honestflow.ps1
 /release/
 
+# Local remote-access installer; never commit the binary distribution.
+/scripts/AnyDesk.exe
+
 # Local generated publish/build outputs
 /.build/
 /publish-hf/
