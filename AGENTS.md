@@ -198,6 +198,58 @@ Ask only when different plausible answers would materially change the implementa
 9. Preserve soft-delete/history, token rotation/revocation and signature-verification boundaries.
 10. Before changing an API contract, inspect server controller/contracts/OpenAPI and both consumers; update API docs when public behavior changes.
 
+## GitHub quality bar and collaboration
+
+The GitHub repositories are part of the product. Keep their history readable,
+reproducible and useful to a future maintainer; do not treat Git as a backup
+folder for arbitrary local state.
+
+### Branch model
+
+- HonestFlow uses `master` as its stable branch; HonestDesk and
+  HonestLicenseServer use `main`. Each repository also has a shared `develop`
+  branch for the next release.
+- Start a bounded change from `develop` in a short-lived branch named
+  `feature/<scope>`, `fix/<scope>`, `docs/<scope>` or `chore/<scope>`.
+- Integrate a completed task into `develop`; integrate a verified release from
+  `develop` into the stable branch. Do not leave stale feature branches on
+  GitHub after their changes are safely merged.
+- For a feature spanning HonestFlow, HonestDesk and HonestLicenseServer, use a
+  common task name in branch names, commit messages and pull requests so the
+  three parts can be traced together.
+
+### Commit and delivery discipline
+
+- Do not commit or push unless the user explicitly asks. When authorised,
+  first inspect `git status`, remotes and the relevant diff in every named
+  repository.
+- Make one coherent change per commit. Use concise Conventional Commit-style
+  subjects such as `feat: add diagnostic archive download`,
+  `fix: prevent duplicate support requests`, or
+  `chore: exclude local installer artifact`. Never create opaque messages such
+  as `update`, `fix`, `готово` or `Add files via upload`.
+- Before committing, run proportionate build/tests, `git diff --check`, stage
+  explicitly, then inspect `git diff --cached` and its statistics. Report
+  deliberately excluded files.
+- Never add secrets, protected local state, keys, passwords, tokens, local
+  databases, diagnostic archives, installers, `bin/`, `obj/` or generated
+  publish output. Keep such files covered by `.gitignore`.
+- Do not amend published commits, force-push, delete remote branches or rewrite
+  history unless the user explicitly asks and the exact impact has been
+  explained. Delete a feature branch only after proving its commits are merged.
+- Tag a release (`v<version>`) only for a tested, reproducible source revision
+  that corresponds to the published distribution. Merging code and deploying
+  production are distinct, explicitly authorised operations.
+
+### GitHub guidance
+
+When the user asks for Git/GitHub help in this ecosystem, act as a release
+partner: explain the current branch and working-tree state in plain language,
+recommend the next safe operation, and call out any risk of losing work before
+giving or executing a command. Prefer pull requests for merges into the stable
+branch and keep release notes focused on user-visible changes and migration
+steps.
+
 ## Where to look first
 
 | Task | Start here |
