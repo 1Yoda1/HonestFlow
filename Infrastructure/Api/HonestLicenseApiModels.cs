@@ -74,6 +74,9 @@ namespace HonestFlow.Infrastructure.Api
         public string Sha256 { get; set; }
         public long? SizeBytes { get; set; }
         public string Architecture { get; set; }
+        public string ReleaseKeyId { get; set; }
+        public string ManifestBase64 { get; set; }
+        public string ReleaseSignatureBase64 { get; set; }
     }
 
     public sealed class ApiRegistrationStatusResponse

@@ -39,6 +39,28 @@ namespace HonestFlow.Tests
             }
         }
 
+        [Fact]
+        public async Task LegacyMachineSession_IsRemovedWithoutRestoringIt()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "HonestFlowTests", Guid.NewGuid().ToString("N"));
+            string currentPath = Path.Combine(directory, "current", "api-session.dpapi");
+            string legacyPath = Path.Combine(directory, "legacy", "api-session.dpapi");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(legacyPath));
+                await File.WriteAllTextAsync(legacyPath, "obsolete-machine-session");
+                var store = new FileApiSessionStore(currentPath, new ReversingProtector(), legacyPath);
+
+                Assert.Null(await store.LoadAsync(CancellationToken.None));
+                Assert.False(File.Exists(legacyPath));
+                Assert.False(File.Exists(currentPath));
+            }
+            finally
+            {
+                if (Directory.Exists(directory)) Directory.Delete(directory, true);
+            }
+        }
+
         private sealed class ReversingProtector : IApiSessionProtector
         {
             public byte[] Protect(byte[] plaintext) => Transform(plaintext);

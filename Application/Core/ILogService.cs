@@ -11,7 +11,7 @@
         /// <summary>Запись отладочного сообщения (только в файл)</summary>
         void LogDebug(string message);
 
-        /// <summary>Получение всего пользовательского лога</summary>
+        /// <summary>Получение последних пользовательских записей; полная история хранится в файле.</summary>
         string GetUserLog();
     }
 }

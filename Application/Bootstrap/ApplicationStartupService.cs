@@ -97,8 +97,9 @@ namespace HonestFlow.Application.Bootstrap
             var session = new ApiSessionService(
                 httpClient,
                 new FileApiSessionStore(),
-                new FileApiSessionStore(Path.Combine(AppPaths.ProgramDataFolder,
-                    "registration-continuation.dpapi")));
+                new FileApiSessionStore(Path.Combine(AppPaths.UserDataFolder,
+                    "registration-continuation.dpapi"), legacyPath: Path.Combine(
+                    AppPaths.ProgramDataFolder, "registration-continuation.dpapi")));
             var auth = new ApiAuthService(
                 session,
                 new FileDeviceIdentityService(new DpapiDeviceIdentityStateProtector()),

@@ -11,11 +11,11 @@ namespace HonestFlow.Infrastructure.Api
         public byte[] Protect(byte[] plaintext) => ProtectedData.Protect(
             plaintext ?? throw new ArgumentNullException(nameof(plaintext)),
             Entropy,
-            DataProtectionScope.LocalMachine);
+            DataProtectionScope.CurrentUser);
 
         public byte[] Unprotect(byte[] protectedData) => ProtectedData.Unprotect(
             protectedData ?? throw new ArgumentNullException(nameof(protectedData)),
             Entropy,
-            DataProtectionScope.LocalMachine);
+            DataProtectionScope.CurrentUser);
     }
 }

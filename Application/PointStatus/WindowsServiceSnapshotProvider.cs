@@ -78,14 +78,21 @@ namespace HonestFlow.Application.PointStatus
 
         private static ServiceSnapshot FindRegisteredEsmCmService(CancellationToken cancellationToken)
         {
-            foreach (ServiceController service in ServiceController.GetServices())
+            ServiceController[] services = ServiceController.GetServices();
+            try
             {
-                using (service)
+                foreach (ServiceController service in services)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (EsmCmServiceNameResolver.IsValidServiceName(service.ServiceName))
                         return new ServiceSnapshot(service.ServiceName, service.Status.ToString());
                 }
+            }
+            finally
+            {
+                // GetServices creates every controller up front, including those after an early return.
+                foreach (ServiceController service in services)
+                    service.Dispose();
             }
 
             return null;

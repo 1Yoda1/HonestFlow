@@ -26,6 +26,9 @@ namespace HonestFlow.Application.Installation
         public string Sha256 { get; init; }
         public long? SizeBytes { get; init; }
         public string Architecture { get; init; }
+        public string ReleaseKeyId { get; init; }
+        public string ManifestBase64 { get; init; }
+        public string ReleaseSignatureBase64 { get; init; }
     }
 
     public sealed class ServiceInstallationSession : IDisposable

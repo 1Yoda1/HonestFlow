@@ -42,7 +42,7 @@ public sealed class PublicHonestFlowUpdateClient : IPublicHonestFlowUpdateClient
     }
 
     public Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-        _httpClient.SendAsync(request, cancellationToken);
+        _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
     public void Dispose()
     {

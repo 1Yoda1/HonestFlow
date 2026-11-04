@@ -10,6 +10,7 @@ using HonestFlow.Application.Installation;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Infrastructure.Api;
 using HonestFlow.Infrastructure.Dialogs;
+using HonestFlow.Infrastructure.Updates;
 using HonestFlow.Models;
 
 namespace HonestFlow.UI;
@@ -32,7 +33,11 @@ public partial class InstallationModeWindow : Window
         InitializeComponent();
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        var source = new ApiInstallationPackageSource(_httpClient, _session);
+        var source = new ApiInstallationPackageSource(
+            _httpClient,
+            _session,
+            releaseVerifier: ReleaseTrustStore.CreateVerifier(),
+            requireSignedManifest: ReleaseTrustStore.RequireSignedManifests);
         var progress = new WindowProgress(this);
         var dialogs = new WindowDialogs(this);
         var service = new InstallationService(

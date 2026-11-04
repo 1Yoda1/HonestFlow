@@ -74,6 +74,7 @@ public partial class MainWindow : Window
     private DiagnosticsSnapshot? _lastDiagnostics;
     private ComponentVersionStatusService? _componentVersionStatusService;
     private readonly DispatcherTimer _logTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly LogFileTailReader _logReader = new();
     private string? _deviceId;
     private bool _ratingSent;
     private ComponentVersionStatus[] _componentStatuses = Array.Empty<ComponentVersionStatus>();
@@ -128,7 +129,7 @@ public partial class MainWindow : Window
     {
         Title = "HonestFlow Free";
         ProductTitleText.Text = "HonestFlow Free";
-        ApplicationVersionText.Text = $"HonestFlow Free v{GetApplicationVersion()}";
+        ApplicationVersionText.Text = "HonestFlow 3";
         ClientNameText.Text = "Этот компьютер";
         ClientDetailsText.Text = Environment.MachineName;
         CopyDeviceIdButton.Visibility = Visibility.Collapsed;
@@ -163,7 +164,7 @@ public partial class MainWindow : Window
     {
         Title = "HonestFlow Service";
         ProductTitleText.Text = "HonestFlow Service";
-        ApplicationVersionText.Text = $"HonestFlow Service v{GetApplicationVersion()}";
+        ApplicationVersionText.Text = "HonestFlow 3";
         ClientNameText.Text = string.IsNullOrWhiteSpace(_client?.Name) ? "Рабочая точка" : _client.Name;
         ClientDetailsText.Text = string.IsNullOrWhiteSpace(_deviceId)
             ? "Device ID: недоступен"
@@ -217,7 +218,7 @@ public partial class MainWindow : Window
         _client = client;
         _license = license;
         ClientNameText.Text = string.IsNullOrWhiteSpace(client.Name) ? "Рабочая точка" : client.Name;
-        ApplicationVersionText.Text = $"HonestFlow v{GetApplicationVersion()}";
+        ApplicationVersionText.Text = "HonestFlow 3";
         UpdateLicenseSummary();
         SectionOutput.Text = "Готово к работе.";
         var ruDesktop = new RuDesktopService(_logService);
@@ -273,7 +274,7 @@ public partial class MainWindow : Window
     }
     private void LogNav_Click(object sender, RoutedEventArgs e)
     {
-        ShowSection(Section.Log, "Журнал операций", "Полный журнал текущего сеанса обновляется автоматически.", null, null, null, null);
+        ShowSection(Section.Log, "Журнал операций", "Последние записи обновляются автоматически. Полная история сохраняется в файле журнала.", null, null, null, null);
         UpdateLiveLog(force: true);
     }
 
@@ -290,6 +291,8 @@ public partial class MainWindow : Window
         _section = Section.Home;
         DashboardPanel.Visibility = Visibility.Visible;
         ActionPanel.Visibility = Visibility.Collapsed;
+        SectionOutput.Clear();
+        _logReader.Reset();
         UpdateNavSelection(HomeNavButton);
     }
 
@@ -305,6 +308,7 @@ public partial class MainWindow : Window
         ConfigureAction(TertiaryActionButton, tertiary);
         ConfigureAction(QuaternaryActionButton, quaternary);
         SectionOutput.Text = section == Section.Log ? string.Empty : "Выберите действие.";
+        if (section != Section.Log) _logReader.Reset();
         bool components = section == Section.Components;
         ComponentsPanel.Visibility = components ? Visibility.Visible : Visibility.Collapsed;
         bool tools = section == Section.Diagnostics;
@@ -2491,8 +2495,8 @@ public partial class MainWindow : Window
         {
             string path = Logger.GetLogPath();
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
-            string text = File.ReadAllText(path);
-            if (SectionOutput.Text == text) return;
+            string text = _logReader.ReadChanges(path, force);
+            if (text == null || SectionOutput.Text == text) return;
             bool followTail = SectionOutput.VerticalOffset >= SectionOutput.ExtentHeight - SectionOutput.ViewportHeight - 24;
             SectionOutput.Text = text;
             if (followTail || force) SectionOutput.ScrollToEnd();
@@ -2523,7 +2527,7 @@ public partial class MainWindow : Window
 
     private void ShowTextDialog(string title, string content)
     {
-        var text = new TextBox { Text = content, IsReadOnly = true, FontFamily = new FontFamily("Consolas"), FontSize = 13,
+        var text = new TextBox { Text = content, IsReadOnly = true, IsUndoEnabled = false, FontFamily = new FontFamily("Consolas"), FontSize = 13,
             TextWrapping = TextWrapping.NoWrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(16) };
         var dialog = new Window { Owner = this, Title = title, Width = 900, Height = 650,
@@ -2547,6 +2551,7 @@ public partial class MainWindow : Window
         _serviceLifetime?.Dispose();
         _serviceLifetime = null;
         _logTimer.Stop();
+        _logReader.Reset();
         _lifetime.Cancel();
         base.OnClosed(e);
     }

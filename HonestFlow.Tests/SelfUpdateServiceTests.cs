@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using HonestFlow.Infrastructure.Api;
@@ -15,7 +18,9 @@ namespace HonestFlow.Tests
 {
     public sealed class SelfUpdateServiceTests : IDisposable
     {
+        private const string ReleaseKeyId = "release-test";
         private readonly string _folder = Path.Combine(Path.GetTempPath(), "HonestFlow.Tests", Guid.NewGuid().ToString("N"));
+        private readonly ECDsa _releaseKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
         [Theory]
         [InlineData(@"C:\Apps\HonestFlow.exe")]
@@ -35,10 +40,9 @@ namespace HonestFlow.Tests
                 @"C:\Users\Test\Downloads\HonestFlow (1).exe",
                 @"C:\Users\Test\Downloads\HonestFlow.exe",
                 @"C:\ProgramData\HonestFlow\update\HonestFlow.new.exe",
-                @"C:\ProgramData\HonestFlow\update\backup",
-                @"C:\ProgramData\HonestFlow\update\backup\HonestFlow.backup.exe",
+                @"C:\Apps\HonestFlow.backup.exe",
                 @"C:\Users\Test\Downloads",
-                @"C:\ProgramData\HonestFlow\update\apply_update.log",
+                @"C:\Apps\HonestFlow.update.log",
                 1234,
                 new string('a', 64),
                 2048L,
@@ -48,7 +52,24 @@ namespace HonestFlow.Tests
             Assert.Contains("$expectedSha256", script);
             Assert.Contains("$expectedSizeBytes", script);
             Assert.Contains("Copy-Item -LiteralPath $newExe -Destination $targetExe -Force", script);
+            Assert.Contains("Get-FileHash -LiteralPath $targetExe -Algorithm SHA256", script);
+            Assert.True(script.IndexOf("Get-FileHash -LiteralPath $targetExe -Algorithm SHA256",
+                StringComparison.Ordinal) > script.IndexOf("Copy-Item -LiteralPath $newExe -Destination $targetExe -Force",
+                StringComparison.Ordinal));
             Assert.Contains("$backupCreated", script);
+        }
+
+        [Fact]
+        public void UpdateCommand_IsEncodedAndDoesNotExecuteScriptFromDisk()
+        {
+            const string script = "Write-Output 'verified update'";
+            var startInfo = (ProcessStartInfo)InvokeStatic("BuildPowerShellStartInfo", script, @"C:\Apps");
+
+            Assert.Equal("powershell.exe", Path.GetFileName(startInfo.FileName), ignoreCase: true);
+            Assert.Equal("-EncodedCommand", startInfo.ArgumentList[^2]);
+            Assert.Equal(script, Encoding.Unicode.GetString(Convert.FromBase64String(startInfo.ArgumentList[^1])));
+            Assert.DoesNotContain("-File", startInfo.ArgumentList);
+            Assert.True(Path.IsPathFullyQualified(startInfo.FileName));
         }
 
         [Fact]
@@ -86,6 +107,30 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task RequiredPublisherSignature_RejectsLegacyUpdateBeforeDownload()
+        {
+            byte[] bytes = "legacy unsigned update"u8.ToArray();
+            var updateClient = new BytesUpdateClient(bytes, UnsignedAsset(bytes));
+            var dialogs = new RecordingDialogs();
+            bool applied = false;
+            var service = new SelfUpdateService(
+                updateClient, dialogs,
+                currentVersion: () => new Version(1, 0, 0),
+                downloadedVersion: _ => new Version(2, 0, 0),
+                applyUpdate: (_, _, _, _) => applied = true,
+                updateRoot: _folder,
+                releaseVerifier: ReleaseTrustStore.CreateVerifier(),
+                requireSignedManifest: true);
+
+            bool result = await service.CheckDownloadAndRunUpdateIfNeeded();
+
+            Assert.False(result);
+            Assert.False(applied);
+            Assert.Equal(0, updateClient.DownloadCalls);
+            Assert.NotEmpty(dialogs.Errors);
+        }
+
+        [Fact]
         public async Task Unavailable_public_update_endpoint_does_not_apply_or_require_session()
         {
             var dialogs = new RecordingDialogs();
@@ -113,13 +158,14 @@ namespace HonestFlow.Tests
                 currentVersion: () => new Version(1, 0, 0),
                 downloadedVersion: _ => new Version(2, 0, 0),
                 applyUpdate: (path, sha, _, _) => { appliedPath = path; appliedHash = sha; },
-                updateRoot: _folder);
+                updateRoot: _folder,
+                releaseVerifier: TestReleaseVerifier());
 
             bool result = await service.CheckDownloadAndRunUpdateIfNeeded();
 
             Assert.True(result);
             Assert.NotNull(appliedPath);
-            Assert.Equal(Convert.ToHexString(SHA256.HashData(bytes)), appliedHash);
+            Assert.Equal(Convert.ToHexString(SHA256.HashData(bytes)), appliedHash, ignoreCase: true);
             Assert.Equal(bytes, await File.ReadAllBytesAsync(appliedPath));
         }
 
@@ -146,6 +192,7 @@ namespace HonestFlow.Tests
 
         public void Dispose()
         {
+            _releaseKey.Dispose();
             if (Directory.Exists(_folder))
                 Directory.Delete(_folder, recursive: true);
         }
@@ -159,16 +206,44 @@ namespace HonestFlow.Tests
                 currentVersion: () => new Version(1, 0, 0),
                 downloadedVersion: _ => new Version(2, 0, 0),
                 applyUpdate: (_, _, _, _) => onApply(),
-                updateRoot: _folder);
+                updateRoot: _folder,
+                releaseVerifier: TestReleaseVerifier());
 
-        private static SelfUpdateInfo Asset(byte[] bytes) => new()
+        private SelfUpdateInfo Asset(byte[] bytes)
+        {
+            string sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            byte[] manifest = Encoding.UTF8.GetBytes(
+                $"{{\"component\":\"HonestFlow\",\"version\":\"2.0.0\",\"fileName\":\"HonestFlow-test.exe\",\"architecture\":\"x64\",\"sizeBytes\":{bytes.Length},\"sha256\":\"{sha}\"}}");
+            return new SelfUpdateInfo
+            {
+                Version = "2.0.0",
+                AssetName = "HonestFlow-test.exe",
+                Architecture = "x64",
+                DownloadUrl = "https://api.honestflow.ru/api/assets/HonestFlow/2.0.0/download",
+                Sha256 = sha,
+                SizeBytes = bytes.LongLength,
+                ReleaseKeyId = ReleaseKeyId,
+                ManifestBase64 = Convert.ToBase64String(manifest),
+                ReleaseSignatureBase64 = Convert.ToBase64String(_releaseKey.SignData(
+                    manifest, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence))
+            };
+        }
+
+        private static SelfUpdateInfo UnsignedAsset(byte[] bytes) => new()
         {
             Version = "2.0.0",
             AssetName = "HonestFlow-test.exe",
+            Architecture = "x64",
             DownloadUrl = "https://api.honestflow.ru/api/assets/HonestFlow/2.0.0/download",
             Sha256 = Convert.ToHexString(SHA256.HashData(bytes)),
             SizeBytes = bytes.LongLength
         };
+
+        private ReleaseManifestVerifier TestReleaseVerifier() => new(
+            new Dictionary<string, byte[]>
+            {
+                [ReleaseKeyId] = _releaseKey.ExportSubjectPublicKeyInfo()
+            });
 
         private static object InvokeStatic(string name, params object[] arguments)
         {

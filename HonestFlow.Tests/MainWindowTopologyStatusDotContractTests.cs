@@ -54,9 +54,8 @@ public sealed class MainWindowTopologyStatusDotContractTests
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
         XDocument document = XDocument.Load(ProjectFile("UI", "MainWindow.xaml"));
 
-        string[] imageSources = document.Descendants(presentation + "ImageBrush")
-            .Select(brush => (string)brush.Attribute("ImageSource"))
-            .Where(source => source is not null)
+        string[] imageSources = document.Descendants(presentation + "BitmapImage")
+            .Select(image => (string)image.Attribute("UriSource"))
             .ToArray();
 
         Assert.Equal(5, imageSources.Length);

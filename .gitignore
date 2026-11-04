@@ -366,6 +366,7 @@ FodyWeavers.xsd
 *.key
 *.pfx
 *.p12
+*.hfrelkey
 *.dat
 ips_encrypted.json
 support_mail_encrypted.json

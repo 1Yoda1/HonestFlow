@@ -30,9 +30,12 @@ public partial class App : System.Windows.Application
 
         try
         {
+            using var updateClient = new PublicHonestFlowUpdateClient();
             var selfUpdate = new SelfUpdateService(
-                new PublicHonestFlowUpdateClient(),
-                new ApplicationDialogs());
+                updateClient,
+                new ApplicationDialogs(),
+                releaseVerifier: ReleaseTrustStore.CreateVerifier(),
+                requireSignedManifest: ReleaseTrustStore.RequireSignedManifests);
             var startup = new FreeApplicationStartup(
                 selfUpdate.CheckDownloadAndRunUpdateIfNeeded,
                 new LocalApplicationBootstrap().Create);

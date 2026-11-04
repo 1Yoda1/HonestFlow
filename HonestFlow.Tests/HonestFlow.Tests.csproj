@@ -16,5 +16,6 @@
   <ItemGroup>
     <ProjectReference Include="..\HonestFlow.csproj" />
     <ProjectReference Include="..\HonestFlow.LicenseSigning\HonestFlow.LicenseSigning.csproj" />
+    <ProjectReference Include="..\tools\HonestFlow.ReleaseSigning\HonestFlow.ReleaseSigning.csproj" />
   </ItemGroup>
 </Project>

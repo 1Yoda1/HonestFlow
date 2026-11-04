@@ -117,7 +117,7 @@ public sealed class ServiceConnectionTests
         }
 
         Assert.Contains("new ServiceOperationGuard(() => _serviceRuntime)", code);
-        Assert.Contains("if (!_paidExecutionEnabled && send)", code);
+        Assert.Contains("(!_paidExecutionEnabled && send)", code);
         Assert.Contains("if (!_paidExecutionEnabled || _startup == null || _client == null) return;", code);
         Assert.Contains("if (!_paidExecutionEnabled) return;", code);
     }

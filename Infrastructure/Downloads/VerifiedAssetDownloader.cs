@@ -56,6 +56,8 @@ namespace HonestFlow.Infrastructure.Downloads
                     int read;
                     while ((read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
                     {
+                        if (read > asset.SizeBytes!.Value - written)
+                            throw new InvalidDataException("Размер скачиваемого файла превышает объявленный размер.");
                         await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                         written += read;
                         progress?.Report((int)Math.Min(99, written * 100 / asset.SizeBytes!.Value));

@@ -12,6 +12,7 @@ using HonestFlow.Application.Installation;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Downloads;
+using HonestFlow.Infrastructure.Updates;
 using HonestFlow.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -98,7 +99,10 @@ namespace HonestFlow.Infrastructure.Api
                 DownloadUrl = source.DownloadUrl,
                 Sha256 = source.Sha256,
                 SizeBytes = source.SizeBytes,
-                Architecture = source.Architecture
+                Architecture = source.Architecture,
+                ReleaseKeyId = source.ReleaseKeyId,
+                ManifestBase64 = source.ManifestBase64,
+                ReleaseSignatureBase64 = source.ReleaseSignatureBase64
             };
         }
 
@@ -144,6 +148,9 @@ namespace HonestFlow.Infrastructure.Api
             public string Sha256 { get; set; }
             public long? SizeBytes { get; set; }
             public string Architecture { get; set; }
+            public string ReleaseKeyId { get; set; }
+            public string ManifestBase64 { get; set; }
+            public string ReleaseSignatureBase64 { get; set; }
         }
     }
 
@@ -152,15 +159,21 @@ namespace HonestFlow.Infrastructure.Api
         private readonly HttpClient _httpClient;
         private readonly ServiceInstallationSession _session;
         private readonly VerifiedAssetDownloader _downloader;
+        private readonly ReleaseManifestVerifier _releaseVerifier;
+        private readonly bool _requireSignedManifest;
 
         public ApiInstallationPackageSource(
             HttpClient httpClient,
             ServiceInstallationSession session,
-            VerifiedAssetDownloader downloader = null)
+            VerifiedAssetDownloader downloader = null,
+            ReleaseManifestVerifier releaseVerifier = null,
+            bool requireSignedManifest = ReleaseTrustStore.RequireSignedManifests)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _downloader = downloader ?? new VerifiedAssetDownloader();
+            _releaseVerifier = releaseVerifier ?? ReleaseTrustStore.CreateVerifier();
+            _requireSignedManifest = requireSignedManifest;
             Versions = session.CreateVersions();
         }
 
@@ -176,13 +189,12 @@ namespace HonestFlow.Infrastructure.Api
             ServiceInstallationPackage package = _session.Packages.FirstOrDefault(x => x.Component == component);
             if (package == null)
                 throw new InvalidOperationException($"Для компонента {component} на сервере не настроен установочный файл.");
-            var asset = new TrustedAsset
-            {
-                FileName = package.FileName,
-                DownloadUrl = package.DownloadUrl,
-                Sha256 = package.Sha256,
-                SizeBytes = package.SizeBytes
-            };
+            string runtimeArchitecture = Environment.Is64BitOperatingSystem ? "x64" : "x86";
+            TrustedAsset asset = SignedAssetMetadata.Resolve(
+                package.Component.ToString(), package.Version, package.FileName, package.DownloadUrl,
+                package.Sha256, package.SizeBytes, runtimeArchitecture,
+                package.ReleaseKeyId, package.ManifestBase64, package.ReleaseSignatureBase64,
+                _releaseVerifier, _requireSignedManifest);
             return await _downloader.GetVerifiedAsync(
                 asset,
                 AppPaths.InstallerCacheFolder,

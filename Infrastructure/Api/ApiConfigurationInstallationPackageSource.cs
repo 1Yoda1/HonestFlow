@@ -8,6 +8,7 @@ using HonestFlow.Application.Installation;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Infrastructure.Configuration;
 using HonestFlow.Infrastructure.Downloads;
+using HonestFlow.Infrastructure.Updates;
 using HonestFlow.Models;
 
 namespace HonestFlow.Infrastructure.Api
@@ -22,19 +23,25 @@ namespace HonestFlow.Infrastructure.Api
         private readonly IReadOnlyDictionary<InstallationComponent, TrustedAsset> _assets;
         private readonly VerifiedAssetDownloader _downloader;
         private readonly string _cacheFolder;
+        private readonly ReleaseManifestVerifier _releaseVerifier;
+        private readonly bool _requireSignedManifest;
 
         public ApiConfigurationInstallationPackageSource(
             IApiSessionService session,
             ApiConfigurationResponse configuration,
             VerifiedAssetDownloader downloader = null,
-            string cacheFolder = null)
+            string cacheFolder = null,
+            ReleaseManifestVerifier releaseVerifier = null,
+            bool requireSignedManifest = ReleaseTrustStore.RequireSignedManifests)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
             if (configuration is null) throw new ArgumentNullException(nameof(configuration));
             _downloader = downloader ?? new VerifiedAssetDownloader();
             _cacheFolder = cacheFolder ?? AppPaths.InstallerCacheFolder;
+            _releaseVerifier = releaseVerifier ?? ReleaseTrustStore.CreateVerifier();
+            _requireSignedManifest = requireSignedManifest;
             Versions = ToVersions(configuration.Components);
-            _assets = ToAssets(configuration.Components);
+            _assets = ToAssets(configuration.Components, _releaseVerifier, _requireSignedManifest);
         }
 
         public VersionsData Versions { get; }
@@ -68,24 +75,27 @@ namespace HonestFlow.Infrastructure.Api
 
             return new ApiConfigurationInstallationPackageSource(
                 sessionProvider.ApiSessionService,
-                configurationProvider.CurrentConfiguration);
+                configurationProvider.CurrentConfiguration,
+                releaseVerifier: ReleaseTrustStore.CreateVerifier(),
+                requireSignedManifest: ReleaseTrustStore.RequireSignedManifests);
         }
 
         private static IReadOnlyDictionary<InstallationComponent, TrustedAsset> ToAssets(
-            IEnumerable<ApiComponentConfiguration> components)
+            IEnumerable<ApiComponentConfiguration> components,
+            ReleaseManifestVerifier verifier,
+            bool requireSignedManifest)
         {
             var result = new Dictionary<InstallationComponent, TrustedAsset>();
             foreach (ApiComponentConfiguration component in components ?? Array.Empty<ApiComponentConfiguration>())
             {
                 if (component is null || !TryMapComponent(component.Component, out InstallationComponent installationComponent))
                     continue;
-                result[installationComponent] = new TrustedAsset
-                {
-                    FileName = component.FileName,
-                    DownloadUrl = component.DownloadUrl,
-                    Sha256 = component.Sha256,
-                    SizeBytes = component.SizeBytes
-                };
+                string runtimeArchitecture = Environment.Is64BitOperatingSystem ? "x64" : "x86";
+                result[installationComponent] = SignedAssetMetadata.Resolve(
+                    component.Component, component.EffectiveVersion, component.FileName,
+                    component.DownloadUrl, component.Sha256, component.SizeBytes,
+                    runtimeArchitecture, component.ReleaseKeyId, component.ManifestBase64,
+                    component.ReleaseSignatureBase64, verifier, requireSignedManifest);
             }
             return result;
         }

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using HonestFlow.Application.Installation;
 using HonestFlow.Application.Installation.Planning;
 using HonestFlow.Infrastructure.Api;
+using HonestFlow.Infrastructure.Updates;
 using HonestFlow.Models.Licensing;
 using Xunit;
 
@@ -91,6 +92,35 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public async Task InstallationOnlySource_RejectsUnsignedComponentBeforeDownload()
+        {
+            using var session = new ServiceInstallationSession(
+                "hfi_active",
+                DateTimeOffset.UtcNow.AddMinutes(30),
+                new[]
+                {
+                    new ServiceInstallationPackage
+                    {
+                        Component = InstallationComponent.Esm,
+                        Version = "2.4.1",
+                        FileName = "esm.exe",
+                        DownloadUrl = "https://example.test/esm.exe",
+                        Sha256 = new string('A', 64),
+                        SizeBytes = 10,
+                        Architecture = "x64"
+                    }
+                });
+            var handler = new JsonHandler(HttpStatusCode.OK, "installer");
+            using var http = new HttpClient(handler);
+            var source = new ApiInstallationPackageSource(http, session);
+
+            await Assert.ThrowsAsync<InvalidDataException>(() => source.ResolveInstallerAsync(
+                InstallationComponent.Esm, null, CancellationToken.None));
+
+            Assert.Equal(0, handler.Calls);
+        }
+
+        [Fact]
         public void InstallationOnlyFlow_RemainsSeparateAndIsNotExposedByServiceConnectionWindow()
         {
             string xaml = File.ReadAllText(ProjectFile("UI", "StartupWindow.xaml"));
@@ -141,12 +171,16 @@ namespace HonestFlow.Tests
                 _statusCode = statusCode;
                 _json = json;
             }
+            public int Calls { get; private set; }
             protected override Task<HttpResponseMessage> SendAsync(
-                HttpRequestMessage request, CancellationToken cancellationToken) =>
-                Task.FromResult(new HttpResponseMessage(_statusCode)
+                HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                Calls++;
+                return Task.FromResult(new HttpResponseMessage(_statusCode)
                 {
                     Content = new StringContent(_json, Encoding.UTF8, "application/json")
                 });
+            }
         }
     }
 }

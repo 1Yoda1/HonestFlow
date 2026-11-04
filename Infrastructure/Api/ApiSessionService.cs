@@ -285,7 +285,7 @@ namespace HonestFlow.Infrastructure.Api
 
         private async Task<HttpResponseMessage> SendCloneAsync(HttpRequestMessage source, string accessToken, CancellationToken cancellationToken)
         {
-            var clone = new HttpRequestMessage(source.Method, source.RequestUri);
+            using var clone = new HttpRequestMessage(source.Method, source.RequestUri);
             foreach (var header in source.Headers)
                 clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
             if (source.Content != null)

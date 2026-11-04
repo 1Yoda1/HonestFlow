@@ -385,6 +385,36 @@ namespace HonestFlow.Tests
             Assert.Same(persisted, store.Session);
         }
 
+        [Fact]
+        public async Task AuthorizedPost_DisposesCloneBody_WhileKeepingCallerRequestAndResponseUsable()
+        {
+            var store = new MemoryStore(new ApiSession
+            {
+                AccessToken = "access", RefreshToken = "refresh",
+                AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(10)
+            });
+            var handler = new CaptureRequestHandler();
+            using var http = new HttpClient(handler) { BaseAddress = new Uri("https://example.test/") };
+            var service = new ApiSessionService(http, store);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "api/support/remote-requests")
+            { Content = new StringContent("{\"message\":\"test\"}") };
+            using HttpResponseMessage response = await service.SendAuthorizedAsync(request, CancellationToken.None);
+
+            Assert.Equal("{}", await response.Content.ReadAsStringAsync());
+            Assert.Equal("{\"message\":\"test\"}", await request.Content.ReadAsStringAsync());
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => handler.Request.Content.ReadAsStringAsync());
+        }
+
+        private sealed class CaptureRequestHandler : HttpMessageHandler
+        {
+            public HttpRequestMessage Request { get; private set; }
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                Request = request;
+                return Task.FromResult(Json(HttpStatusCode.OK, "{}"));
+            }
+        }
+
         private static HttpResponseMessage Json(HttpStatusCode status, string json) => new(status)
         { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
