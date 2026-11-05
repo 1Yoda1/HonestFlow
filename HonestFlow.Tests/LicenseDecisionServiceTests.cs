@@ -79,13 +79,13 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public void Decide_OnlineMissingPolicyPreservesLegacyGrantSemantics()
+        public void Decide_OnlineMissingPolicyPreservesSignedGrantForOfflineDecision()
         {
             LicenseDecisionContext context = Context();
-            context.Grant.ClientEnabled = false;
+            context.Grant.ClientEnabled = true;
             context.OnlineClientPolicyEnabled = null;
 
-            Assert.Equal(LicenseDecision.ClientDisabled, Service().Decide(context).Decision);
+            Assert.Equal(LicenseDecision.Allowed, Service().Decide(context).Decision);
         }
 
         [Fact]

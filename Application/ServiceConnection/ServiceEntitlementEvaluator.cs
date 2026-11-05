@@ -7,10 +7,18 @@ namespace HonestFlow.Application.ServiceConnection;
 
 public static class ServiceEntitlementEvaluator
 {
-    public static ServiceConnectionState Evaluate(LicenseObservationSnapshot? snapshot)
+    public static ServiceConnectionState Evaluate(LicenseObservationSnapshot? snapshot, DateTimeOffset? utcNow = null)
     {
         if (snapshot is null)
             return ServiceConnectionState.Unavailable;
+
+        if (snapshot.Decision == LicenseDecision.Allowed && utcNow.HasValue)
+        {
+            DateTimeOffset now = utcNow.Value.ToUniversalTime();
+            if (snapshot.ValidUntilUtc.HasValue && now > snapshot.ValidUntilUtc.Value.ToUniversalTime() ||
+                snapshot.OfflineGraceEndsAtUtc.HasValue && now > snapshot.OfflineGraceEndsAtUtc.Value.ToUniversalTime())
+                return ServiceConnectionState.Expired;
+        }
 
         return snapshot.Decision switch
         {

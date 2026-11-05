@@ -45,7 +45,7 @@ namespace HonestFlow.Application.Licensing
                 try
                 {
                     await Task.Delay(
-                        TimeSpan.FromMinutes(60 + Random.Shared.NextDouble() * 15),
+                        TimeSpan.FromMinutes(15 + Random.Shared.NextDouble() * 5),
                         cancellationToken);
                     IPData client = currentClient();
                     if (client == null)

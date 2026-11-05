@@ -12,17 +12,19 @@ namespace HonestFlow.Application.Licensing;
 public sealed class ServiceOperationGuard : ILicenseOperationGuard
 {
     private readonly Func<ServiceRuntimeContext?> _runtimeProvider;
+    private readonly Func<DateTimeOffset> _utcNowProvider;
 
-    public ServiceOperationGuard(Func<ServiceRuntimeContext?> runtimeProvider)
+    public ServiceOperationGuard(Func<ServiceRuntimeContext?> runtimeProvider, Func<DateTimeOffset> utcNowProvider = null)
     {
         _runtimeProvider = runtimeProvider ?? throw new ArgumentNullException(nameof(runtimeProvider));
+        _utcNowProvider = utcNowProvider ?? (() => DateTimeOffset.UtcNow);
     }
 
     public void Demand(LicenseOperation operation)
     {
         ServiceRuntimeContext? runtime = _runtimeProvider();
         if (runtime is not null &&
-            ServiceEntitlementEvaluator.Evaluate(runtime.Entitlement) == ServiceConnectionState.Active)
+            ServiceEntitlementEvaluator.Evaluate(runtime.Entitlement, _utcNowProvider()) == ServiceConnectionState.Active)
         {
             Logger.Info(
                 $"Event=ServiceExecutionAllowed Operation={operation}",

@@ -1446,7 +1446,7 @@ public partial class MainWindow : Window
     }
 
     private ILicenseOperationGuard CreateLicenseGuard() =>
-        new ServiceOperationGuard(() => _serviceRuntime);
+        new ServiceOperationGuard(() => _serviceRuntime, () => new DpapiTrustedLicenseClock().UtcNow);
 
     private CancellationTokenSource CreateRuntimeCancellation() =>
         CancellationTokenSource.CreateLinkedTokenSource(
