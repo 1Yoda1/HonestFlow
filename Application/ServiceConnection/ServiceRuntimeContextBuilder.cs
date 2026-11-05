@@ -24,6 +24,14 @@ public sealed class ServiceRuntimeContextBuilder
         ArgumentNullException.ThrowIfNull(controller);
         ArgumentNullException.ThrowIfNull(session);
 
+        if (session.Startup.AuthService is IApiSessionProvider { ApiSessionService: IApiClientAccessStateProvider access } &&
+            access.LicensePolicyEnabled != true)
+        {
+            return new ServiceConnectionResult(
+                ServiceConnectionState.NotEntitled,
+                "Для подключения Service требуется активная политика лицензии.");
+        }
+
         ServiceConnectionState state = ServiceEntitlementEvaluator.Evaluate(snapshot);
         if (state != ServiceConnectionState.Active)
         {

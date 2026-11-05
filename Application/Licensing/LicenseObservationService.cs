@@ -267,6 +267,7 @@ namespace HonestFlow.Application.Licensing
                 Decision = decision.Decision,
                 TechnicalCode = decision.TechnicalCode,
                 Message = decision.Message,
+                ValidUntilUtc = grant?.ValidUntilUtc,
                 OfflineGraceEndsAtUtc = decision.OfflineGraceEndsAtUtc,
                 MinimumRequiredVersion = decision.MinimumRequiredVersion,
                 Features = decision.Features.ToArray()

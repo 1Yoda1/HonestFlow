@@ -20,6 +20,7 @@ namespace HonestFlow.Application.Licensing
         public LicenseDecision Decision { get; set; }
         public string TechnicalCode { get; set; }
         public string Message { get; set; }
+        public DateTimeOffset? ValidUntilUtc { get; set; }
         public DateTimeOffset? OfflineGraceEndsAtUtc { get; set; }
         public Version MinimumRequiredVersion { get; set; }
         public IReadOnlyCollection<LicenseFeature> Features { get; set; } = Array.Empty<LicenseFeature>();
