@@ -10,7 +10,7 @@ namespace HonestFlow.Tests
     public sealed class ApiConfigurationCacheTests
     {
         [Fact]
-        public async Task ProtectedCurrentClientConfiguration_RoundTripsForSameDeviceOnly()
+        public async Task CurrentClientConfiguration_DoesNotPersistServiceSecrets()
         {
             string directory = Path.Combine(Path.GetTempPath(), "HonestFlowTests", Guid.NewGuid().ToString("N"));
             string path = Path.Combine(directory, "configuration-current.dpapi");
@@ -42,12 +42,41 @@ namespace HonestFlow.Tests
                 ApiConfigurationResponse restored = await cache.LoadAsync("device-1", CancellationToken.None);
                 Assert.Equal("client-secret", restored.Client.ClientId);
                 Assert.Equal("007701234567", restored.Client.Inn);
-                Assert.Equal("id-code", restored.Client.IdentificationCode);
-                Assert.Equal("service-chz-token", restored.Client.ChzToken);
+                Assert.Null(restored.Client.IdentificationCode);
+                Assert.Null(restored.Client.ChzToken);
                 Assert.DoesNotContain("service-chz-token", persisted);
                 Assert.Equal("esm.exe", restored.Components[0].FileName);
                 Assert.Equal(1234, restored.Components[0].SizeBytes);
                 Assert.Null(await cache.LoadAsync("another-device", CancellationToken.None));
+            }
+            finally
+            {
+                if (Directory.Exists(directory)) Directory.Delete(directory, true);
+            }
+        }
+
+        [Fact]
+        public async Task ServiceConfiguration_RoundTripsOnlyForSameClientAndDevice()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "HonestFlowTests", Guid.NewGuid().ToString("N"));
+            string path = Path.Combine(directory, "service-configuration.dpapi");
+            try
+            {
+                var cache = new FileApiServiceConfigurationCache(path, new ReversingProtector());
+                var configuration = new ApiServiceConfigurationResponse
+                {
+                    ClientId = "client-1", DeviceId = "device-1",
+                    IdentificationCode = "id-code", ChzToken = "service-chz-token"
+                };
+
+                await cache.SaveAsync(configuration, CancellationToken.None);
+
+                string persisted = await File.ReadAllTextAsync(path);
+                Assert.DoesNotContain("service-chz-token", persisted);
+                Assert.Equal("service-chz-token", (await cache.LoadAsync(
+                    "client-1", "device-1", CancellationToken.None)).ChzToken);
+                Assert.Null(await cache.LoadAsync("client-2", "device-1", CancellationToken.None));
+                Assert.Null(await cache.LoadAsync("client-1", "device-2", CancellationToken.None));
             }
             finally
             {

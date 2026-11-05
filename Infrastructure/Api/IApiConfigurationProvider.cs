@@ -1,3 +1,6 @@
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace HonestFlow.Infrastructure.Api
 {
     /// <summary>
@@ -8,5 +11,14 @@ namespace HonestFlow.Infrastructure.Api
     public interface IApiConfigurationProvider
     {
         ApiConfigurationResponse CurrentConfiguration { get; }
+    }
+
+    /// <summary>
+    /// Loads integration secrets only after the server has checked the current
+    /// Service entitlement for this client and device.
+    /// </summary>
+    public interface IApiServiceConfigurationProvider
+    {
+        Task<ApiServiceConfigurationResponse> LoadServiceConfigurationAsync(CancellationToken cancellationToken);
     }
 }

@@ -17,7 +17,7 @@ namespace HonestFlow.Tests;
 public sealed class ServiceLmChzConfigurationTests
 {
     [Fact]
-    public void ServiceRuntime_ExposesCurrentConfigurationSecretsWithoutCopyingThemToClient()
+    public void ServiceRuntime_ExposesServiceConfigurationSecretsWithoutCopyingThemToClient()
     {
         ServiceRuntimeContext runtime = CreateRuntime("service-chz-token", "id-code");
 
@@ -113,9 +113,14 @@ public sealed class ServiceLmChzConfigurationTests
         {
             Client = new ApiClientConfiguration
             {
-                ClientId = "client-1", ChzToken = chzToken, IdentificationCode = identificationCode
+                ClientId = "client-1"
             },
             Device = new ApiDeviceConfiguration { DeviceId = "device-1" }
+        };
+        var serviceConfiguration = new ApiServiceConfigurationResponse
+        {
+            ClientId = "client-1", DeviceId = "device-1",
+            ChzToken = chzToken, IdentificationCode = identificationCode
         };
         var entitlement = new LicenseObservationSnapshot
         {
@@ -127,7 +132,7 @@ public sealed class ServiceLmChzConfigurationTests
             new PointStatusService(false, 0), versions, new PointStatusReportBuilder(), log);
         return new ServiceRuntimeContext(
             new ApplicationStartupController(), session, new IPData { ClientId = "client-1" }, entitlement,
-            configuration, pointStatus, versions);
+            configuration, serviceConfiguration, pointStatus, versions);
     }
 
     private static string ProjectFile(params string[] parts)

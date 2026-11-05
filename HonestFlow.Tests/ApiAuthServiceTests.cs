@@ -16,7 +16,7 @@ namespace HonestFlow.Tests
         [Fact]
         public async Task Login_LoadsOnlyCurrentClientConfiguration()
         {
-            const string json = "{\"client\":{\"clientId\":\"c1\",\"name\":\"Point\",\"inn\":\"007701234567\",\"identificationCode\":\"id-code\",\"chzToken\":\"service-chz-token\",\"architecture\":\"x64\",\"hasLmDatabaseBackup\":true,\"ruDesktopEnabled\":true},\"device\":{\"deviceId\":\"d1\",\"status\":\"Approved\"},\"components\":[{\"component\":\"LmModule\",\"effectiveVersion\":\"4.2\",\"fileName\":\"regime-4.2.msi\",\"downloadUrl\":\"https://api.honestflow.ru/api/assets/LmModule/4.2/download\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"sizeBytes\":123,\"architecture\":\"x64\"}]}";
+            const string json = "{\"client\":{\"clientId\":\"c1\",\"name\":\"Point\",\"inn\":\"007701234567\",\"architecture\":\"x64\",\"hasLmDatabaseBackup\":true,\"ruDesktopEnabled\":true},\"device\":{\"deviceId\":\"d1\",\"status\":\"Approved\"},\"components\":[{\"component\":\"LmModule\",\"effectiveVersion\":\"4.2\",\"fileName\":\"regime-4.2.msi\",\"downloadUrl\":\"https://api.honestflow.ru/api/assets/LmModule/4.2/download\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"sizeBytes\":123,\"architecture\":\"x64\"}]}";
             var session = new FakeSession(json);
             var service = new ApiAuthService(
                 session,
@@ -32,9 +32,29 @@ namespace HonestFlow.Tests
             Assert.Equal("4.2", result.Client.Versions.LmModule);
             Assert.Equal("regime-4.2.msi", service.CurrentConfiguration.Components[0].FileName);
             Assert.Equal(123, service.CurrentConfiguration.Components[0].SizeBytes);
-            Assert.Equal("id-code", service.CurrentConfiguration.Client.IdentificationCode);
-            Assert.Equal("service-chz-token", service.CurrentConfiguration.Client.ChzToken);
+            Assert.Null(service.CurrentConfiguration.Client.IdentificationCode);
+            Assert.Null(service.CurrentConfiguration.Client.ChzToken);
             Assert.Null(result.Client.Password);
+        }
+
+        [Fact]
+        public async Task ServiceConfiguration_IsLoadedFromDedicatedServiceEndpoint()
+        {
+            const string current = "{\"client\":{\"clientId\":\"c1\",\"name\":\"Point\"},\"device\":{\"deviceId\":\"d1\"}}";
+            const string serviceJson = "{\"clientId\":\"c1\",\"deviceId\":\"d1\",\"identificationCode\":\"id-code\",\"chzToken\":\"service-chz-token\"}";
+            var service = new ApiAuthService(
+                new FakeSession(current, serviceJson),
+                new FakeIdentity(),
+                new FakeLog(),
+                new MemoryConfigurationCache(null),
+                new MemoryServiceConfigurationCache());
+
+            await service.AuthenticateAsync("seller", "password", null, CancellationToken.None);
+            ApiServiceConfigurationResponse configuration = await service.LoadServiceConfigurationAsync(CancellationToken.None);
+
+            Assert.Equal("id-code", configuration.IdentificationCode);
+            Assert.Equal("service-chz-token", configuration.ChzToken);
+            Assert.Null(service.CurrentConfiguration.Client.ChzToken);
         }
 
         [Fact]
@@ -157,13 +177,23 @@ namespace HonestFlow.Tests
 
         private sealed class FakeSession : IApiSessionService
         {
-            private readonly string _json;
-            public FakeSession(string json) { _json = json; }
+            private readonly string _configurationJson;
+            private readonly string _serviceJson;
+            public FakeSession(string configurationJson, string serviceJson = null)
+            {
+                _configurationJson = configurationJson;
+                _serviceJson = serviceJson ?? configurationJson;
+            }
             public string Login { get; private set; }
             public Task<ApiTokenResponse> LoginAsync(string login, string password, string deviceId, string deviceName, CancellationToken cancellationToken)
             { Login = login; return Task.FromResult(new ApiTokenResponse()); }
             public Task<HttpResponseMessage> SendAuthorizedAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-                Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(_json) });
+                Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(request.RequestUri?.ToString().EndsWith("configuration/service", StringComparison.Ordinal) == true
+                        ? _serviceJson
+                        : _configurationJson)
+                });
         }
 
         private sealed class FakeIdentity : IDeviceIdentityService
@@ -212,6 +242,23 @@ namespace HonestFlow.Tests
             }
             public Task SaveAsync(ApiConfigurationResponse configuration, CancellationToken cancellationToken) { _configuration = configuration; return Task.CompletedTask; }
             public Task ClearAsync(CancellationToken cancellationToken) { Cleared = true; _configuration = null; return Task.CompletedTask; }
+        }
+
+        private sealed class MemoryServiceConfigurationCache : IApiServiceConfigurationCache
+        {
+            private ApiServiceConfigurationResponse _configuration;
+            public Task<ApiServiceConfigurationResponse> LoadAsync(string clientId, string deviceId, CancellationToken cancellationToken) =>
+                Task.FromResult(_configuration);
+            public Task SaveAsync(ApiServiceConfigurationResponse configuration, CancellationToken cancellationToken)
+            {
+                _configuration = configuration;
+                return Task.CompletedTask;
+            }
+            public Task ClearAsync(CancellationToken cancellationToken)
+            {
+                _configuration = null;
+                return Task.CompletedTask;
+            }
         }
 
         private sealed class FakeLog : ILogService

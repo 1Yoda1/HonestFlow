@@ -6,6 +6,8 @@ using HonestFlow.Application.Installation;
 using HonestFlow.Application.Licensing;
 using HonestFlow.Application.PointStatus;
 using HonestFlow.Application.RemoteAccess;
+using HonestFlow.Infrastructure;
+using HonestFlow.Infrastructure.Api;
 using HonestFlow.Models;
 
 namespace HonestFlow.Application.ServiceConnection;
@@ -37,6 +39,36 @@ public sealed class ServiceRuntimeContextBuilder
                 ServiceEntitlementEvaluator.Message(ServiceConnectionState.Unavailable));
         }
 
+        if (session.Startup.AuthService is not IApiServiceConfigurationProvider serviceConfigurationProvider)
+        {
+            return new ServiceConnectionResult(
+                ServiceConnectionState.Unavailable,
+                "Не удалось получить защищённую конфигурацию HonestFlow Service.");
+        }
+
+        ApiServiceConfigurationResponse serviceConfiguration;
+        try
+        {
+            serviceConfiguration = await serviceConfigurationProvider
+                .LoadServiceConfigurationAsync(cancellationToken);
+        }
+        catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden ||
+                                             ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            return new ServiceConnectionResult(
+                ServiceConnectionState.NotEntitled,
+                ServiceEntitlementEvaluator.Message(ServiceConnectionState.NotEntitled));
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            Logger.Warning(
+                $"Event=ServiceConfigurationLoadFailed ErrorType={ex.GetType().Name}",
+                nameof(ServiceRuntimeContextBuilder));
+            return new ServiceConnectionResult(
+                ServiceConnectionState.Unavailable,
+                "Не удалось получить защищённую конфигурацию HonestFlow Service.");
+        }
+
         var componentVersions = new ComponentVersionStatusService(session.LogService);
         var pointStatus = new PointStatusService(
             session.Startup.UseRemoteConfigMode,
@@ -54,6 +86,7 @@ public sealed class ServiceRuntimeContextBuilder
             client,
             snapshot!,
             session.Startup.CurrentApiConfiguration,
+            serviceConfiguration,
             pointStatusRefresh,
             componentVersions);
 
