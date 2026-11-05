@@ -12,19 +12,27 @@ using Newtonsoft.Json;
 
 namespace HonestFlow.Infrastructure.Api
 {
-    public sealed class ApiAuthService : IApiCredentialAuthService, IApiSessionProvider, IApiConfigurationProvider
+    public sealed class ApiAuthService : IApiCredentialAuthService, IApiSessionProvider,
+        IApiConfigurationProvider, IApiServiceConfigurationProvider
     {
         private readonly IApiSessionService _session;
         private readonly IDeviceIdentityService _deviceIdentity;
         private readonly ILogService _log;
         private readonly IApiConfigurationCache _configurationCache;
+        private readonly IApiServiceConfigurationCache _serviceConfigurationCache;
 
-        public ApiAuthService(IApiSessionService session, IDeviceIdentityService deviceIdentity, ILogService log, IApiConfigurationCache configurationCache = null)
+        public ApiAuthService(
+            IApiSessionService session,
+            IDeviceIdentityService deviceIdentity,
+            ILogService log,
+            IApiConfigurationCache configurationCache = null,
+            IApiServiceConfigurationCache serviceConfigurationCache = null)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _deviceIdentity = deviceIdentity ?? throw new ArgumentNullException(nameof(deviceIdentity));
             _log = log ?? throw new ArgumentNullException(nameof(log));
             _configurationCache = configurationCache ?? new FileApiConfigurationCache();
+            _serviceConfigurationCache = serviceConfigurationCache ?? new FileApiServiceConfigurationCache();
         }
 
         public IApiSessionService ApiSessionService => _session;
@@ -131,6 +139,57 @@ namespace HonestFlow.Infrastructure.Api
                 throw new InvalidOperationException("API returned an incomplete current-client configuration.");
             return configuration;
         }
+
+        public async Task<ApiServiceConfigurationResponse> LoadServiceConfigurationAsync(
+            CancellationToken cancellationToken)
+        {
+            ApiConfigurationResponse current = CurrentConfiguration ??
+                throw new InvalidOperationException("Current client configuration is unavailable.");
+            string clientId = current.Client?.ClientId;
+            string deviceId = current.Device?.DeviceId;
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(deviceId))
+                throw new InvalidOperationException("Current client configuration is incomplete.");
+
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, "api/configuration/service");
+                using HttpResponseMessage response = await _session.SendAuthorizedAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode) throw new ApiRequestException(response.StatusCode);
+                ApiServiceConfigurationResponse configuration = JsonConvert.DeserializeObject<ApiServiceConfigurationResponse>(
+                    await response.Content.ReadAsStringAsync(cancellationToken));
+                if (!MatchesCurrentConfiguration(configuration, clientId, deviceId))
+                    throw new InvalidOperationException("API returned an invalid Service configuration.");
+
+                await _serviceConfigurationCache.SaveAsync(configuration, cancellationToken);
+                return configuration;
+            }
+            catch (ApiRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                                                 ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                await _serviceConfigurationCache.ClearAsync(CancellationToken.None);
+                throw;
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested && IsTransientServiceFailure(ex))
+            {
+                ApiServiceConfigurationResponse cached = await _serviceConfigurationCache.LoadAsync(
+                    clientId, deviceId, cancellationToken);
+                if (cached is not null) return cached;
+                throw;
+            }
+        }
+
+        private static bool MatchesCurrentConfiguration(
+            ApiServiceConfigurationResponse configuration,
+            string clientId,
+            string deviceId) =>
+            configuration is not null &&
+            string.Equals(configuration.ClientId, clientId, StringComparison.Ordinal) &&
+            string.Equals(configuration.DeviceId, deviceId, StringComparison.Ordinal);
+
+        private static bool IsTransientServiceFailure(Exception exception) =>
+            exception is HttpRequestException ||
+            exception is OperationCanceledException ||
+            exception is ApiRequestException apiError && (int)apiError.StatusCode >= 500;
 
         private static IPData Map(ApiConfigurationResponse configuration)
         {

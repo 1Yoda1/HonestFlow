@@ -13,6 +13,7 @@ namespace HonestFlow.Application.Auth
         IApiCredentialAuthService,
         IApiSessionProvider,
         IApiConfigurationProvider,
+        IApiServiceConfigurationProvider,
         ILicenseObservationRefresher
     {
         private readonly IAuthService _inner;
@@ -22,6 +23,14 @@ namespace HonestFlow.Application.Auth
             (_inner as IApiSessionProvider)?.ApiSessionService;
         public ApiConfigurationResponse CurrentConfiguration =>
             (_inner as IApiConfigurationProvider)?.CurrentConfiguration;
+
+        public Task<ApiServiceConfigurationResponse> LoadServiceConfigurationAsync(
+            CancellationToken cancellationToken)
+        {
+            if (_inner is not IApiServiceConfigurationProvider serviceConfigurationProvider)
+                throw new InvalidOperationException("Service configuration is unavailable for this authentication provider.");
+            return serviceConfigurationProvider.LoadServiceConfigurationAsync(cancellationToken);
+        }
 
         public LicenseObservingAuthService(
             IAuthService inner,

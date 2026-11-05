@@ -89,7 +89,7 @@ public sealed class ServiceConnectionTests
 
         Assert.Contains("_applicationMode = ApplicationMode.Service", activation);
         Assert.Contains("_paidExecutionEnabled = true", activation);
-        Assert.Contains("_autoFixWorkflow = CreateAutoFixWorkflow();", activation);
+        Assert.Contains("TryCreateAutoFixWorkflow();", activation);
         Assert.Contains("RefreshCurrentSectionAfterRuntimeChangeAsync", activation);
         Assert.DoesNotContain("new MainWindow", activation);
         Assert.DoesNotContain("new CompactMainWindow", activation);

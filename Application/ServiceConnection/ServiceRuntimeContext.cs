@@ -16,6 +16,7 @@ public sealed class ServiceRuntimeContext
         IPData client,
         LicenseObservationSnapshot entitlement,
         ApiConfigurationResponse configuration,
+        ApiServiceConfigurationResponse serviceConfiguration,
         PointStatusRefreshService pointStatusRefresh,
         ComponentVersionStatusService componentVersionStatus)
     {
@@ -24,6 +25,7 @@ public sealed class ServiceRuntimeContext
         Client = client ?? throw new ArgumentNullException(nameof(client));
         Entitlement = entitlement ?? throw new ArgumentNullException(nameof(entitlement));
         Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        ServiceConfiguration = serviceConfiguration ?? throw new ArgumentNullException(nameof(serviceConfiguration));
         PointStatusRefresh = pointStatusRefresh ?? throw new ArgumentNullException(nameof(pointStatusRefresh));
         ComponentVersionStatus = componentVersionStatus ?? throw new ArgumentNullException(nameof(componentVersionStatus));
 
@@ -31,7 +33,9 @@ public sealed class ServiceRuntimeContext
             throw new ArgumentException("Service entitlement is not active.", nameof(entitlement));
         if (!string.Equals(client.ClientId, entitlement.ClientId, StringComparison.Ordinal) ||
             !string.Equals(configuration.Client?.ClientId, entitlement.ClientId, StringComparison.Ordinal) ||
-            !string.Equals(configuration.Device?.DeviceId, entitlement.DeviceId, StringComparison.Ordinal))
+            !string.Equals(configuration.Device?.DeviceId, entitlement.DeviceId, StringComparison.Ordinal) ||
+            !string.Equals(serviceConfiguration.ClientId, entitlement.ClientId, StringComparison.Ordinal) ||
+            !string.Equals(serviceConfiguration.DeviceId, entitlement.DeviceId, StringComparison.Ordinal))
             throw new ArgumentException("Service runtime identities do not match the validated entitlement.");
     }
 
@@ -42,10 +46,11 @@ public sealed class ServiceRuntimeContext
     public string DeviceId => Entitlement.DeviceId;
     public LicenseObservationSnapshot Entitlement { get; internal set; }
     public ApiConfigurationResponse Configuration { get; }
-    // Service-only secrets remain in the protected configuration document and are
-    // deliberately not copied into IPData or API session state.
-    public string? IdentificationCode => Configuration.Client?.IdentificationCode;
-    public string? ChzToken => Configuration.Client?.ChzToken;
+    // Service-only secrets are not part of ordinary configuration/current and
+    // are deliberately not copied into IPData or API session state.
+    public ApiServiceConfigurationResponse ServiceConfiguration { get; }
+    public string? IdentificationCode => ServiceConfiguration.IdentificationCode;
+    public string? ChzToken => ServiceConfiguration.ChzToken;
     public VersionsData? EffectiveVersions => Client.Versions ?? Startup.RemoteVersions;
     public PointStatusRefreshService PointStatusRefresh { get; }
     public ComponentVersionStatusService ComponentVersionStatus { get; }

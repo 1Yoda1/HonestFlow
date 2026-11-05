@@ -44,6 +44,14 @@ namespace HonestFlow.Infrastructure.Api
         public List<ApiComponentConfiguration> Components { get; set; } = new();
     }
 
+    public sealed class ApiServiceConfigurationResponse
+    {
+        public string ClientId { get; set; }
+        public string DeviceId { get; set; }
+        public string? IdentificationCode { get; set; }
+        public string? ChzToken { get; set; }
+    }
+
     public sealed class ApiClientConfiguration
     {
         public string ClientId { get; set; }
