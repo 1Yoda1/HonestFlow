@@ -68,7 +68,7 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
-        public async Task UnknownJsonFieldsAreIgnored_AndMissingLinkCodeIsSafe()
+        public async Task UnknownStatusSchema_IsNotReportedAsSuccessful()
         {
             string config = CreateConfig();
             try
@@ -82,8 +82,31 @@ namespace HonestFlow.Tests
                 }));
                 EsmStatusResult result = await client.GetStatusAsync(CancellationToken.None);
 
+                Assert.Equal(EsmStatusResultKind.UnknownSchema, result.Kind);
+                Assert.Null(result.Status);
+            }
+            finally { File.Delete(config); }
+        }
+
+        [Theory]
+        [InlineData("{\"lmController\":{\"code\":0}}", "flat")]
+        [InlineData("{\"data\":{\"lm\":{\"code\":0}}}", "data")]
+        [InlineData("{\"data\":{\"software\":{\"data\":{\"lmController\":{\"code\":0}}}}}", "data.software.data")]
+        [InlineData("{\"software\":{\"data\":{\"gismt\":{\"code\":0}}}}", "software.data")]
+        public async Task SupportedStatusSchemas_AreRecognized(string statusJson, string schemaName)
+        {
+            string config = CreateConfig();
+            try
+            {
+                int request = 0;
+                using var client = Client(config, _ => Json(request++ == 0
+                    ? "{\"instances\":[{\"id\":\"one\"}]}"
+                    : statusJson));
+
+                EsmStatusResult result = await client.GetStatusAsync(CancellationToken.None);
+
                 Assert.Equal(EsmStatusResultKind.Success, result.Kind);
-                Assert.Null(result.Status.LmController.Code);
+                Assert.Equal(schemaName, result.SchemaName);
             }
             finally { File.Delete(config); }
         }

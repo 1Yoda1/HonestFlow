@@ -10,6 +10,7 @@ namespace HonestFlow.Application.PointStatus
         ESM_NOT_INSTALLED,
         ESM_SERVICE_MISSING,
         ESM_API_UNAVAILABLE,
+        ESM_STATUS_UNKNOWN,
         ESM_REGISTRATION_STATUS_UNAVAILABLE,
         ESM_NOT_REGISTERED,
         ESM_CM_SERVICE_STOPPED,
@@ -185,6 +186,10 @@ namespace HonestFlow.Application.PointStatus
                 Add(issues, Issue(DiagnosticIssueCode.ESM_API_UNAVAILABLE, DiagnosticComponent.Esm, DiagnosticSeverity.WorkImpossible,
                     "ТС ПИоТ недоступен", "Локальный API ТС ПИоТ не отвечает.", context.Esm.Details, DiagnosticFixKey.RestartEsm,
                     Evidence("Probe", "EsmApiPort"), Evidence("Port", result.EsmApiPort?.Port?.ToString() ?? "not configured")));
+            else if (result.EsmApiStatus?.Kind == EsmStatusResultKind.UnknownSchema)
+                Add(issues, Issue(DiagnosticIssueCode.ESM_STATUS_UNKNOWN, DiagnosticComponent.Esm, DiagnosticSeverity.UnableToVerify,
+                    "Статус ТС ПИоТ не определён", "ТС ПИоТ вернул неподдерживаемый формат статуса. Повторите проверку после обновления HonestFlow.",
+                    context.Esm.Details, evidence: new[] { Evidence("EsmApiStatus", "UnknownSchema") }));
 
             AddAtolIssues(issues, context);
             AddLmIssues(issues, context);
@@ -456,6 +461,10 @@ namespace HonestFlow.Application.PointStatus
                 context.Result.EsmApiPort?.IsAvailable == true ? DiagnosticFactState.Success :
                 context.Result.EsmApiPort == null ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
                 context.Result.EsmApiPort?.IsAvailable == true ? "Available" : "Unavailable", context.Esm.Details));
+            facts.Add(new DiagnosticFact("Esm.ApiSchema", DiagnosticComponent.Esm,
+                context.Result.EsmApiStatus?.Kind == EsmStatusResultKind.Success ? DiagnosticFactState.Success : DiagnosticFactState.Unknown,
+                context.Result.EsmApiStatus?.SchemaName ?? "unrecognized",
+                context.Result.EsmApiStatus?.Kind.ToString() ?? "unknown"));
             facts.Add(new DiagnosticFact("EsmApiPort", DiagnosticComponent.Esm,
                 context.Result.EsmApiPort?.IsAvailable == true ? DiagnosticFactState.Success :
                 context.Result.EsmApiPort == null ? DiagnosticFactState.Unknown : DiagnosticFactState.Failure,
