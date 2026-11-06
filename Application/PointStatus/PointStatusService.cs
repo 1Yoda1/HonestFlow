@@ -528,11 +528,12 @@ namespace HonestFlow.Application.PointStatus
                         error: response.ErrorMessage);
 
                 var status = response.Data;
-                lmReady = string.Equals(status.Status, "ready", StringComparison.OrdinalIgnoreCase);
-                bool initializing = string.Equals(status.Status, "initialization", StringComparison.OrdinalIgnoreCase);
+                string runtimeStatus = NormalizeLmRuntimeStatus(status.Status);
+                lmReady = string.Equals(runtimeStatus, "ready", StringComparison.Ordinal);
+                bool initializing = string.Equals(runtimeStatus, "initialization", StringComparison.Ordinal);
                 bool notConfigured =
-                    string.Equals(status.Status, "not-configured", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(status.Status, "not_configured", StringComparison.OrdinalIgnoreCase);
+                    string.Equals(runtimeStatus, "not-configured", StringComparison.Ordinal) ||
+                    string.Equals(runtimeStatus, "not_configured", StringComparison.Ordinal);
                 string actualInn = NormalizeInn(status.Inn);
                 string expectedInn = NormalizeInn(ResolveExpectedClientInn(currentClient));
                 bool hasLmInn = !string.IsNullOrWhiteSpace(actualInn);
@@ -554,7 +555,7 @@ namespace HonestFlow.Application.PointStatus
                     _ => "Expected client INN unavailable"
                 };
 
-                string apiStatus = string.IsNullOrWhiteSpace(status.Status) ? "ответ есть" : status.Status;
+                string apiStatus = runtimeStatus ?? "не указан";
                 string clientName = string.IsNullOrWhiteSpace(currentClient?.Name) ? "текущий клиент не определён" : currentClient.Name;
                 string innText = hasLmInn ? actualInnMasked : "не указан";
                 string matchText = comparisonDetails;
@@ -577,7 +578,7 @@ namespace HonestFlow.Application.PointStatus
                         "Не настроена",
                         details + "\n\nИтог: ЛМ ЧЗ требуется инициализация.",
                         statusText: "ЛМ ЧЗ не настроена\nНажмите «Исправить»",
-                        actionKind: NodeActionKind.InitializeLm), lmReady, LmDiagnosticProbeState.NotConfigured, status.Status,
+                        actionKind: NodeActionKind.InitializeLm), lmReady, LmDiagnosticProbeState.NotConfigured, runtimeStatus,
                         innComparison: innComparison, actualInnMasked: actualInnMasked,
                         expectedInnMasked: expectedInnMasked, innComparisonDetails: comparisonDetails);
                 }
@@ -588,7 +589,7 @@ namespace HonestFlow.Application.PointStatus
                         NodeLevel.Warning,
                         "Инициализация",
                         details + "\n\nИтог: допустимое переходное состояние initialization.",
-                        statusText: "ЛМ ЧЗ инициализируется\nНажмите «Обновить»"), lmReady, LmDiagnosticProbeState.Initializing, status.Status,
+                        statusText: "ЛМ ЧЗ инициализируется\nНажмите «Обновить»"), lmReady, LmDiagnosticProbeState.Initializing, runtimeStatus,
                         innComparison: innComparison, actualInnMasked: actualInnMasked,
                         expectedInnMasked: expectedInnMasked, innComparisonDetails: comparisonDetails);
                 }
@@ -600,10 +601,10 @@ namespace HonestFlow.Application.PointStatus
                         "Не готова",
                         details + "\n\nИтог: API отвечает, но статус не ready.",
                         statusText: $"ЛМ ЧЗ: {apiStatus}\nОжидается ready"), lmReady,
-                        string.Equals(status.Status, "sync_error", StringComparison.OrdinalIgnoreCase)
+                        string.Equals(runtimeStatus, "sync_error", StringComparison.Ordinal)
                             ? LmDiagnosticProbeState.SyncError
-                            : LmDiagnosticProbeState.Failure,
-                        status.Status,
+                            : LmDiagnosticProbeState.Unknown,
+                        runtimeStatus,
                         innComparison: innComparison, actualInnMasked: actualInnMasked,
                         expectedInnMasked: expectedInnMasked, innComparisonDetails: comparisonDetails);
                 }
@@ -614,7 +615,7 @@ namespace HonestFlow.Application.PointStatus
                     "Ready",
                     details,
                     serviceStatus.Services,
-                    statusText), true, LmDiagnosticProbeState.Available, status.Status,
+                    statusText), true, LmDiagnosticProbeState.Available, runtimeStatus,
                     innComparison: innComparison, actualInnMasked: actualInnMasked,
                     expectedInnMasked: expectedInnMasked, innComparisonDetails: comparisonDetails);
             }
@@ -627,6 +628,9 @@ namespace HonestFlow.Application.PointStatus
                     error: ex.Message);
             }
         }
+
+        private static string NormalizeLmRuntimeStatus(string status) =>
+            string.IsNullOrWhiteSpace(status) ? null : status.Trim().ToLowerInvariant();
 
         private NodeStatus BuildLmApiUnavailableStatus(NodeStatus serviceStatus, string serviceText, string error)
         {

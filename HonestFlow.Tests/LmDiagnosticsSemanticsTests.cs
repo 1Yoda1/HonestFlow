@@ -143,11 +143,34 @@ public sealed class LmDiagnosticsSemanticsTests
         PointStatusResult result = await CheckAsync("7707083893", "7707083893", runtimeStatus: "failure");
         DiagnosticsSnapshot snapshot = Build(result);
 
-        Assert.Equal(LmDiagnosticProbeState.Failure, result.LmProbe.State);
+        Assert.Equal(LmDiagnosticProbeState.Unknown, result.LmProbe.State);
+        Assert.Equal(DiagnosticState.Unknown, snapshot.Lm.State);
         DiagnosticIssue issue = Assert.Single(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_STATUS_UNKNOWN);
         Assert.Equal(DiagnosticSeverity.UnableToVerify, issue.Severity);
         Assert.Null(issue.SuggestedFix);
         Assert.DoesNotContain(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_API_UNAVAILABLE);
+    }
+
+    [Theory]
+    [InlineData(" READY ")]
+    [InlineData("ReAdY")]
+    public async Task ReadyRuntime_WithWhitespaceOrDifferentCase_IsRecognized(string runtimeStatus)
+    {
+        PointStatusResult result = await CheckAsync("7707083893", "7707083893", runtimeStatus: runtimeStatus);
+
+        Assert.Equal(LmDiagnosticProbeState.Available, result.LmProbe.State);
+        Assert.Equal("ready", result.LmProbe.RuntimeStatus);
+    }
+
+    [Fact]
+    public async Task MissingRuntimeStatus_IsUnknownAndNeverHealthy()
+    {
+        PointStatusResult result = await CheckAsync("7707083893", "7707083893", runtimeStatus: null);
+        DiagnosticsSnapshot snapshot = Build(result);
+
+        Assert.Equal(LmDiagnosticProbeState.Unknown, result.LmProbe.State);
+        Assert.Equal(DiagnosticState.Unknown, snapshot.Lm.State);
+        Assert.Contains(snapshot.Issues, item => item.Code == DiagnosticIssueCode.LM_STATUS_UNKNOWN);
     }
 
     [Theory]
