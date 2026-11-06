@@ -131,7 +131,7 @@ namespace HonestFlow.Application.PointStatus
                 Controller = BuildControllerStatus(controllerService, await controllerServiceInfoTask.ConfigureAwait(false), null),
                 ControllerServiceStatus = controllerService,
                 ControllerServiceInfo = await controllerServiceInfoTask.ConfigureAwait(false),
-                Esm = BuildEsmStatus(esmService, esmApiPort, esmRegistration, null),
+                Esm = BuildEsmStatus(esmService, esmApiPort, esmRegistration, null, controllerTask.Result),
                 Kkt = BuildKktStatus(
                     await kktPnpTask.ConfigureAwait(false),
                     await kktDriverTask.ConfigureAwait(false),
@@ -217,7 +217,8 @@ namespace HonestFlow.Application.PointStatus
             NodeStatus serviceStatus,
             EsmApiPortProbeResult apiPort,
             EsmRegistrationResult registration,
-            ComponentVersionStatus version)
+            ComponentVersionStatus version,
+            EsmStatusResult apiStatus = null)
         {
             IReadOnlyList<ServiceSnapshot> services = serviceStatus?.Services ?? Array.Empty<ServiceSnapshot>();
             ServiceSnapshot orchestrator = services.FirstOrDefault(service =>
@@ -242,11 +243,13 @@ namespace HonestFlow.Application.PointStatus
             if (!cm.IsRunning)
                 return EsmNode(NodeLevel.Error, "Служба остановлена", services, apiPort, registration, version);
             if (apiPort?.IsAvailable != true)
-                return EsmNode(NodeLevel.Error, "ЕСМ недоступен", services, apiPort, registration, version);
+                return EsmNode(NodeLevel.Error, "ЕСМ недоступен", services, apiPort, registration, version, apiStatus);
+            if (apiStatus?.Kind == EsmStatusResultKind.UnknownSchema)
+                return EsmNode(NodeLevel.Warning, "Статус ЕСМ\nне определён", services, apiPort, registration, version, apiStatus);
             if (version?.State == ComponentVersionState.UpdateRequired)
-                return EsmNode(NodeLevel.Warning, "Обновите ЕСМ", services, apiPort, registration, version);
+                return EsmNode(NodeLevel.Warning, "Обновите ЕСМ", services, apiPort, registration, version, apiStatus);
 
-            return EsmNode(NodeLevel.Ok, "Доступно", services, apiPort, registration, version);
+            return EsmNode(NodeLevel.Ok, "Доступно", services, apiPort, registration, version, apiStatus);
         }
 
         private static NodeStatus EsmNode(
@@ -255,14 +258,16 @@ namespace HonestFlow.Application.PointStatus
             IReadOnlyList<ServiceSnapshot> services,
             EsmApiPortProbeResult apiPort,
             EsmRegistrationResult registration,
-            ComponentVersionStatus version) =>
-            new(level, statusText, BuildEsmDetails(services, apiPort, registration, version), services, statusText);
+            ComponentVersionStatus version,
+            EsmStatusResult apiStatus = null) =>
+            new(level, statusText, BuildEsmDetails(services, apiPort, registration, version, apiStatus), services, statusText);
 
         private static string BuildEsmDetails(
             IReadOnlyList<ServiceSnapshot> services,
             EsmApiPortProbeResult apiPort,
             EsmRegistrationResult registration,
-            ComponentVersionStatus version)
+            ComponentVersionStatus version,
+            EsmStatusResult apiStatus)
         {
             ServiceSnapshot orchestrator = services.FirstOrDefault(service =>
                 string.Equals(service.ServiceName, "esm-orchestrator", StringComparison.OrdinalIgnoreCase));
@@ -278,6 +283,8 @@ namespace HonestFlow.Application.PointStatus
                    $"ApiPort={apiPort?.Port?.ToString() ?? "-"}; " +
                    $"ApiPortAvailable={apiPort?.IsAvailable == true}; " +
                    $"ApiPortError={apiPort?.ErrorCategory ?? "-"}; " +
+                   $"ApiStatus={apiStatus?.Kind.ToString() ?? "Unknown"}; " +
+                   $"ApiSchema={apiStatus?.SchemaName ?? "-"}; " +
                    $"Registration={registration?.Kind.ToString() ?? "Unknown"}.";
         }
 

@@ -83,7 +83,8 @@ namespace HonestFlow.Application.PointStatus
                     pointStatus.EsmServiceStatus,
                     pointStatus.EsmApiPort,
                     pointStatus.EsmRegistration,
-                    esmVersion);
+                    esmVersion,
+                    pointStatus.EsmApiStatus);
             }
 
             if (pointStatus.KktServiceStatus != null || pointStatus.KktDriver != null || pointStatus.KktPort4041 != null)

@@ -25,6 +25,29 @@ namespace HonestFlow.Tests
         }
 
         [Fact]
+        public void UnknownEsmStatusSchema_IsUnableToVerify_NotHealthy()
+        {
+            PointStatusResult result = Healthy();
+            result.EsmApiStatus = EsmStatusResult.UnknownSchema();
+            result.Esm = new NodeStatus(
+                NodeLevel.Warning,
+                "Статус ЕСМ не определён",
+                "UnknownSchema",
+                new[]
+                {
+                    new ServiceSnapshot("esm-orchestrator", "Running"),
+                    new ServiceSnapshot("esm-cm-shop-42", "Running")
+                });
+
+            DiagnosticsSnapshot snapshot = _builder.Create(result);
+
+            Assert.Equal(DiagnosticState.Unknown, snapshot.Esm.State);
+            Assert.NotEqual(WorkState.Ready, snapshot.WorkState);
+            Assert.Contains(snapshot.Issues, issue => issue.Code == DiagnosticIssueCode.ESM_STATUS_UNKNOWN);
+            Assert.Contains(snapshot.Facts, fact => fact.Key == "Esm.ApiSchema" && fact.Value == "unrecognized");
+        }
+
+        [Fact]
         public void UnregisteredEsm_MakesWorkImpossible()
         {
             PointStatusResult result = Healthy();

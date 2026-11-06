@@ -169,16 +169,27 @@ namespace HonestFlow.Tests
             finally { File.Delete(config); }
         }
 
+        [Fact]
+        public void UnknownApiSchema_ShowsUnknownEsmStatus()
+        {
+            NodeStatus status = Build(apiStatus: EsmStatusResult.UnknownSchema());
+
+            Assert.Equal(NodeLevel.Warning, status.Level);
+            Assert.Contains("не определён", status.StatusText, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static NodeStatus Build(
             NodeStatus services = null,
             EsmApiPortProbeResult port = null,
             EsmRegistrationResult registration = null,
-            ComponentVersionStatus version = null) =>
+            ComponentVersionStatus version = null,
+            EsmStatusResult apiStatus = null) =>
             PointStatusService.BuildEsmStatus(
                 services ?? Services(("esm-orchestrator", "Running"), ("esm-cm-shop-42", "Running")),
                 port ?? EsmApiPortProbeResult.Available(51077),
                 registration ?? EsmRegistrationResult.Registered(),
-                version ?? Version(ComponentVersionState.Current));
+                version ?? Version(ComponentVersionState.Current),
+                apiStatus);
 
         private static NodeStatus Services(params (string Name, string State)[] states) =>
             new(NodeLevel.Ok, "services", "services", Array.ConvertAll(states, item => new ServiceSnapshot(item.Name, item.State)));

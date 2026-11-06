@@ -67,6 +67,8 @@ namespace HonestFlow.Infrastructure.Api
                 var status = JsonConvert.DeserializeObject<EsmStatusDto>(statusJson);
                 if (status == null)
                     return EsmStatusResult.Unavailable(port);
+                if (!EsmStatusSchema.TryRecognize(status, out string schemaName))
+                    return EsmStatusResult.UnknownSchema(port, id);
 
                 try
                 {
@@ -95,7 +97,7 @@ namespace HonestFlow.Infrastructure.Api
                 {
                     // Keep the successfully obtained /status/{id} snapshot.
                 }
-                return EsmStatusResult.Success(status, port, id);
+                return EsmStatusResult.Success(status, port, id, schemaName);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
