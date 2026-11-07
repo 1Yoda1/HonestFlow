@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="HonestFlow — Developer Diagnostics"
         Width="1320" Height="820" MinWidth="980" MinHeight="620"
-        WindowStartupLocation="CenterOwner" Background="#F7F8FB"
+        WindowStartupLocation="CenterOwner" Background="#F4F1E9"
         FontFamily="Segoe UI">
   <Grid Margin="20">
     <Grid.RowDefinitions>
@@ -13,7 +13,7 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <Border Background="White" BorderBrush="#DCE2EA" BorderThickness="1" CornerRadius="10" Padding="18">
+    <Border Background="#FFFDF8" BorderBrush="#C9C4B9" BorderThickness="1" CornerRadius="10" Padding="18">
       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <StackPanel>
@@ -59,6 +59,6 @@
       </TabItem>
     </TabControl>
 
-    <TextBlock x:Name="StatusText" Grid.Row="3" Margin="2,12,0,0" Foreground="#667085"/>
+    <TextBlock x:Name="StatusText" Grid.Row="3" Margin="2,12,0,0" Foreground="#3B565C"/>
   </Grid>
 </Window>

@@ -4,7 +4,7 @@
         Title="Инструкция"
         Width="520" Height="360" MinWidth="420" MinHeight="240"
         WindowStartupLocation="CenterOwner"
-        Background="#F7F8FB"
+        Background="#F4F1E9"
         FontFamily="Segoe UI">
   <Grid Margin="20">
     <Grid.RowDefinitions>
@@ -15,15 +15,15 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <TextBlock Text="Инструкция" FontSize="22" FontWeight="SemiBold" Foreground="#182033"/>
+    <TextBlock Text="Инструкция" FontSize="22" FontWeight="SemiBold" Foreground="#132A2F"/>
 
-    <Border Grid.Row="2" Background="White" BorderBrush="#DCE2EA" BorderThickness="1" CornerRadius="10" Padding="14">
+    <Border Grid.Row="2" Background="#FFFDF8" BorderBrush="#C9C4B9" BorderThickness="1" CornerRadius="10" Padding="14">
       <ListBox x:Name="IssueTitlesList" BorderThickness="0" Background="Transparent" FontSize="15"
-               Foreground="#182033" IsHitTestVisible="False"/>
+               Foreground="#132A2F" IsHitTestVisible="False"/>
     </Border>
 
     <Button Grid.Row="4" Content="Закрыть" Width="120" Height="42" HorizontalAlignment="Right"
-            Background="White" Foreground="#182033" BorderBrush="#D8DEE8" BorderThickness="1"
+            Background="#FFFDF8" Foreground="#132A2F" BorderBrush="#C9C4B9" BorderThickness="1"
             Padding="18,0" Click="Close_Click"/>
   </Grid>
 </Window>

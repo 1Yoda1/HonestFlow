@@ -25,7 +25,7 @@ public sealed class MainWindowTopologyStatusDotContractTests
             .ToArray();
 
         Assert.Equal(expectedNames.Length, dots.Length);
-        Assert.All(dots, dot => Assert.Equal("#94A3B8", (string)dot.Attribute("Fill")));
+        Assert.All(dots, dot => Assert.Equal("#8E9997", (string)dot.Attribute("Fill")));
     }
 
     [Fact]
@@ -34,10 +34,10 @@ public sealed class MainWindowTopologyStatusDotContractTests
         string code = File.ReadAllText(ProjectFile("UI", "MainWindow.xaml.cs"));
 
         Assert.Equal(2, code.Split("statusDot.Fill = color;").Length - 1);
-        Assert.Contains("TopologyVisualState.Healthy => BrushFrom(\"#0E9F6E\")", code);
-        Assert.Contains("TopologyVisualState.Missing => BrushFrom(\"#D91532\")", code);
-        Assert.Contains("TopologyVisualState.Ignored => BrushFrom(\"#94A3B8\")", code);
-        Assert.Contains("_ => BrushFrom(\"#F4B740\")", code);
+        Assert.Contains("TopologyVisualState.Healthy => BrushFrom(\"#24704F\")", code);
+        Assert.Contains("TopologyVisualState.Missing => BrushFrom(\"#A83218\")", code);
+        Assert.Contains("TopologyVisualState.Ignored => BrushFrom(\"#8E9997\")", code);
+        Assert.Contains("_ => BrushFrom(\"#D88A00\")", code);
 
         foreach (string dotName in new[]
                  {

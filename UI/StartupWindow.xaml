@@ -3,28 +3,28 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="HonestFlow" Width="980" Height="680" MinWidth="900" MinHeight="650"
         WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
-        Background="#F7F8FB" FontFamily="Segoe UI" Foreground="#111827"
+        Background="#F4F1E9" FontFamily="Segoe UI" Foreground="#132A2F"
         Loaded="Window_Loaded">
   <Window.Resources>
-    <SolidColorBrush x:Key="Blue" Color="#0967D9"/>
-    <SolidColorBrush x:Key="DarkBlue" Color="#102342"/>
-    <SolidColorBrush x:Key="Muted" Color="#667085"/>
-    <SolidColorBrush x:Key="Line" Color="#E4E8F0"/>
-    <SolidColorBrush x:Key="Green" Color="#0E9F6E"/>
-    <SolidColorBrush x:Key="Red" Color="#D91532"/>
+    <SolidColorBrush x:Key="Blue" Color="#FF5C35"/>
+    <SolidColorBrush x:Key="DarkBlue" Color="#132A2F"/>
+    <SolidColorBrush x:Key="Muted" Color="#3B565C"/>
+    <SolidColorBrush x:Key="Line" Color="#C9C4B9"/>
+    <SolidColorBrush x:Key="Green" Color="#24704F"/>
+    <SolidColorBrush x:Key="Red" Color="#A83218"/>
     <Style x:Key="TopButton" TargetType="Button">
       <Setter Property="Width" Value="48"/><Setter Property="Height" Value="48"/>
       <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
       <Setter Property="FontSize" Value="18"/><Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
         <Border x:Name="Chrome" Background="{TemplateBinding Background}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-        <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#EDF1F7"/></Trigger></ControlTemplate.Triggers>
+        <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#E9E4D9"/></Trigger></ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="ActionButton" TargetType="Button">
       <Setter Property="Height" Value="48"/><Setter Property="Padding" Value="18,0"/>
-      <Setter Property="Background" Value="White"/><Setter Property="Foreground" Value="#111827"/>
-      <Setter Property="BorderBrush" Value="#D8DEE9"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Background" Value="#FFFDF8"/><Setter Property="Foreground" Value="#132A2F"/>
+      <Setter Property="BorderBrush" Value="#C9C4B9"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="FontSize" Value="15"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
         <Border x:Name="Surface" CornerRadius="9" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
@@ -37,20 +37,20 @@
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
-      <Setter Property="Background" Value="#0868D9"/><Setter Property="Foreground" Value="White"/><Setter Property="BorderBrush" Value="#0868D9"/>
+      <Setter Property="Background" Value="#FF5C35"/><Setter Property="Foreground" Value="White"/><Setter Property="BorderBrush" Value="#FF5C35"/>
     </Style>
     <Style x:Key="StepBadge" TargetType="Border">
       <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="CornerRadius" Value="15"/>
-      <Setter Property="BorderBrush" Value="#536985"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="#718083"/><Setter Property="BorderThickness" Value="1"/>
     </Style>
   </Window.Resources>
 
-  <Border BorderBrush="#E1E5EC" BorderThickness="1">
+  <Border BorderBrush="#C9C4B9" BorderThickness="1">
     <Grid><Grid.RowDefinitions><RowDefinition Height="64"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-      <Grid Background="White" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+      <Grid Background="#FFFDF8" MouseLeftButtonDown="Header_MouseLeftButtonDown">
         <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="25,0,0,0">
-          <Grid Width="38" Height="38"><Polygon Fill="#1467C9" Points="19,0 36,10 36,28 19,38 2,28 2,10"/><TextBlock Text="HF" Foreground="White" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
+          <Grid Width="38" Height="38"><Polygon Fill="#132A2F" Points="19,0 36,10 36,28 19,38 2,28 2,10"/><TextBlock Text="HF" Foreground="White" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
           <TextBlock Text="HonestFlow" FontSize="21" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,0,0,0"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal"><Button Style="{StaticResource TopButton}" Content="−" Click="Minimize_Click"/><Button Style="{StaticResource TopButton}" Content="□" Click="Maximize_Click"/><Button Style="{StaticResource TopButton}" Content="×" FontSize="24" Click="Close_Click"/></StackPanel>
@@ -59,43 +59,43 @@
       <Grid Grid.Row="1" Margin="34"><Grid.ColumnDefinitions><ColumnDefinition Width="360" MinWidth="280"/><ColumnDefinition Width="22"/><ColumnDefinition MinWidth="0"/></Grid.ColumnDefinitions>
         <Border Background="{StaticResource DarkBlue}" CornerRadius="13" Padding="36,38">
           <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-            <StackPanel><TextBlock Text="Подготовка рабочего места" Foreground="White" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="Проверяем доступ, регистрацию устройства и лицензию перед запуском HonestFlow." Foreground="#C9D5E7" FontSize="15" LineHeight="24" TextWrapping="Wrap" Margin="0,15,0,0"/></StackPanel>
+            <StackPanel><TextBlock Text="Подготовка рабочего места" Foreground="White" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="Проверяем доступ, регистрацию устройства и лицензию перед запуском HonestFlow." Foreground="#CAD5D7" FontSize="15" LineHeight="24" TextWrapping="Wrap" Margin="0,15,0,0"/></StackPanel>
             <StackPanel Grid.Row="1" VerticalAlignment="Center">
               <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition/></Grid.ColumnDefinitions><Border x:Name="PreparationStepBadge" Style="{StaticResource StepBadge}" Background="{StaticResource Blue}" BorderBrush="{StaticResource Blue}"><TextBlock x:Name="PreparationStepText" Text="1" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="PreparationStepLabel" Grid.Column="1" Text="Подготовка" Foreground="White" FontSize="15" VerticalAlignment="Center"/></Grid>
-              <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition/></Grid.ColumnDefinitions><Border x:Name="AccessStepBadge" Style="{StaticResource StepBadge}"><TextBlock x:Name="AccessStepText" Text="2" Foreground="#AFBDD2" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="AccessStepLabel" Grid.Column="1" Text="Доступ" Foreground="#AFBDD2" FontSize="15" VerticalAlignment="Center"/></Grid>
-              <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition/></Grid.ColumnDefinitions><Border x:Name="DeviceStepBadge" Style="{StaticResource StepBadge}"><TextBlock x:Name="DeviceStepText" Text="3" Foreground="#AFBDD2" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="DeviceStepLabel" Grid.Column="1" Text="Устройство" Foreground="#AFBDD2" FontSize="15" VerticalAlignment="Center"/></Grid>
-              <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition/></Grid.ColumnDefinitions><Border x:Name="LicenseStepBadge" Style="{StaticResource StepBadge}"><TextBlock x:Name="LicenseStepText" Text="4" Foreground="#AFBDD2" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="LicenseStepLabel" Grid.Column="1" Text="Лицензия" Foreground="#AFBDD2" FontSize="15" VerticalAlignment="Center"/></Grid>
-              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition/></Grid.ColumnDefinitions><Border x:Name="LaunchStepBadge" Style="{StaticResource StepBadge}"><TextBlock x:Name="LaunchStepText" Text="5" Foreground="#AFBDD2" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="LaunchStepLabel" Grid.Column="1" Text="Запуск" Foreground="#AFBDD2" FontSize="15" VerticalAlignment="Center"/></Grid>
+              <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition/></Grid.ColumnDefinitions><Border x:Name="AccessStepBadge" Style="{StaticResource StepBadge}"><TextBlock x:Name="AccessStepText" Text="2" Foreground="#CAD5D7" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="AccessStepLabel" Grid.Column="1" Text="Доступ" Foreground="#CAD5D7" FontSize="15" VerticalAlignment="Center"/></Grid>
+              <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition/></Grid.ColumnDefinitions><Border x:Name="DeviceStepBadge" Style="{StaticResource StepBadge}"><TextBlock x:Name="DeviceStepText" Text="3" Foreground="#CAD5D7" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="DeviceStepLabel" Grid.Column="1" Text="Устройство" Foreground="#CAD5D7" FontSize="15" VerticalAlignment="Center"/></Grid>
+              <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition/></Grid.ColumnDefinitions><Border x:Name="LicenseStepBadge" Style="{StaticResource StepBadge}"><TextBlock x:Name="LicenseStepText" Text="4" Foreground="#CAD5D7" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="LicenseStepLabel" Grid.Column="1" Text="Лицензия" Foreground="#CAD5D7" FontSize="15" VerticalAlignment="Center"/></Grid>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition/></Grid.ColumnDefinitions><Border x:Name="LaunchStepBadge" Style="{StaticResource StepBadge}"><TextBlock x:Name="LaunchStepText" Text="5" Foreground="#CAD5D7" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><TextBlock x:Name="LaunchStepLabel" Grid.Column="1" Text="Запуск" Foreground="#CAD5D7" FontSize="15" VerticalAlignment="Center"/></Grid>
             </StackPanel>
-            <TextBlock Grid.Row="2" Text="HonestFlow 3.0  ·  защищённое подключение" Foreground="#8FA1B9" FontSize="13"/>
+            <TextBlock Grid.Row="2" Text="HonestFlow 3.0  ·  защищённое подключение" Foreground="#CAD5D7" FontSize="13"/>
           </Grid>
         </Border>
 
-        <Border Grid.Column="2" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="13" Padding="36,30">
+        <Border Grid.Column="2" Background="#FFFDF8" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="13" Padding="36,30">
           <Grid>
             <StackPanel x:Name="LoadingPanel" VerticalAlignment="Center">
-              <Border Width="64" Height="64" CornerRadius="16" Background="#EDF4FD" HorizontalAlignment="Left"><TextBlock Text="&#xE895;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Blue}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+              <Border Width="64" Height="64" CornerRadius="16" Background="#E9E4D9" HorizontalAlignment="Left"><TextBlock Text="&#xE895;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Blue}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
               <TextBlock Text="Подготавливаем HonestFlow" FontSize="27" FontWeight="SemiBold" Margin="0,24,0,0"/>
               <TextBlock x:Name="LoadingDescription" Text="Получаем актуальные настройки и проверяем состояние рабочего места." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="23" TextWrapping="Wrap" Margin="0,11,0,28"/>
               <TextBlock x:Name="LoadingStatus" Text="Подготавливаем HonestFlow…" Foreground="{StaticResource Muted}" FontSize="14" TextWrapping="Wrap"/>
             </StackPanel>
 
             <StackPanel x:Name="LoginPanel" VerticalAlignment="Top" Margin="0,2,0,0" Visibility="Collapsed">
-              <Border Width="54" Height="54" CornerRadius="14" Background="#EDF4FD" HorizontalAlignment="Left"><TextBlock Text="&#xE8D7;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Blue}" FontSize="27" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+              <Border Width="54" Height="54" CornerRadius="14" Background="#E9E4D9" HorizontalAlignment="Left"><TextBlock Text="&#xE8D7;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Blue}" FontSize="27" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
               <TextBlock Text="Вход в HonestFlow" FontSize="26" FontWeight="SemiBold" Margin="0,16,0,0"/>
               <TextBlock Text="Введите код клиента. После входа HonestFlow проверит регистрацию этого компьютера и доступ к системе." Foreground="{StaticResource Muted}" FontSize="14" LineHeight="20" TextWrapping="Wrap" Margin="0,8,0,14"/>
               <TextBlock Text="Код клиента" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,6"/>
-              <PasswordBox x:Name="PasswordInput" Height="44" Padding="13,8" FontSize="16" BorderBrush="#CFD6E2" BorderThickness="1"/>
+              <PasswordBox x:Name="PasswordInput" Height="44" Padding="13,8" FontSize="16" BorderBrush="#C9C4B9" BorderThickness="1"/>
               <TextBlock x:Name="LoginError" Text="Введите код клиента." Foreground="{StaticResource Red}" FontSize="12" LineHeight="16" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"/>
-              <Border x:Name="LastAuthorizedClientHintPanel" Background="#F3F7FC" BorderBrush="#D7E3F1" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,10,0,0" Visibility="Collapsed">
+              <Border x:Name="LastAuthorizedClientHintPanel" Background="#FFFDF8" BorderBrush="#C9C4B9" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,10,0,0" Visibility="Collapsed">
                 <StackPanel>
-                  <TextBlock Text="Ранее использовался клиент:" Foreground="#51677D" FontSize="11" TextWrapping="Wrap"/>
-                  <TextBlock x:Name="LastAuthorizedClientName" Foreground="#233B53" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                  <TextBlock Text="Если устройство ещё привязано к этому клиенту, для входа под другим потребуется освобождение." Foreground="#51677D" FontSize="11" LineHeight="16" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                  <TextBlock Text="Ранее использовался клиент:" Foreground="#3B565C" FontSize="11" TextWrapping="Wrap"/>
+                  <TextBlock x:Name="LastAuthorizedClientName" Foreground="#3B565C" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                  <TextBlock Text="Если устройство ещё привязано к этому клиенту, для входа под другим потребуется освобождение." Foreground="#3B565C" FontSize="11" LineHeight="16" TextWrapping="Wrap" Margin="0,4,0,0"/>
                 </StackPanel>
               </Border>
               <CheckBox x:Name="RememberLoginCheckBox" Content="Запомнить вход на этом компьютере" IsChecked="True" FontSize="14" Margin="0,11,0,0"/>
-              <Border x:Name="RememberOfflineWarning" Background="#FFF8E6" BorderBrush="#F3C969" BorderThickness="1" CornerRadius="8" Padding="9,8" Margin="0,8,0,0">
+              <Border x:Name="RememberOfflineWarning" Background="#FFF1E6" BorderBrush="#E6A087" BorderThickness="1" CornerRadius="8" Padding="9,8" Margin="0,8,0,0">
                 <Border.Style>
                   <Style TargetType="Border">
                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -108,13 +108,13 @@
                 </Border.Style>
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                  <Border Width="18" Height="18" CornerRadius="9" Background="#D88A00" VerticalAlignment="Top"><TextBlock Text="!" Foreground="White" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-                  <TextBlock Grid.Column="1" Text="После закрытия HonestFlow потребуется снова ввести код клиента.&#x0a;Автономный запуск без интернета будет недоступен." Foreground="#7A4D00" FontSize="12" LineHeight="16" TextWrapping="Wrap"/>
+                  <Border Width="18" Height="18" CornerRadius="9" Background="#A56A18" VerticalAlignment="Top"><TextBlock Text="!" Foreground="White" FontWeight="Bold" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                  <TextBlock Grid.Column="1" Text="После закрытия HonestFlow потребуется снова ввести код клиента.&#x0a;Автономный запуск без интернета будет недоступен." Foreground="#7C2D18" FontSize="12" LineHeight="16" TextWrapping="Wrap"/>
                 </Grid>
               </Border>
               <Button x:Name="LoginButton" Style="{StaticResource PrimaryButton}" Content="Войти и продолжить" Click="Login_Click" Margin="0,14,0,0"/>
               <Button x:Name="ServiceInstallationButton" Content="Только установка" Click="ServiceInstallation_Click"
-                      Background="Transparent" BorderThickness="0" Foreground="#52657A"
+                      Background="Transparent" BorderThickness="0" Foreground="#3B565C"
                       FontSize="13" Padding="8,7" Margin="0,4,0,0" HorizontalAlignment="Center"/>
             </StackPanel>
 
@@ -128,13 +128,13 @@
               </Grid.RowDefinitions>
               <Grid Grid.Row="0" Margin="0,0,0,16">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <Border Width="64" Height="64" CornerRadius="16" Background="#FFF5F6"><TextBlock Text="&#xEA18;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Red}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                <Border Width="64" Height="64" CornerRadius="16" Background="#FFF0EA"><TextBlock Text="&#xEA18;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Red}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
                 <StackPanel Grid.Column="2" VerticalAlignment="Center">
                   <TextBlock x:Name="RegistrationTitle" Text="Регистрация устройства" FontSize="25" FontWeight="SemiBold" TextWrapping="Wrap"/>
                   <TextBlock x:Name="RegistrationDescription" Foreground="{StaticResource Muted}" FontSize="14" LineHeight="20" TextWrapping="Wrap" Margin="0,5,0,0"/>
                 </StackPanel>
               </Grid>
-              <Border x:Name="RegistrationContextPanel" Grid.Row="1" Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12" Visibility="Collapsed">
+              <Border x:Name="RegistrationContextPanel" Grid.Row="1" Background="#FFFDF8" BorderBrush="#C9C4B9" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12" Visibility="Collapsed">
                 <StackPanel>
                   <StackPanel x:Name="RegistrationClientRow" Orientation="Horizontal" Margin="0,0,0,5" Visibility="Collapsed"><TextBlock Text="Клиент: " FontSize="13" Foreground="{StaticResource Muted}"/><TextBlock x:Name="RegistrationClientName" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"/></StackPanel>
                   <StackPanel x:Name="RegistrationRequestedAtRow" Orientation="Horizontal" Margin="0,0,0,5" Visibility="Collapsed"><TextBlock Text="Заявка отправлена: " FontSize="13" Foreground="{StaticResource Muted}"/><TextBlock x:Name="RegistrationRequestedAt" FontSize="13" TextWrapping="Wrap"/></StackPanel>
@@ -145,10 +145,10 @@
               <Grid Grid.Row="2" Margin="0,0,0,12">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <TextBlock x:Name="RegistrationAddressLabel" Text="Физический адрес" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,7"/>
-                <TextBox x:Name="RegistrationAddressInput" Grid.Row="1" Height="44" MaxLength="300" Padding="13,8" FontSize="16" BorderBrush="#CFD6E2" BorderThickness="1"/>
+                <TextBox x:Name="RegistrationAddressInput" Grid.Row="1" Height="44" MaxLength="300" Padding="13,8" FontSize="16" BorderBrush="#C9C4B9" BorderThickness="1"/>
                 <TextBlock x:Name="RegistrationError" Grid.Row="2" Foreground="{StaticResource Red}" FontSize="13" TextWrapping="Wrap" Margin="0,7,0,0" Visibility="Collapsed"/>
               </Grid>
-              <TextBlock x:Name="DeviceRegistrationStatus" Grid.Row="3" Foreground="#475467" FontSize="14" LineHeight="20" TextWrapping="Wrap" Margin="0,0,0,12"/>
+              <TextBlock x:Name="DeviceRegistrationStatus" Grid.Row="3" Foreground="#3B565C" FontSize="14" LineHeight="20" TextWrapping="Wrap" Margin="0,0,0,12"/>
               <StackPanel Grid.Row="4">
                 <Button x:Name="SubmitRegistrationButton" Style="{StaticResource PrimaryButton}" Content="Отправить заявку" Click="SubmitRegistration_Click" Height="46" HorizontalAlignment="Stretch"/>
                 <Button x:Name="CheckRegistrationButton" Style="{StaticResource ActionButton}" Content="Проверить статус" Click="CheckRegistration_Click" Height="46" HorizontalAlignment="Stretch" Margin="0,8,0,0"/>
@@ -157,11 +157,11 @@
             </Grid>
 
             <StackPanel x:Name="LicenseMissingPanel" VerticalAlignment="Center" Visibility="Collapsed">
-              <Border Width="64" Height="64" CornerRadius="16" Background="#FFF5F6" HorizontalAlignment="Left"><TextBlock Text="&#xEA18;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Red}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+              <Border Width="64" Height="64" CornerRadius="16" Background="#FFF0EA" HorizontalAlignment="Left"><TextBlock Text="&#xEA18;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource Red}" FontSize="31" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
               <TextBlock x:Name="LicenseMissingTitle" Text="Доступ ограничен" FontSize="27" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,24,0,0"/>
               <TextBlock x:Name="LicenseMissingDescription" Text="HonestFlow пока не может продолжить запуск." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="23" TextWrapping="Wrap" Margin="0,11,0,24"/>
-              <Border x:Name="LicenseContextPanel" Background="#FBFCFE" BorderBrush="#E8ECF2" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,0,0,14" Visibility="Collapsed"><StackPanel><TextBlock Text="Клиент" FontSize="12" Foreground="{StaticResource Muted}"/><TextBlock x:Name="LicenseClientName" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/></StackPanel></Border>
-              <TextBlock x:Name="RegistrationStatus" Foreground="#475467" FontSize="14" LineHeight="21" TextWrapping="Wrap" Margin="0,0,0,22"/>
+              <Border x:Name="LicenseContextPanel" Background="#FFFDF8" BorderBrush="#C9C4B9" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,0,0,14" Visibility="Collapsed"><StackPanel><TextBlock Text="Клиент" FontSize="12" Foreground="{StaticResource Muted}"/><TextBlock x:Name="LicenseClientName" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/></StackPanel></Border>
+              <TextBlock x:Name="RegistrationStatus" Foreground="#3B565C" FontSize="14" LineHeight="21" TextWrapping="Wrap" Margin="0,0,0,22"/>
               <StackPanel>
                 <Button x:Name="RetryLicenseButton" Style="{StaticResource PrimaryButton}" Content="Проверить снова" Click="RetryLicense_Click" Visibility="Collapsed" HorizontalAlignment="Stretch"/>
                 <Button x:Name="RequestHelpButton" Style="{StaticResource ActionButton}" Click="RequestHelp_Click" HorizontalAlignment="Stretch" Margin="0,10,0,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><TextBlock Text="&#xE717;" FontFamily="Segoe MDL2 Assets" FontSize="19" Margin="0,0,10,0"/><TextBlock Text="Запросить помощь" VerticalAlignment="Center"/></StackPanel></Button>

@@ -1686,10 +1686,10 @@ public partial class MainWindow : Window
         DetailedProblemPanel.Visibility = Visibility.Collapsed;
         TopologyInfoIcon.Visibility = Visibility.Collapsed;
         StatusSectionTitle.Text = "Состояние рабочего места";
-        SimpleViewButton.Background = BrushFrom("#EDF4FD");
-        SimpleViewButton.Foreground = BrushFrom("#075CB8");
-        DetailedViewButton.Background = Brushes.White;
-        DetailedViewButton.Foreground = BrushFrom("#111827");
+        SimpleViewButton.Background = BrushFrom("#E9E4D9");
+        SimpleViewButton.Foreground = BrushFrom("#132A2F");
+        DetailedViewButton.Background = BrushFrom("#FFFDF8");
+        DetailedViewButton.Foreground = BrushFrom("#132A2F");
     }
 
     private void ShowDetailedView()
@@ -1699,10 +1699,10 @@ public partial class MainWindow : Window
         DetailedProblemPanel.Visibility = Visibility.Visible;
         TopologyInfoIcon.Visibility = Visibility.Visible;
         StatusSectionTitle.Text = "Схема кассового узла";
-        DetailedViewButton.Background = BrushFrom("#EDF4FD");
-        DetailedViewButton.Foreground = BrushFrom("#075CB8");
-        SimpleViewButton.Background = Brushes.White;
-        SimpleViewButton.Foreground = BrushFrom("#111827");
+        DetailedViewButton.Background = BrushFrom("#E9E4D9");
+        DetailedViewButton.Foreground = BrushFrom("#132A2F");
+        SimpleViewButton.Background = BrushFrom("#FFFDF8");
+        SimpleViewButton.Foreground = BrushFrom("#132A2F");
     }
 
     // Only the user refresh button opts out while an operation owns the window.
@@ -1830,8 +1830,8 @@ public partial class MainWindow : Window
             RuDesktopActionButton.Content = "Проверяем RuDesktop…";
             RuDesktopActionButton.IsEnabled = false;
         }
-        Brush neutral = BrushFrom("#94A3B8");
-        SimpleStatusHalo.Fill = BrushFrom("#EEF2F7");
+        Brush neutral = BrushFrom("#8E9997");
+        SimpleStatusHalo.Fill = BrushFrom("#E9E4D9");
         SimpleStatusLamp.Fill = neutral;
         SimpleStatusSymbol.Text = "…";
         SimpleStatusTitle.Text = "Проверяем рабочее место…";
@@ -1902,9 +1902,9 @@ public partial class MainWindow : Window
         DetailedProblemIcon.Text = workState == WorkState.Ready ? "\uE73E" : "\uE7BA";
         DetailedProblemIcon.Foreground = BrushFrom(workState switch
         {
-            WorkState.Ready => "#0E9F6E",
-            WorkState.WorkImpossible => "#D91532",
-            _ => "#E3A008"
+            WorkState.Ready => "#24704F",
+            WorkState.WorkImpossible => "#A83218",
+            _ => "#A56A18"
         });
         DetailedProblemTitle.Text = issue.Title;
         DetailedProblemReasons.Text = string.IsNullOrWhiteSpace(issue.Recommendation)
@@ -1937,17 +1937,17 @@ public partial class MainWindow : Window
             switch (_lastDiagnostics.WorkState)
             {
                 case WorkState.WorkImpossible:
-                    SetSimpleStatus("#FDE8EC", "#D91532", "×", "Работа невозможна", description, true);
+                    SetSimpleStatus("#FFF0EA", "#A83218", "×", "Работа невозможна", description, true);
                     return;
                 case WorkState.UnableToVerify:
-                    SetSimpleStatus("#FFF6D8", "#E3A008", "!", "Не удалось подтвердить готовность",
+                    SetSimpleStatus("#FFF1E6", "#A56A18", "!", "Не удалось подтвердить готовность",
                         description, false);
                     return;
                 case WorkState.Attention:
-                    SetSimpleStatus("#FFF6D8", "#E3A008", "!", "Требуется внимание", description, true);
+                    SetSimpleStatus("#FFF1E6", "#A56A18", "!", "Требуется внимание", description, true);
                     return;
                 case WorkState.Ready:
-                    SetSimpleStatus("#E8F8F1", "#0E9F6E", "✓", "Всё готово к работе",
+                    SetSimpleStatus("#EAF7F0", "#24704F", "✓", "Всё готово к работе",
                         description, false);
                     return;
             }
@@ -1968,19 +1968,19 @@ public partial class MainWindow : Window
 
         if (red)
         {
-            SetSimpleStatus("#FDE8EC", "#D91532", "×", "Работа невозможна",
+            SetSimpleStatus("#FFF0EA", "#A83218", "×", "Работа невозможна",
                 "Один из необходимых компонентов не работает или отсутствует. HonestFlow может попробовать восстановить его автоматически.",
                 showFix: true);
         }
         else if (yellow)
         {
-            SetSimpleStatus("#FFF6D8", "#E3A008", "!", "Требуется внимание",
+            SetSimpleStatus("#FFF1E6", "#A56A18", "!", "Требуется внимание",
                 "Работа может быть затруднена: одна из программ отвечает нестабильно. Можно посмотреть подробности или запустить исправление.",
                 showFix: true);
         }
         else
         {
-            SetSimpleStatus("#E8F8F1", "#0E9F6E", "✓", "Всё готово к работе",
+            SetSimpleStatus("#EAF7F0", "#24704F", "✓", "Всё готово к работе",
                 "Касса и маркировка работают нормально. Можно продолжать работу.",
                 showFix: false);
         }
@@ -2027,19 +2027,19 @@ public partial class MainWindow : Window
 
     private static Brush BrushForNodeState(TopologyVisualState state) => state switch
     {
-        TopologyVisualState.Healthy => BrushFrom("#0E9F6E"),
-        TopologyVisualState.Missing => BrushFrom("#D91532"),
-        TopologyVisualState.Ignored => BrushFrom("#94A3B8"),
-        _ => BrushFrom("#F4B740")
+        TopologyVisualState.Healthy => BrushFrom("#24704F"),
+        TopologyVisualState.Missing => BrushFrom("#A83218"),
+        TopologyVisualState.Ignored => BrushFrom("#8E9997"),
+        _ => BrushFrom("#D88A00")
     };
 
     private static void ApplyLink(Line line, Border marker, TopologyLinkPresentation presentation, string description)
     {
         Brush color = presentation.State switch
         {
-            TopologyVisualState.Healthy => BrushFrom("#0E9F6E"),
-            TopologyVisualState.Missing => BrushFrom("#D91532"),
-            _ => BrushFrom("#F4B740")
+            TopologyVisualState.Healthy => BrushFrom("#24704F"),
+            TopologyVisualState.Missing => BrushFrom("#A83218"),
+            _ => BrushFrom("#D88A00")
         };
         line.Stroke = color;
         line.StrokeThickness = 3;
@@ -2052,7 +2052,7 @@ public partial class MainWindow : Window
         }
         marker.Visibility = Visibility.Visible;
         bool missing = presentation.State == TopologyVisualState.Missing;
-        marker.Background = missing ? Brushes.White : color;
+        marker.Background = missing ? BrushFrom("#FFFDF8") : color;
         marker.BorderBrush = missing ? color : Brushes.Transparent;
         marker.BorderThickness = missing ? new Thickness(1) : new Thickness(0);
         marker.ToolTip = description;
@@ -2523,11 +2523,11 @@ public partial class MainWindow : Window
         foreach (Button button in new[] { HomeNavButton, DiagnosticsNavButton, ComponentsNavButton, LogNavButton })
         {
             button.Background = Brushes.Transparent;
-            button.Foreground = BrushFrom("#18243B");
+            button.Foreground = BrushFrom("#132A2F");
             button.FontWeight = FontWeights.Normal;
         }
-        active.Background = BrushFrom("#EDF4FD");
-        active.Foreground = BrushFrom("#075CB8");
+        active.Background = BrushFrom("#E9E4D9");
+        active.Foreground = BrushFrom("#132A2F");
         active.FontWeight = FontWeights.SemiBold;
     }
 
