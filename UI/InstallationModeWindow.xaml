@@ -3,21 +3,21 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="HonestFlow — Только установка" Width="880" Height="650"
         MinWidth="760" MinHeight="560" WindowStartupLocation="CenterScreen"
-        Background="#F4F6FA" FontFamily="Segoe UI">
+        Background="#F4F1E9" FontFamily="Segoe UI">
   <Grid Margin="24">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/><RowDefinition Height="16"/><RowDefinition Height="*"/>
       <RowDefinition Height="16"/><RowDefinition Height="Auto"/><RowDefinition Height="16"/><RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <Border Background="#102039" CornerRadius="12" Padding="22">
+    <Border Background="#132A2F" CornerRadius="12" Padding="22">
       <StackPanel>
         <TextBlock Text="Только установка" Foreground="White" FontSize="25" FontWeight="SemiBold"/>
         <TextBlock Text="Сервисный режим. Доступны только установка и переустановка компонентов."
-                   Foreground="#C9D6E7" FontSize="14" Margin="0,7,0,0"/>
+                   Foreground="#CAD5D7" FontSize="14" Margin="0,7,0,0"/>
       </StackPanel>
     </Border>
 
-    <Border Grid.Row="2" Background="White" BorderBrush="#DDE3EC" BorderThickness="1" CornerRadius="12" Padding="18">
+    <Border Grid.Row="2" Background="#FFFDF8" BorderBrush="#C9C4B9" BorderThickness="1" CornerRadius="12" Padding="18">
       <DataGrid x:Name="ComponentsGrid" AutoGenerateColumns="False" CanUserAddRows="False"
                 IsReadOnly="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal">
         <DataGrid.Columns>
@@ -31,7 +31,7 @@
 
     <StackPanel Grid.Row="4">
       <ProgressBar x:Name="OperationProgress" Height="12" Minimum="0" Maximum="100"/>
-      <TextBlock x:Name="StatusText" Text="Выберите действие." Foreground="#596579" TextWrapping="Wrap" Margin="0,8,0,0"/>
+      <TextBlock x:Name="StatusText" Text="Выберите действие." Foreground="#3B565C" TextWrapping="Wrap" Margin="0,8,0,0"/>
     </StackPanel>
 
     <Grid Grid.Row="6">

@@ -137,7 +137,7 @@ public partial class CompactMainWindow : Window
             StatusDescriptionText.Text = "Не удалось подтвердить готовность рабочего места. Повторите проверку позже.";
             CloudStatusText.Text = "Облако: состояние неизвестно";
             LastCheckText.Text = "Последняя проверка: недоступна";
-            ApplyVisualState("#C66A12", "#FFF5EA", "#F2CEA8");
+            ApplyVisualState("#A56A18", "#FFF1E6", "#E6A087");
             AutoFixButton.Visibility = Visibility.Collapsed;
         }
     }

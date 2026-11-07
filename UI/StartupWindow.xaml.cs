@@ -25,11 +25,11 @@ namespace HonestFlow.UI;
 
 public partial class StartupWindow : Window
 {
-    private static readonly Brush ActiveBlue = BrushFrom("#0967D9");
-    private static readonly Brush CompleteGreen = BrushFrom("#0E9F6E");
-    private static readonly Brush ErrorRed = BrushFrom("#D91532");
-    private static readonly Brush InactiveBorder = BrushFrom("#536985");
-    private static readonly Brush InactiveText = BrushFrom("#AFBDD2");
+    private static readonly Brush ActiveBlue = BrushFrom("#FF5C35");
+    private static readonly Brush CompleteGreen = BrushFrom("#24704F");
+    private static readonly Brush ErrorRed = BrushFrom("#A83218");
+    private static readonly Brush InactiveBorder = BrushFrom("#718083");
+    private static readonly Brush InactiveText = BrushFrom("#CAD5D7");
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ApplicationStartupController _controller = new();
     private ApplicationStartupSession? _session;
@@ -673,8 +673,8 @@ public partial class StartupWindow : Window
         label.Foreground = state switch
         {
             StartupStageVisualState.Inactive => InactiveText,
-            StartupStageVisualState.Complete => BrushFrom("#DCE8F7"),
-            StartupStageVisualState.Error => BrushFrom("#FFD5DC"),
+            StartupStageVisualState.Complete => BrushFrom("#E9E4D9"),
+            StartupStageVisualState.Error => BrushFrom("#FFD8CC"),
             _ => Brushes.White
         };
     }

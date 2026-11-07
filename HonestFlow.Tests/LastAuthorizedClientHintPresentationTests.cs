@@ -21,8 +21,8 @@ namespace HonestFlow.Tests
                 .Single(Named("LastAuthorizedClientHintPanel"));
 
             Assert.Equal("Collapsed", (string)panel.Attribute("Visibility"));
-            Assert.Equal("#F3F7FC", (string)panel.Attribute("Background"));
-            Assert.Equal("#D7E3F1", (string)panel.Attribute("BorderBrush"));
+            Assert.Equal("#FFFDF8", (string)panel.Attribute("Background"));
+            Assert.Equal("#C9C4B9", (string)panel.Attribute("BorderBrush"));
             string[] scrollViewerNames = document.Descendants(Presentation + "ScrollViewer")
                 .Select(element => (string)element.Attribute(Xaml + "Name"))
                 .ToArray();

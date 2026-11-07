@@ -3,10 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="HonestFlow" Width="540" SizeToContent="Height"
         MinWidth="420" MaxWidth="560" WindowStartupLocation="CenterScreen"
-        Background="#F4F6FA" FontFamily="Segoe UI">
+        Background="#F4F1E9" FontFamily="Segoe UI">
   <Window.Resources>
     <Style x:Key="CompactPrimaryButton" TargetType="{x:Type Button}">
-      <Setter Property="Background" Value="#0868D9"/>
+      <Setter Property="Background" Value="#FF5C35"/>
       <Setter Property="Foreground" Value="White"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Cursor" Value="Hand"/>
@@ -17,18 +17,18 @@
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#0755B5"/></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#064A9D"/></Trigger>
-              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Background" Value="#B8C8DE"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#A83218"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#A83218"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Background" Value="#C9C4B9"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
     <Style x:Key="CompactSecondaryButton" TargetType="{x:Type Button}">
-      <Setter Property="Background" Value="White"/>
-      <Setter Property="Foreground" Value="#0868D9"/>
-      <Setter Property="BorderBrush" Value="#0868D9"/>
+      <Setter Property="Background" Value="#FFFDF8"/>
+      <Setter Property="Foreground" Value="#FF5C35"/>
+      <Setter Property="BorderBrush" Value="#FF5C35"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
@@ -38,18 +38,18 @@
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#EAF3FF"/></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#DCEBFF"/></Trigger>
-              <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#8DA0B8"/><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#C9D4E2"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#E9E4D9"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#E9E4D9"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#8E9997"/><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#C9C4B9"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
     <Style x:Key="CompactHelpButton" TargetType="{x:Type Button}">
-      <Setter Property="Foreground" Value="#A43A4A"/>
-      <Setter Property="BorderBrush" Value="#DFAAB2"/>
-      <Setter Property="Background" Value="#FFF9FA"/>
+      <Setter Property="Foreground" Value="#A83218"/>
+      <Setter Property="BorderBrush" Value="#D98E72"/>
+      <Setter Property="Background" Value="#FFF0EA"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
@@ -59,18 +59,18 @@
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#FFF0F2"/></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#FFE2E7"/></Trigger>
-              <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#B89BA1"/><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#E4D3D6"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#FFF0EA"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#FFF0EA"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#8E9997"/><Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#E6A087"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
     <Style x:Key="CompactIconButton" TargetType="{x:Type Button}">
-      <Setter Property="Background" Value="White"/>
-      <Setter Property="Foreground" Value="#0868D9"/>
-      <Setter Property="BorderBrush" Value="#D7E0EC"/>
+      <Setter Property="Background" Value="#FFFDF8"/>
+      <Setter Property="Foreground" Value="#FF5C35"/>
+      <Setter Property="BorderBrush" Value="#C9C4B9"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
@@ -80,9 +80,9 @@
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#EAF3FF"/></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#DCEBFF"/></Trigger>
-              <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#9BAABD"/><Setter TargetName="ButtonBorder" Property="Background" Value="#F3F5F8"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#E9E4D9"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Background" Value="#E9E4D9"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#8E9997"/><Setter TargetName="ButtonBorder" Property="Background" Value="#FFFDF8"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -100,33 +100,33 @@
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <Border x:Name="StatusCard" Background="White" BorderBrush="#DDE3EC" BorderThickness="1" CornerRadius="14" Padding="22">
+    <Border x:Name="StatusCard" Background="#FFFDF8" BorderBrush="#C9C4B9" BorderThickness="1" CornerRadius="14" Padding="22">
       <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition Width="6"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-        <Border x:Name="StatusIndicator" Background="#64748B" CornerRadius="3"/>
+        <Border x:Name="StatusIndicator" Background="#3B565C" CornerRadius="3"/>
         <StackPanel Grid.Column="2">
-          <TextBlock Text="Состояние рабочего места" Foreground="#657083" FontSize="12" FontWeight="SemiBold"/>
-          <TextBlock x:Name="StatusTitleText" Text="Проверяем рабочее место…" Foreground="#64748B" FontSize="26" FontWeight="SemiBold" Margin="0,10,0,0"/>
-          <TextBlock x:Name="StatusDescriptionText" Text="Пожалуйста, подождите." Foreground="#596579" FontSize="14"
+          <TextBlock Text="Состояние рабочего места" Foreground="#3B565C" FontSize="12" FontWeight="SemiBold"/>
+          <TextBlock x:Name="StatusTitleText" Text="Проверяем рабочее место…" Foreground="#3B565C" FontSize="26" FontWeight="SemiBold" Margin="0,10,0,0"/>
+          <TextBlock x:Name="StatusDescriptionText" Text="Пожалуйста, подождите." Foreground="#3B565C" FontSize="14"
                      LineHeight="21" TextWrapping="Wrap" Margin="0,8,0,0"/>
-          <TextBlock x:Name="LastCheckText" Text="Последняя проверка: ещё не выполнялась" Foreground="#7A8496" FontSize="12" Margin="0,17,0,0"/>
+          <TextBlock x:Name="LastCheckText" Text="Последняя проверка: ещё не выполнялась" Foreground="#3B565C" FontSize="12" Margin="0,17,0,0"/>
         </StackPanel>
       </Grid>
     </Border>
 
-    <Border Grid.Row="2" Background="White" BorderBrush="#DDE3EC" BorderThickness="1" CornerRadius="14" Padding="18">
+    <Border Grid.Row="2" Background="#FFFDF8" BorderBrush="#C9C4B9" BorderThickness="1" CornerRadius="14" Padding="18">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="10"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <StackPanel>
-          <TextBlock Text="DEVICE ID" Foreground="#657083" FontSize="11" FontWeight="SemiBold"/>
+          <TextBlock Text="DEVICE ID" Foreground="#3B565C" FontSize="11" FontWeight="SemiBold"/>
           <TextBlock x:Name="DeviceIdText" Text="Определяем…" FontFamily="Consolas" FontSize="13" TextTrimming="CharacterEllipsis" Margin="0,5,0,0"/>
         </StackPanel>
         <Button x:Name="CopyDeviceIdButton" Grid.Column="1" Width="38" Height="36" Margin="12,0,0,0" Style="{StaticResource CompactIconButton}"
                 ToolTip="Скопировать Device ID" Click="CopyDeviceId_Click" IsEnabled="False">
           <TextBlock Text="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
         </Button>
-        <TextBlock Grid.Row="2" Grid.ColumnSpan="2" x:Name="CloudStatusText" Text="Облако: проверяем" Foreground="#596579" FontSize="13"/>
+        <TextBlock Grid.Row="2" Grid.ColumnSpan="2" x:Name="CloudStatusText" Text="Облако: проверяем" Foreground="#3B565C" FontSize="13"/>
       </Grid>
     </Border>
 
@@ -137,23 +137,23 @@
       <Button x:Name="OpenFullButton" Content="Открыть HonestFlow" Height="44" FontSize="14" Margin="0,10,0,0" Style="{StaticResource CompactSecondaryButton}" Click="OpenFull_Click"/>
     </StackPanel>
 
-    <TextBlock Grid.Row="6" x:Name="OperationText" Foreground="#657083" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+    <TextBlock Grid.Row="6" x:Name="OperationText" Foreground="#3B565C" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
 
-    <Grid x:Name="CompactAutoFixOverlay" Grid.RowSpan="7" Panel.ZIndex="100" Background="#F2F4F6FA" Visibility="Collapsed">
-      <Border Padding="24" VerticalAlignment="Center" Background="White" BorderBrush="#DDE3EC" BorderThickness="1" CornerRadius="14">
+    <Grid x:Name="CompactAutoFixOverlay" Grid.RowSpan="7" Panel.ZIndex="100" Background="#DDF4F1E9" Visibility="Collapsed">
+      <Border Padding="24" VerticalAlignment="Center" Background="#FFFDF8" BorderBrush="#C9C4B9" BorderThickness="1" CornerRadius="14">
         <StackPanel>
           <TextBlock Text="Автоматическое исправление" FontSize="20" FontWeight="SemiBold" TextAlignment="Center"/>
           <ProgressBar x:Name="CompactAutoFixProgressBar" Height="12" Minimum="0" Maximum="100" Margin="0,22,0,0" IsIndeterminate="True"/>
-          <TextBlock x:Name="CompactAutoFixCurrentText" Text="Проверяем состояние…" Margin="0,14,0,0" Foreground="#596579"
+          <TextBlock x:Name="CompactAutoFixCurrentText" Text="Проверяем состояние…" Margin="0,14,0,0" Foreground="#3B565C"
                      FontSize="14" LineHeight="21" TextAlignment="Center" TextWrapping="Wrap"/>
           <StackPanel x:Name="CompactAutoFixHistoryPanel" Margin="0,18,0,0" Visibility="Collapsed">
-            <TextBlock Text="Выполненные шаги" Foreground="#526079" FontSize="12" FontWeight="SemiBold"/>
-            <Border Margin="0,7,0,0" Padding="10,7" Background="#F6F8FB" CornerRadius="8">
+            <TextBlock Text="Выполненные шаги" Foreground="#3B565C" FontSize="12" FontWeight="SemiBold"/>
+            <Border Margin="0,7,0,0" Padding="10,7" Background="#FFFDF8" CornerRadius="8">
               <ScrollViewer MaxHeight="130" VerticalScrollBarVisibility="Auto">
                 <ItemsControl x:Name="CompactAutoFixHistoryList">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <TextBlock Text="{Binding}" Margin="0,3" Foreground="#16875A" FontSize="12" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding}" Margin="0,3" Foreground="#24704F" FontSize="12" TextWrapping="Wrap"/>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
