@@ -67,6 +67,18 @@ public sealed class ServiceRuntimeContextBuilder
                 ServiceConnectionState.NotEntitled,
                 ServiceEntitlementEvaluator.Message(ServiceConnectionState.NotEntitled));
         }
+        catch (ApiRequestException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            Logger.Warning(
+                $"Event=ServiceConfigurationLoadFailed HttpStatus={(int)ex.StatusCode} ErrorCode={ex.ErrorCode ?? "-"}",
+                nameof(ServiceRuntimeContextBuilder));
+            string message = ex.StatusCode == System.Net.HttpStatusCode.NotFound
+                ? "Сервер HonestFlow ещё не поддерживает защищённую конфигурацию Service. Требуется обновление сервера."
+                : (int)ex.StatusCode >= 500
+                    ? "Сервер HonestFlow временно не смог подготовить конфигурацию Service. Повторите попытку позже."
+                    : "Сервер отклонил получение защищённой конфигурации Service.";
+            return new ServiceConnectionResult(ServiceConnectionState.Unavailable, message);
+        }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             Logger.Warning(

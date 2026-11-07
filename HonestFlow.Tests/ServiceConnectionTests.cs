@@ -66,8 +66,11 @@ public sealed class ServiceConnectionTests
     {
         string code = File.ReadAllText(ProjectFile("UI", "StartupWindow.xaml.cs"));
         string completion = Segment(code, "private async Task CompleteServiceConnectionAsync", "private void SetConnectionState");
+        string failure = Segment(code, "private void ShowServiceConnectionFailure", "private void SetConnectionState");
 
         Assert.Contains("new ServiceRuntimeContextBuilder().BuildAsync(", completion);
+        Assert.Contains("ShowServiceConnectionFailure(ConnectionResult)", completion);
+        Assert.Contains("ShowOnly(LicenseMissingPanel)", failure);
         Assert.Contains("DialogResult = true", completion);
         Assert.DoesNotContain("new MainWindow", completion);
         Assert.DoesNotContain("new CompactMainWindow", completion);

@@ -154,7 +154,8 @@ namespace HonestFlow.Infrastructure.Api
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, "api/configuration/service");
                 using HttpResponseMessage response = await _session.SendAuthorizedAsync(request, cancellationToken);
-                if (!response.IsSuccessStatusCode) throw new ApiRequestException(response.StatusCode);
+                await ApiResponse.EnsureSuccessAsync(response, cancellationToken,
+                    "Не удалось получить защищённую конфигурацию HonestFlow Service.");
                 ApiServiceConfigurationResponse configuration = JsonConvert.DeserializeObject<ApiServiceConfigurationResponse>(
                     await response.Content.ReadAsStringAsync(cancellationToken));
                 if (!MatchesCurrentConfiguration(configuration, clientId, deviceId))
