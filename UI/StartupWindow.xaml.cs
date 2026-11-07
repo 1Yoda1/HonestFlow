@@ -603,13 +603,26 @@ public partial class StartupWindow : Window
             _lifetime.Token);
         if (!ConnectionResult.IsActive)
         {
-            SetConnectionState(ConnectionResult.State, ConnectionResult.Message);
+            ShowServiceConnectionFailure(ConnectionResult);
             return;
         }
 
         SetConnectionState(ServiceConnectionState.Active);
         ApplyStartupPhase(StartupPresentationPhase.Launched);
         DialogResult = true;
+    }
+
+    private void ShowServiceConnectionFailure(ServiceConnectionResult result)
+    {
+        SetConnectionState(result.State, result.Message);
+        ApplyStartupPhase(StartupPresentationPhase.PreparationFailed);
+        ShowOnly(LicenseMissingPanel);
+        SwitchBlockedClientButton.Visibility = Visibility.Collapsed;
+        RequestHelpButton.Visibility = Visibility.Collapsed;
+        RetryLicenseButton.Visibility = Visibility.Collapsed;
+        LicenseMissingTitle.Text = "Не удалось подключить HonestFlow Service";
+        LicenseMissingDescription.Text = result.Message + " HonestFlow Free продолжает работать.";
+        RegistrationStatus.Text = ConnectionMessage;
     }
 
     private void SetConnectionState(ServiceConnectionState state, string? fallback = null)
