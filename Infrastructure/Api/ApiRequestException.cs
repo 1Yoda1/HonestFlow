@@ -5,10 +5,10 @@ namespace HonestFlow.Infrastructure.Api
 {
     public sealed class ApiRequestException : Exception
     {
-        public ApiRequestException(HttpStatusCode statusCode, string errorCode = null)
-            : base(string.IsNullOrWhiteSpace(errorCode)
+        public ApiRequestException(HttpStatusCode statusCode, string errorCode = null, string message = null)
+            : base(message ?? (string.IsNullOrWhiteSpace(errorCode)
                 ? $"API returned HTTP {(int)statusCode}."
-                : $"API returned HTTP {(int)statusCode} ({errorCode}).")
+                : $"API returned HTTP {(int)statusCode} ({errorCode})."))
         {
             StatusCode = statusCode;
             ErrorCode = errorCode;

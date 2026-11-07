@@ -66,7 +66,7 @@ public sealed class RemoteAccessApiClient
                 Encoding.UTF8, "application/json")
         };
         using HttpResponseMessage response = await _session.SendAuthorizedAsync(request, token);
-        response.EnsureSuccessStatusCode();
+        await ApiResponse.EnsureSuccessAsync(response, token, "Не удалось отправить запрос помощи.");
         return JsonConvert.DeserializeObject<SupportRequestAcceptedDto>(
                    await response.Content.ReadAsStringAsync(token))
                ?? throw new InvalidOperationException("Сервер не вернул созданную заявку помощи.");
@@ -76,7 +76,7 @@ public sealed class RemoteAccessApiClient
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
         using HttpResponseMessage response = await _session.SendAuthorizedAsync(request, token);
-        response.EnsureSuccessStatusCode();
+        await ApiResponse.EnsureSuccessAsync(response, token, "Не удалось получить состояние доступа HonestDesk.");
         return JsonConvert.DeserializeObject<T>(await response.Content.ReadAsStringAsync(token));
     }
 
@@ -86,7 +86,7 @@ public sealed class RemoteAccessApiClient
         if (body != null) request.Content = new StringContent(JsonConvert.SerializeObject(body),
             Encoding.UTF8, "application/json");
         using HttpResponseMessage response = await _session.SendAuthorizedAsync(request, token);
-        response.EnsureSuccessStatusCode();
+        await ApiResponse.EnsureSuccessAsync(response, token, "Не удалось изменить доступ HonestDesk.");
     }
 }
 

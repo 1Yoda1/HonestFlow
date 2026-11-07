@@ -415,7 +415,10 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                progressWindow.Fail(ex.Message);
+                progressWindow.Fail(ex is ApiRequestException apiError &&
+                                    ApiErrorCodes.IsServiceEntitlementDenied(apiError)
+                    ? "Service отключён на сервере. Отправка диагностики недоступна."
+                    : ex.Message);
                 throw;
             }
         });
@@ -532,6 +535,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Logger.LogException(ex, title, nameof(MainWindow));
+            if (await HandleServiceEntitlementDeniedAsync(ex))
+                return;
             finalStatus = ex.Message;
         }
 
@@ -1007,9 +1012,31 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
+                if (await HandleServiceEntitlementDeniedAsync(ex))
+                    return;
                 _logService.LogDebug($"Не удалось обновить состояние заявки помощи: {ex.Message}");
             }
         }
+    }
+
+    private async Task<bool> HandleServiceEntitlementDeniedAsync(Exception exception)
+    {
+        if (exception is not ApiRequestException apiError ||
+            !ApiErrorCodes.IsServiceEntitlementDenied(apiError))
+            return false;
+
+        ServiceConnectionState state = string.Equals(apiError.ErrorCode,
+            ApiErrorCodes.ServiceRequired, StringComparison.Ordinal)
+            ? ServiceConnectionState.NotEntitled
+            : ServiceConnectionState.Disabled;
+        string message = state == ServiceConnectionState.NotEntitled
+            ? "Service отключён на сервере. Локальная диагностика остаётся доступна."
+            : "Service для этой организации или компьютера отключён на сервере. Локальная диагностика остаётся доступна.";
+
+        if (_serviceRuntime is not null && !_serviceDisconnectRunning)
+            await DeactivateServiceAsync(state, message, logout: false);
+
+        return true;
     }
 
     private void ApplyRemoteSupportRequest(RemoteAccessCredentialStatusDto remote)
@@ -1222,30 +1249,22 @@ public partial class MainWindow : Window
         {
             var service = new RuDesktopService(_logService);
             RuDesktopStatus status = await service.GetStatus();
+            if (!string.IsNullOrWhiteSpace(status.PendingRevocationClientId) &&
+                status.PendingRevocationClientId != _client.ClientId)
+                throw new InvalidOperationException("Для отмены заявки подключите прежнего клиента Service.");
+
+            // The server cancellation is authoritative and must happen before changing local RuDesktop.
+            // A denied Service request must not leave the workplace password unexpectedly reset.
+            await GetRemoteAccessApiClient().RevokeAsync(token);
             if (!status.RevocationPending) service.MarkRevocationPending();
+
             status = await service.GetStatus();
             bool localDisabled = status.LocalAccessDisabled || await service.DisablePermanentPasswordAsync();
             if (localDisabled) service.MarkLocalAccessDisabled();
-            bool serverRevoked = false;
-            try
-            {
-                if (string.IsNullOrWhiteSpace(status.PendingRevocationClientId) ||
-                    status.PendingRevocationClientId == _client.ClientId)
-                {
-                    await GetRemoteAccessApiClient().RevokeAsync(token);
-                    serverRevoked = true;
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Logger.LogException(ex, "RuDesktop credential revocation sync failed", nameof(MainWindow));
-            }
-            if (localDisabled && serverRevoked) service.MarkRevocationComplete();
+            if (localDisabled) service.MarkRevocationComplete();
             await RefreshRuDesktopStatusAsync(allowDuringOperation: true);
             if (!localDisabled)
-                throw new InvalidOperationException("RuDesktop не подтвердил отключение прежнего пароля. Проверьте его настройки вручную.");
-            if (!serverRevoked)
-                throw new InvalidOperationException("Доступ на ПК отключён. Для отмены заявки подключите прежнего клиента Service и повторите отзыв.");
+                throw new InvalidOperationException("Доступ HonestDesk на сервере уже отключён, но RuDesktop не подтвердил сброс прежнего пароля. Проверьте его настройки вручную.");
         });
     }
 
@@ -1323,6 +1342,8 @@ public partial class MainWindow : Window
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    if (await HandleServiceEntitlementDeniedAsync(ex))
+                        return;
                     status.ErrorMessage = "Ожидается отзыв доступа на сервере: " + ex.Message;
                 }
             }
@@ -1341,6 +1362,8 @@ public partial class MainWindow : Window
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    if (await HandleServiceEntitlementDeniedAsync(ex))
+                        return;
                     status.ErrorMessage = "Не удалось проверить доступ HonestDesk: " + ex.Message;
                 }
             }
@@ -1480,6 +1503,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Logger.LogException(ex, status, nameof(MainWindow));
+            if (await HandleServiceEntitlementDeniedAsync(ex))
+                return;
             if (IsCurrentRuntime(generation) && _section != Section.Log) SectionOutput.Text = ex.Message;
         }
         finally
@@ -1587,6 +1612,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Logger.LogException(ex, "WPF AutoFix failed", nameof(MainWindow));
+            if (await HandleServiceEntitlementDeniedAsync(ex))
+                return;
             if (IsCurrentRuntime(generation) && _section != Section.Log)
                 SectionOutput.Text = "Не удалось выполнить автоматическое исправление: " + ex.Message;
         }
@@ -1716,6 +1743,8 @@ public partial class MainWindow : Window
         {
             if (!CanApplyRefresh(request)) return;
             Logger.LogException(ex, "WPF topology refresh failed", nameof(MainWindow));
+            if (await HandleServiceEntitlementDeniedAsync(ex))
+                return;
             if (_section == Section.Home) SectionOutput.Text = ex.Message;
             if (mode == ApplicationMode.Service) ApplyRuDesktopAction(null);
         }
