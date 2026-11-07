@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using HonestFlow.Infrastructure.Api;
 
 namespace HonestFlow.Infrastructure.Downloads
 {
@@ -45,7 +46,8 @@ namespace HonestFlow.Infrastructure.Downloads
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, asset.DownloadUrl);
                 using HttpResponseMessage response = await send(request, cancellationToken);
-                response.EnsureSuccessStatusCode();
+                await ApiResponse.EnsureSuccessAsync(response, cancellationToken,
+                    "Не удалось скачать компонент обслуживания.");
 
                 await using Stream input = await response.Content.ReadAsStreamAsync(cancellationToken);
                 await using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write,

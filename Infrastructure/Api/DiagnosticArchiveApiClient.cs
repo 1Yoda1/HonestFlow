@@ -51,7 +51,7 @@ namespace HonestFlow.Infrastructure.Api
                 Content = JsonContent(createPayload)
             };
             using HttpResponseMessage createResponse = await _session.SendAuthorizedAsync(createRequest, cancellationToken);
-            await EnsureSuccessAsync(createResponse, "Не удалось создать загрузку диагностики.", cancellationToken);
+            await EnsureApiSuccessAsync(createResponse, "Не удалось создать загрузку диагностики.", cancellationToken);
             DiagnosticUploadTicket ticket = JsonConvert.DeserializeObject<DiagnosticUploadTicket>(
                 await createResponse.Content.ReadAsStringAsync(cancellationToken))
                 ?? throw new InvalidOperationException("Сервер вернул пустой ответ для загрузки диагностики.");
@@ -75,7 +75,7 @@ namespace HonestFlow.Infrastructure.Api
                 Content = JsonContent(new { sizeBytes = file.Length, sha256 })
             };
             using HttpResponseMessage completeResponse = await _session.SendAuthorizedAsync(completeRequest, cancellationToken);
-            await EnsureSuccessAsync(completeResponse, "Не удалось подтвердить загрузку диагностики.", cancellationToken);
+            await EnsureApiSuccessAsync(completeResponse, "Не удалось подтвердить загрузку диагностики.", cancellationToken);
             progress?.Invoke(100, "Диагностика отправлена");
             return new DiagnosticUploadResult(ticket.Id, ticket.ArchiveExpiresAtUtc);
         }
@@ -90,6 +90,10 @@ namespace HonestFlow.Infrastructure.Api
             string details = await response.Content.ReadAsStringAsync(cancellationToken);
             throw new InvalidOperationException($"{message} HTTP {(int)response.StatusCode}. {details}".Trim());
         }
+
+        private static Task EnsureApiSuccessAsync(
+            HttpResponseMessage response, string message, CancellationToken cancellationToken) =>
+            ApiResponse.EnsureSuccessAsync(response, cancellationToken, message);
 
         private sealed class DiagnosticUploadTicket
         {
