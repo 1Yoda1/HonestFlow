@@ -196,8 +196,14 @@ public sealed class LmDiagnosticsSemanticsTests
     {
         PointStatusResult result = await CheckAsync("7707083893", "7707083893");
 
-        Assert.Equal(NodeLevel.Ok, result.Lm.Level);
-        Assert.Equal(TopologyVisualState.Healthy, new TopologyPresentationService().Create(result).LmFrame);
+        // PointStatusService additionally overlays the runner's real hardware requirements on
+        // result.Lm. The readiness contract itself must remain independent from CI hardware.
+        Assert.Equal(NodeLevel.Ok, result.LmProbe.Status.Level);
+        Assert.Equal(TopologyVisualState.Healthy,
+            new TopologyPresentationService().Create(new PointStatusResult
+            {
+                Lm = result.LmProbe.Status
+            }).LmFrame);
     }
 
     private static bool IsInnIssue(DiagnosticIssue issue) =>
