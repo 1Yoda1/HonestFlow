@@ -1834,6 +1834,8 @@ public partial class MainWindow : Window
         SimpleStatusHalo.Fill = BrushFrom("#E9E4D9");
         SimpleStatusLamp.Fill = neutral;
         SimpleStatusSymbol.Text = "…";
+        SimpleStatusSymbol.Visibility = Visibility.Visible;
+        SimpleStatusCross.Visibility = Visibility.Collapsed;
         SimpleStatusTitle.Text = "Проверяем рабочее место…";
         SimpleStatusDescription.Text = "Пожалуйста, подождите. HonestFlow проверяет готовность кассы и маркировки.";
         SimpleFixButton.Visibility = Visibility.Collapsed;
@@ -1995,9 +1997,10 @@ public partial class MainWindow : Window
         SimpleStatusHalo.Fill = BrushFrom(halo);
         SimpleStatusLamp.Fill = BrushFrom(lamp);
         SimpleStatusSymbol.Text = symbol;
-        SimpleStatusSymbol.Margin = symbol == "×"
-            ? new Thickness(0, -1, 0, 0)
-            : new Thickness(0, -5, 0, 0);
+        bool isError = symbol == "×";
+        SimpleStatusSymbol.Visibility = isError ? Visibility.Collapsed : Visibility.Visible;
+        SimpleStatusCross.Visibility = isError ? Visibility.Visible : Visibility.Collapsed;
+        SimpleStatusSymbol.Margin = new Thickness(0, -5, 0, 0);
         SimpleStatusTitle.Text = title;
         SimpleStatusDescription.Text = description;
         SimpleFixButton.Visibility = showFix ? Visibility.Visible : Visibility.Collapsed;
