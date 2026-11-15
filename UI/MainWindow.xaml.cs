@@ -1841,8 +1841,11 @@ public partial class MainWindow : Window
         foreach (Ellipse dot in new[] { GismtNodeStatusDot, EsmNodeStatusDot, ControllerNodeStatusDot, LmNodeStatusDot, KktNodeStatusDot }) dot.Fill = neutral;
         foreach (Border icon in new[] { GismtNodeIcon, EsmNodeIcon, ControllerNodeIcon, LmNodeIcon, KktNodeIcon }) SetTopologyIconBrush(icon, neutral);
         foreach (TextBlock text in new[] { GismtNodeStatusText, EsmNodeStatusText, ControllerNodeStatusText, LmNodeStatusText, KktNodeStatusText }) text.Foreground = neutral;
-        foreach (Line line in new[] { CloudEsmLine, EsmControllerLine, ControllerLmLine, EsmKktLine }) line.Stroke = neutral;
-        foreach (Border marker in new[] { CloudEsmMarker, EsmControllerMarker, ControllerLmMarker, EsmKktMarker }) marker.Visibility = Visibility.Collapsed;
+        foreach (Line line in new[] { CloudEsmLine, EsmControllerLine, ControllerLmLine, EsmKktLine })
+        {
+            line.Stroke = neutral;
+            line.StrokeDashArray = null;
+        }
         EsmNodeStatusText.Text = ControllerNodeStatusText.Text = LmNodeStatusText.Text = KktNodeStatusText.Text = "Проверка…";
         GismtNodeStatusText.Text = "Проверка…";
     }
@@ -1886,13 +1889,13 @@ public partial class MainWindow : Window
         ApplyFrame(
             KktNodeBorder, KktNodeIcon, KktNodeStatusDot, KktNodeStatusText, _lastDiagnostics.Kkt, presentation.KktFrame,
             _lastPointStatus?.Kkt?.StatusText ?? _diagnosticPresentation.ComponentStatus(_lastDiagnostics.Kkt, "Служба остановлена"), "ККТ");
-        ApplyLink(CloudEsmLine, CloudEsmMarker, presentation.CloudToEsm,
+        ApplyLink(CloudEsmLine, presentation.CloudToEsm,
             _diagnosticPresentation.ConnectionDetails(_lastDiagnostics.GismtToEsm, "Связь с ГИС МТ"));
-        ApplyLink(EsmControllerLine, EsmControllerMarker, presentation.EsmToController,
+        ApplyLink(EsmControllerLine, presentation.EsmToController,
             _diagnosticPresentation.ConnectionDetails(_lastDiagnostics.EsmToController, "Связь с контроллером"));
-        ApplyLink(ControllerLmLine, ControllerLmMarker, presentation.ControllerToLm,
+        ApplyLink(ControllerLmLine, presentation.ControllerToLm,
             _diagnosticPresentation.ConnectionDetails(_lastDiagnostics.LmConnection, "Связь с ЛМ ЧЗ"));
-        ApplyLink(EsmKktLine, EsmKktMarker, presentation.EsmToKkt,
+        ApplyLink(EsmKktLine, presentation.EsmToKkt,
             _diagnosticPresentation.ConnectionDetails(_lastDiagnostics.EsmToKkt, "Связь с ККТ"));
     }
 
@@ -1992,6 +1995,9 @@ public partial class MainWindow : Window
         SimpleStatusHalo.Fill = BrushFrom(halo);
         SimpleStatusLamp.Fill = BrushFrom(lamp);
         SimpleStatusSymbol.Text = symbol;
+        SimpleStatusSymbol.Margin = symbol == "×"
+            ? new Thickness(0, -1, 0, 0)
+            : new Thickness(0, -5, 0, 0);
         SimpleStatusTitle.Text = title;
         SimpleStatusDescription.Text = description;
         SimpleFixButton.Visibility = showFix ? Visibility.Visible : Visibility.Collapsed;
@@ -2033,7 +2039,7 @@ public partial class MainWindow : Window
         _ => BrushFrom("#D88A00")
     };
 
-    private static void ApplyLink(Line line, Border marker, TopologyLinkPresentation presentation, string description)
+    private static void ApplyLink(Line line, TopologyLinkPresentation presentation, string description)
     {
         Brush color = presentation.State switch
         {
@@ -2042,28 +2048,14 @@ public partial class MainWindow : Window
             _ => BrushFrom("#D88A00")
         };
         line.Stroke = color;
-        line.StrokeThickness = 3;
-        line.StrokeDashArray = null;
+        line.StrokeThickness = presentation.State == TopologyVisualState.Healthy ? 3 : 2.5;
+        line.StrokeDashArray = presentation.State switch
+        {
+            TopologyVisualState.Missing => new DoubleCollection { 5, 3 },
+            TopologyVisualState.Uncertain => new DoubleCollection { 1, 3 },
+            _ => null
+        };
         line.ToolTip = description;
-        if (presentation.State == TopologyVisualState.Healthy || presentation.State == TopologyVisualState.Ignored)
-        {
-            marker.Visibility = Visibility.Collapsed;
-            return;
-        }
-        marker.Visibility = Visibility.Visible;
-        bool missing = presentation.State == TopologyVisualState.Missing;
-        marker.Background = missing ? BrushFrom("#FFFDF8") : color;
-        marker.BorderBrush = missing ? color : Brushes.Transparent;
-        marker.BorderThickness = missing ? new Thickness(1) : new Thickness(0);
-        marker.ToolTip = description;
-        if (marker.Child is TextBlock symbol)
-        {
-            symbol.Text = missing ? "×" : "?";
-            symbol.Foreground = missing ? color : Brushes.White;
-            symbol.FontSize = missing ? 25 : 17;
-            symbol.FontWeight = FontWeights.Bold;
-            symbol.Margin = missing ? new Thickness(0, -4, 0, 0) : new Thickness(0);
-        }
     }
 
     private static Brush BrushFrom(string color) => (Brush)new BrushConverter().ConvertFromString(color)!;
