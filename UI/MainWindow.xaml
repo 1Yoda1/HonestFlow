@@ -323,7 +323,7 @@
                     <Grid Width="96" Height="96" HorizontalAlignment="Center">
                       <Ellipse x:Name="SimpleStatusHalo" Fill="#EAF7F0"/>
                       <Ellipse x:Name="SimpleStatusLamp" Width="78" Height="78" Fill="#24704F" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                      <TextBlock x:Name="SimpleStatusSymbol" Text="✓" Foreground="White" FontSize="42" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-5,0,0"/>
+                      <TextBlock x:Name="SimpleStatusSymbol" Text="✓" Foreground="White" FontSize="42" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" Margin="0,-5,0,0"/>
                     </Grid>
                     <TextBlock x:Name="SimpleStatusTitle" Text="Проверяем рабочее место…" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" Margin="0,16,0,0"/>
                     <TextBlock x:Name="SimpleStatusDescription" Text="Пожалуйста, подождите. HonestFlow проверяет готовность кассы и маркировки." Foreground="{StaticResource Muted}" FontSize="15" LineHeight="22" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" Margin="0,12,0,0"/>
@@ -358,10 +358,6 @@
                     </Grid>
                   </Border>
 
-                  <Border x:Name="CloudEsmMarker" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Width="24" Height="24" CornerRadius="12" Background="#D88A00" Visibility="Collapsed"><TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-                  <Border x:Name="EsmControllerMarker" Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center" Width="24" Height="24" CornerRadius="12" Background="#D88A00" Visibility="Collapsed"><TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-                  <Border x:Name="ControllerLmMarker" Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center" Width="24" Height="24" CornerRadius="12" Background="#D88A00" Visibility="Collapsed"><TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-                  <Border x:Name="EsmKktMarker" Grid.Column="2" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Width="24" Height="24" CornerRadius="12" Background="#D88A00" Visibility="Collapsed"><TextBlock Text="?" Foreground="White" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
                   <Border x:Name="EsmNodeBorder" Grid.Column="2" Style="{StaticResource NodeCard}" Cursor="Hand" MouseLeftButtonUp="EsmNode_Click">
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                       <Border x:Name="EsmNodeIcon" Width="36" Height="36" HorizontalAlignment="Left" VerticalAlignment="Center"

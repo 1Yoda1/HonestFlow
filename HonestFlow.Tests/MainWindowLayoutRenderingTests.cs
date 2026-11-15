@@ -139,15 +139,6 @@ public sealed class MainWindowLayoutRenderingTests
                 vertical ? lineBounds.Top : lineBounds.Left);
             AssertNear(vertical ? bounds[edge.Item3].Top : bounds[edge.Item3].Left,
                 vertical ? lineBounds.Bottom : lineBounds.Right);
-            var marker = Control<Border>(window, edge.Item1 + "Marker");
-            if (marker.Visibility == Visibility.Visible)
-            {
-                Rect markerBounds = Bounds(marker, root);
-                AssertNear(lineBounds.Left + lineBounds.Width / 2, markerBounds.Left + markerBounds.Width / 2);
-                AssertNear(lineBounds.Top + lineBounds.Height / 2, markerBounds.Top + markerBounds.Height / 2);
-                Assert.False(bounds[edge.Item2].IntersectsWith(markerBounds));
-                Assert.False(bounds[edge.Item3].IntersectsWith(markerBounds));
-            }
         }
         foreach (string name in new[] { "Gismt", "Esm", "Controller", "Lm", "Kkt" })
         {
