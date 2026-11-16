@@ -87,11 +87,14 @@ namespace HonestFlow.Application.PointStatus
             var services = await _serviceSnapshotProvider
                 .GetSnapshotsAsync(cancellationToken)
                 .ConfigureAwait(false);
-            var controllerService = CheckExactServices(services, "esm-lm-controller");
+            bool hosted = currentClient?.ComponentsHostedOnServer == true;
+            var controllerService = hosted ? null : CheckExactServices(services, "esm-lm-controller");
             var kktService = CheckExactServices(services, "uem-agent", "uem-updater", "atol-grpc-service");
             var esmService = CheckEsmServices(services);
             Task<EsmStatusResult> controllerTask = _esmStatusClient.GetStatusAsync(cancellationToken);
-            Task<ControllerServiceInfoResult> controllerServiceInfoTask = _controllerServiceInfoProbe.CheckAsync(cancellationToken);
+            Task<ControllerServiceInfoResult> controllerServiceInfoTask = hosted
+                ? Task.FromResult<ControllerServiceInfoResult>(null)
+                : _controllerServiceInfoProbe.CheckAsync(cancellationToken);
             Task<EsmCashRegisterResult> kktTask = _esmStatusClient.GetCashRegisterStatusAsync(cancellationToken);
             Task<EsmRegistrationResult> esmTask;
             if (!IsEsmOrchestratorRunning(esmService))
@@ -102,7 +105,9 @@ namespace HonestFlow.Application.PointStatus
             {
                 esmTask = _esmStatusClient.GetRegistrationStatusAsync(cancellationToken);
             }
-            Task<LmDiagnosticProbeResult> lmTask = CheckLmStatusAsync(services, currentClient);
+            Task<LmDiagnosticProbeResult> lmTask = hosted
+                ? Task.FromResult<LmDiagnosticProbeResult>(null)
+                : CheckLmStatusAsync(services, currentClient);
             Task<NodeStatus> cloudTask = CheckCloudStatusAsync(cancellationToken);
             Task<RuDesktopStatus> ruDesktopTask = CheckRuDesktopStatusAsync();
             Task<KktPnpResult> kktPnpTask = DetectKktPnpAsync(cancellationToken);
@@ -121,14 +126,15 @@ namespace HonestFlow.Application.PointStatus
             GisMtDiagnosticResult gisMtDiagnostics = await _gisMtDiagnosticProbe
                 .CheckAsync(controllerTask.Result, cancellationToken)
                 .ConfigureAwait(false);
-            NodeStatus lmStatus = lmProbe.Status;
-            lmStatus = ApplyLmSystemRequirements(lmStatus, LmSystemRequirements.Check());
+            NodeStatus lmStatus = lmProbe?.Status;
+            if (!hosted) lmStatus = ApplyLmSystemRequirements(lmStatus, LmSystemRequirements.Check());
 
             RuDesktopStatus ruDesktopStatus = await ruDesktopTask.ConfigureAwait(false);
             return new PointStatusResult
             {
+                ComponentsHostedOnServer = hosted,
                 Lm = lmStatus,
-                Controller = BuildControllerStatus(controllerService, await controllerServiceInfoTask.ConfigureAwait(false), null),
+                Controller = hosted ? null : BuildControllerStatus(controllerService, await controllerServiceInfoTask.ConfigureAwait(false), null),
                 ControllerServiceStatus = controllerService,
                 ControllerServiceInfo = await controllerServiceInfoTask.ConfigureAwait(false),
                 Esm = BuildEsmStatus(esmService, esmApiPort, esmRegistration, null, controllerTask.Result),

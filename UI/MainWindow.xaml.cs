@@ -267,7 +267,7 @@ public partial class MainWindow : Window
                 : "Установленные и требуемые версии компонентов рабочей точки.",
             _paidExecutionEnabled ? "Обновить всё" : null,
             null,
-            _paidExecutionEnabled && _client?.HasLmDatabaseBackup == true
+            _paidExecutionEnabled && _client?.HasLmDatabaseBackup == true && !_client.ComponentsHostedOnServer
                 ? "Восстановить базу ЛМ"
                 : null,
             null);
@@ -381,7 +381,7 @@ public partial class MainWindow : Window
                 }
 
                 DiagnosticArchiveInfo archive = await Task.Run(
-                    () => new DiagnosticArchiveService(_logService)
+                    () => new DiagnosticArchiveService(_logService) { ComponentsHostedOnServer = _client?.ComponentsHostedOnServer == true }
                         .CreateArchiveInfo(selection, _license?.PointAddress),
                     cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
@@ -713,7 +713,8 @@ public partial class MainWindow : Window
             LoadingRow(InstallationComponent.LmModule, "ЛМ ЧЗ"),
             LoadingRow(InstallationComponent.Esm, "ЕСМ"),
             LoadingRow(InstallationComponent.Controller, "Контроллер ЛМ")
-        };
+        }.Where(row => _client?.ComponentsHostedOnServer != true ||
+            row.Component is not (InstallationComponent.LmModule or InstallationComponent.Controller)).ToArray();
     }
 
     private ComponentVersionRow LoadingRow(InstallationComponent component, string name) => new()
@@ -761,10 +762,15 @@ public partial class MainWindow : Window
 
     private void PopulateComponentVersions()
     {
-        InstallationComponent[] components = Enum.GetValues<InstallationComponent>();
-        ComponentVersionsGrid.ItemsSource = _componentStatuses.Select((status, index) => new ComponentVersionRow
+        ComponentVersionsGrid.ItemsSource = _componentStatuses.Select(status => new ComponentVersionRow
         {
-            Component = index < components.Length ? components[index] : components[0],
+            Component = status.ComponentName switch
+            {
+                "ЛМ ЧЗ" => InstallationComponent.LmModule,
+                "Контроллер" => InstallationComponent.Controller,
+                "ЕСМ" => InstallationComponent.Esm,
+                _ => InstallationComponent.AtolDriver
+            },
             Name = status.ComponentName,
             InstalledVersion = string.IsNullOrWhiteSpace(status.InstalledVersion) ? "Не установлена" : status.InstalledVersion,
             ExpectedVersion = string.IsNullOrWhiteSpace(status.ExpectedVersion) ? "Не задана" : status.ExpectedVersion,
@@ -849,7 +855,10 @@ public partial class MainWindow : Window
 
     private InstallationComponent[]? SelectComponents()
     {
-        CheckBox[] checks = Enum.GetValues<InstallationComponent>().Select(component => new CheckBox
+        CheckBox[] checks = Enum.GetValues<InstallationComponent>()
+            .Where(component => _client?.ComponentsHostedOnServer != true ||
+                component is not (InstallationComponent.LmModule or InstallationComponent.Controller))
+            .Select(component => new CheckBox
         {
             Content = ComponentDisplayName(component), Tag = component, IsChecked = true, FontSize = 15,
             Margin = new Thickness(0, 7, 0, 7)
@@ -883,6 +892,11 @@ public partial class MainWindow : Window
         var system = DiagnosticCheckBox("Сведения о системе и статусы служб");
         var honestFlow = DiagnosticCheckBox("Логи HonestFlow");
         var lm = DiagnosticCheckBox("Логи ЛМ ЧЗ");
+        if (_client?.ComponentsHostedOnServer == true)
+        {
+            lm.IsChecked = false;
+            lm.Visibility = Visibility.Collapsed;
+        }
         var esm = DiagnosticCheckBox("Логи ЕСМ");
         var kkt = DiagnosticCheckBox("Лог ККТ / АТОЛ");
         CheckBox[] checks = { system, honestFlow, lm, esm, kkt };
@@ -931,7 +945,7 @@ public partial class MainWindow : Window
 
     private async Task RestoreLmDatabaseAsync()
     {
-        if (!_paidExecutionEnabled || _startup == null || _client?.HasLmDatabaseBackup != true) return;
+        if (!_paidExecutionEnabled || _startup == null || _client?.HasLmDatabaseBackup != true || _client.ComponentsHostedOnServer) return;
         LmDatabaseRestoreResult restoreResult = null;
         await RunInstallationOperationAsync(
             "Восстановление ЛМ ЧЗ",
@@ -1886,6 +1900,13 @@ public partial class MainWindow : Window
     private void ApplyTopology(TopologyPresentation presentation)
     {
         if (_lastDiagnostics == null) return;
+        bool hosted = _client?.ComponentsHostedOnServer == true;
+        foreach (FrameworkElement element in new FrameworkElement[] { ControllerNodeBorder, LmNodeBorder, EsmControllerLine, ControllerLmLine })
+            element.Visibility = hosted ? Visibility.Collapsed : Visibility.Visible;
+        for (int column = 3; column < 7; column++)
+            DetailedTopologyView.ColumnDefinitions[column].Width = hosted
+                ? new GridLength(0)
+                : column % 2 == 1 ? new GridLength(36) : new GridLength(1, GridUnitType.Star);
 
         ApplyStandaloneFrame(
             GismtNodeBorder, GismtNodeIcon, GismtNodeStatusDot, GismtNodeStatusText, _lastDiagnostics.Gismt,
@@ -2091,7 +2112,8 @@ public partial class MainWindow : Window
                 ? new ServiceToolRow { DisplayName = "ЕСМ CM", ServiceName = "esm-cm-*", Status = "Не найдена", CanControl = false }
                 : ServiceToolRow.From(esmCm.ServiceName, esmCm, _paidExecutionEnabled));
 
-            ServiceToolsGrid.ItemsSource = rows;
+            ServiceToolsGrid.ItemsSource = rows.Where(row => _client?.ComponentsHostedOnServer != true ||
+                row.ServiceName is not ("regime" or "yenisei" or "esm-lm-controller")).ToList();
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception ex)
@@ -2114,6 +2136,7 @@ public partial class MainWindow : Window
     {
         if (!_paidExecutionEnabled) return;
         if (sender is not Button { Tag: string serviceName } || serviceName.EndsWith("*", StringComparison.Ordinal)) return;
+        if (_client?.ComponentsHostedOnServer == true && serviceName is ("regime" or "yenisei" or "esm-lm-controller")) return;
         if (_operationRunning) return;
         long generation = _runtimeRefreshes.Generation;
         if (action == ServiceAction.Stop && MessageBox.Show(this,

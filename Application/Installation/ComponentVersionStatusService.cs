@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using HonestFlow.Application.Core;
 using HonestFlow.Application.Lm;
 using HonestFlow.Infrastructure.Configuration;
@@ -40,10 +41,11 @@ namespace HonestFlow.Application.Installation
                 Controller = FirstConfigured(clientVersions?.Controller, configured?.Controller)
             };
 
-            string lmVersion = _installedLmVersion();
+            bool hosted = selectedClient?.ComponentsHostedOnServer == true;
+            string lmVersion = hosted ? null : _installedLmVersion();
             string atolVersion = _versionChecker.GetAtolDriverInfo(selectedClient?.Architecture);
             string esmVersion = _versionChecker.GetEsmVersion();
-            string controllerVersion = _versionChecker.GetControllerVersion();
+            string controllerVersion = hosted ? null : _versionChecker.GetControllerVersion();
 
             return new[]
             {
@@ -69,8 +71,8 @@ namespace HonestFlow.Application.Installation
                     "Контроллер",
                     controllerVersion,
                     expected.Controller,
-                    HasExpected(expected.Controller) ? _versionChecker.NeedControllerInstall(expected.Controller) : null)
-            };
+                    !hosted && HasExpected(expected.Controller) ? _versionChecker.NeedControllerInstall(expected.Controller) : null)
+            }.Where(status => !hosted || (status.ComponentName != "ЛМ ЧЗ" && status.ComponentName != "Контроллер")).ToArray();
         }
 
         public ComponentVersionStatus[] GetLocalStatuses(LocalRuntimeContext runtime)

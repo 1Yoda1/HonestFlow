@@ -2,6 +2,7 @@
 {
     public sealed class PointStatusResult
     {
+        public bool ComponentsHostedOnServer { get; set; }
         public NodeStatus Lm { get; set; }
         public NodeStatus Controller { get; set; }
         public NodeStatus ControllerServiceStatus { get; set; }

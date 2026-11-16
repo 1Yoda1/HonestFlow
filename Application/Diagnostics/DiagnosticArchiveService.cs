@@ -29,6 +29,7 @@ namespace HonestFlow.Application.Diagnostics
         private string _fiscalAddress;
         private string _pointAddress;
         private string _pointStatusReport;
+        public bool ComponentsHostedOnServer { get; set; }
 
         public DiagnosticArchiveService(ILogService log)
             : this(log, new FileDeviceIdentityService(new DpapiDeviceIdentityStateProtector()))
@@ -91,7 +92,7 @@ namespace HonestFlow.Application.Diagnostics
                 if (selection.IncludeHonestFlow)
                     CollectHonestFlowLogs(tempRoot, logCutoff);
 
-                if (selection.IncludeLm)
+                if (selection.IncludeLm && !ComponentsHostedOnServer)
                     CollectLmLogs(tempRoot, logCutoff);
 
                 if (selection.IncludeEsm)
@@ -102,6 +103,9 @@ namespace HonestFlow.Application.Diagnostics
 
                 if (selection.IncludeSystemInfo)
                     WriteSystemInfo(tempRoot, collectedAt);
+                if (ComponentsHostedOnServer)
+                    File.WriteAllText(Path.Combine(tempRoot, "component-placement.txt"),
+                        "ЛМ ЧЗ и Контроллер исключены из локальной проверки конфигурацией устройства: размещены на сервере.", Encoding.UTF8);
 
                 if (File.Exists(archivePath))
                     File.Delete(archivePath);
@@ -517,9 +521,12 @@ namespace HonestFlow.Application.Diagnostics
             sb.AppendLine();
 
             sb.AppendLine("Статусы служб:");
-            AppendServiceStatus(sb, "regime");
-            AppendServiceStatus(sb, "yenisei");
-            AppendServiceStatus(sb, "lmcontroller");
+            if (!ComponentsHostedOnServer)
+            {
+                AppendServiceStatus(sb, "regime");
+                AppendServiceStatus(sb, "yenisei");
+                AppendServiceStatus(sb, "lmcontroller");
+            }
             sb.AppendLine();
 
             sb.AppendLine("Состояние точки HonestFlow:");

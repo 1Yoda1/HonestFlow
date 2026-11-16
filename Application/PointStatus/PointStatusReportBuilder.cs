@@ -19,8 +19,13 @@ namespace HonestFlow.Application.PointStatus
             report.AppendLine($"Сформирован: {timestamp:dd.MM.yyyy HH:mm:ss}");
             report.AppendLine("Чувствительные идентификаторы ККТ и токены намеренно не выводятся.");
 
-            AppendNode(report, "ЛМ ЧЗ", result.Lm);
-            AppendNode(report, "Контроллер", result.Controller);
+            if (result.ComponentsHostedOnServer)
+                report.AppendLine("ЛМ ЧЗ и Контроллер исключены из локальной проверки конфигурацией устройства: размещены на сервере.");
+            else
+            {
+                AppendNode(report, "ЛМ ЧЗ", result.Lm);
+                AppendNode(report, "Контроллер", result.Controller);
+            }
             AppendNode(report, "ЕСМ", result.Esm);
             AppendNode(report, "ККТ", result.Kkt);
             AppendNode(report, "Облако", result.Cloud);
