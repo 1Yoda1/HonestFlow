@@ -60,6 +60,8 @@ namespace HonestFlow.Application.PointStatus
         {
             if (result == null) throw new ArgumentNullException(nameof(result));
             IReadOnlyList<ComponentVersionStatus> versions = versionStatuses ?? Array.Empty<ComponentVersionStatus>();
+            if (result.ComponentsHostedOnServer)
+                versions = versions.Where(version => version.ComponentName is not ("ЛМ ЧЗ" or "Контроллер")).ToArray();
             EsmStatusDto status = result.EsmApiStatus?.Status;
             EsmStatusDto api = status?.Software?.Data ?? status?.Data?.Software?.Data ?? status?.Data ?? status;
             DiagnosticComponentFact esm = FromEsmNode(result.Esm);
@@ -93,15 +95,15 @@ namespace HonestFlow.Application.PointStatus
             AddFailed(reasons, esm, "ЕСМ");
             AddFailed(reasons, kkt, "ККТ");
             AddDisconnected(reasons, esmKkt, "Связь ЕСМ ↔ ККТ");
-            if (controller.State == DiagnosticState.Failed)
+            if (!result.ComponentsHostedOnServer && controller.State == DiagnosticState.Failed)
                 reasons.Add("Контроллер: " + controller.Details);
             if (gismt.State != DiagnosticState.Healthy)
                 reasons.Add("GIS MT: " + gismt.Details);
-            if (lm.State != DiagnosticState.Healthy)
+            if (!result.ComponentsHostedOnServer && lm.State != DiagnosticState.Healthy)
                 reasons.Add("ЛМ ЧЗ: " + lm.Details);
-            if (esmController.State != DiagnosticConnectionState.Connected)
+            if (!result.ComponentsHostedOnServer && esmController.State != DiagnosticConnectionState.Connected)
                 reasons.Add("ЕСМ ↔ Controller: " + esmController.Details);
-            if (lmConnection.State != DiagnosticConnectionState.Connected)
+            if (!result.ComponentsHostedOnServer && lmConnection.State != DiagnosticConnectionState.Connected)
                 reasons.Add("Связь с ЛМ: " + lmConnection.Details);
             foreach (ComponentVersionStatus version in versions.Where(IsVersionIssue))
                 reasons.Add(VersionDetails(version));
@@ -123,7 +125,9 @@ namespace HonestFlow.Application.PointStatus
                 LmPathAvailable = lmPathAvailable
             };
             IReadOnlyList<DiagnosticIssue> issues = DiagnosticIssueEvaluator.Evaluate(context);
-            IReadOnlyList<DiagnosticFact> facts = DiagnosticFactsBuilder.Create(context);
+            IReadOnlyList<DiagnosticFact> facts = DiagnosticFactsBuilder.Create(context)
+                .Where(fact => !result.ComponentsHostedOnServer ||
+                    fact.Component is not (DiagnosticComponent.Lm or DiagnosticComponent.Controller)).ToArray();
             IReadOnlyList<string> userMessages = issues
                 .Select(issue => issue.UserMessage)
                 .Where(message => !string.IsNullOrWhiteSpace(message))

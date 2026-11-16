@@ -75,6 +75,8 @@ namespace HonestFlow.Application.Installation
                 _progress.SetProgress(6, "Загрузка конфигурации версий...");
                 var versions = LoadVersions();
                 options ??= InstallationOptions.Default;
+                if (selectedIP.ComponentsHostedOnServer)
+                    options = new InstallationOptions { SkipLmStack = true, RequestedComponents = options.RequestedComponents };
                 bool includeLm = !options.SkipLmStack && options.Includes(InstallationComponent.LmModule);
                 string expectedLmVersion = includeLm ? EnsureLmVersionConfigured(versions) : null;
 
@@ -147,6 +149,8 @@ namespace HonestFlow.Application.Installation
                 throw new ArgumentNullException(nameof(selectedIP));
 
             var selectedComponents = components?
+                .Where(component => !selectedIP.ComponentsHostedOnServer ||
+                    component is not (InstallationComponent.LmModule or InstallationComponent.Controller))
                 .Distinct()
                 .ToArray() ?? Array.Empty<InstallationComponent>();
 

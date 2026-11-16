@@ -67,6 +67,7 @@ namespace HonestFlow.Infrastructure.Api
 
     public sealed class ApiDeviceConfiguration
     {
+        public bool ComponentsHostedOnServer { get; set; }
         public string DeviceId { get; set; }
         public string Name { get; set; }
         public string Address { get; set; }

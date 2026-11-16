@@ -213,6 +213,7 @@ namespace HonestFlow.Infrastructure.Api
                 Inn = configuration.Client.Inn,
                 Architecture = configuration.Client.Architecture,
                 HasLmDatabaseBackup = configuration.Client.HasLmDatabaseBackup,
+                ComponentsHostedOnServer = configuration.Device?.ComponentsHostedOnServer == true,
                 RuDesktop = new RuDesktopOptions
                 {
                     Enabled = configuration.Client.RuDesktopEnabled,

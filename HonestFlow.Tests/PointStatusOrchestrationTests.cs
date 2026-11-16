@@ -11,12 +11,14 @@ namespace HonestFlow.Tests
 {
     public sealed class PointStatusOrchestrationTests
     {
-        [Fact]
-        public async Task CheckAsync_StartsIndependentStatusChecksInParallel()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task CheckAsync_StartsIndependentStatusChecksInParallel(bool hosted)
         {
             // Release after the original independent probes have all entered; the
             // registration probe is also required to finish before CheckAsync returns.
-            var gate = new ParallelGate(expectedEntrants: 7);
+            var gate = new ParallelGate(expectedEntrants: hosted ? 6 : 7);
             var esmClient = new StubEsmClient(gate);
             var service = new PointStatusService(
                 remoteConfigLoaded: true,
@@ -33,7 +35,8 @@ namespace HonestFlow.Tests
                 kktPortProbe: new StubKktPortProbe(),
                 gisMtDiagnosticProbe: new StubGisMtProbe());
 
-            Task<PointStatusResult> check = service.CheckAsync(CancellationToken.None);
+            Task<PointStatusResult> check = service.CheckForClientAsync(
+                new IPData { ComponentsHostedOnServer = hosted }, CancellationToken.None);
             await gate.WaitUntilAllEnteredAsync().WaitAsync(TimeSpan.FromSeconds(2));
             Assert.False(check.IsCompleted);
 
@@ -41,7 +44,14 @@ namespace HonestFlow.Tests
             PointStatusResult result = await check.WaitAsync(TimeSpan.FromSeconds(2));
 
             Assert.NotNull(result);
-            Assert.Equal(8, gate.Entrants);
+            Assert.Equal(hosted ? 6 : 8, gate.Entrants);
+            Assert.Equal(hosted, result.ComponentsHostedOnServer);
+            if (hosted)
+            {
+                Assert.Null(result.LmProbe);
+                Assert.Null(result.ControllerServiceInfo);
+                Assert.Null(result.ControllerServiceStatus);
+            }
             Assert.Equal(1, esmClient.RegistrationRequests);
             Assert.Equal("Доступно", result.Cloud.ShortText);
             Assert.DoesNotContain("1", result.Cloud.ShortText);

@@ -45,7 +45,7 @@ namespace HonestFlow.Application.Installation
                 return ComponentOperationReadiness.AdministratorRequired();
 
             return ComponentOperationReadiness.Ready(
-                checkLmRequirements ? _checkSystemRequirements() : null);
+                checkLmRequirements && !selectedClient.ComponentsHostedOnServer ? _checkSystemRequirements() : null);
         }
 
         public Task<bool> InstallAsync(IPData selectedClient, CancellationToken cancellationToken, InstallationOptions options = null) =>

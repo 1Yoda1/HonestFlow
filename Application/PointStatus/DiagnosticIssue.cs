@@ -192,7 +192,7 @@ namespace HonestFlow.Application.PointStatus
                     context.Esm.Details, evidence: new[] { Evidence("EsmApiStatus", "UnknownSchema") }));
 
             AddAtolIssues(issues, context);
-            AddLmIssues(issues, context);
+            if (!result.ComponentsHostedOnServer) AddLmIssues(issues, context);
 
             if (!context.GisPathAvailable)
             {
@@ -212,17 +212,18 @@ namespace HonestFlow.Application.PointStatus
                     .Select((value, index) => Evidence("gisMt." + index, value))
                     .ToArray() ?? new[] { Evidence("gismt.code", context.Api?.Gismt?.Code?.ToString() ?? "missing") };
                 Add(issues, Issue(DiagnosticIssueCode.GIS_MT_UNAVAILABLE, DiagnosticComponent.GisMt,
+                    result.ComponentsHostedOnServer ? DiagnosticSeverity.UnableToVerify :
                     context.LmPathAvailable ? DiagnosticSeverity.Attention : DiagnosticSeverity.WorkImpossible,
                     title, message, context.Gismt.Details, evidence: gisEvidence));
             }
 
             ServiceSnapshot controllerService = FindService(result, "esm-lm-controller");
-            if (!context.LmPathAvailable && controllerService == null)
+            if (!result.ComponentsHostedOnServer && !context.LmPathAvailable && controllerService == null)
                 Add(issues, Issue(DiagnosticIssueCode.LM_CONTROLLER_DISCONNECTED, DiagnosticComponent.Controller,
                     context.GisPathAvailable ? DiagnosticSeverity.Attention : DiagnosticSeverity.WorkImpossible,
                     "Контроллер ЛМ ЧЗ не установлен", "Не найдена служба локального контроллера ЛМ ЧЗ.", context.Controller.Details,
                     DiagnosticFixKey.RunSmartInstallation));
-            else if (!context.LmPathAvailable &&
+            else if (!result.ComponentsHostedOnServer && !context.LmPathAvailable &&
                 (context.Controller.State != DiagnosticState.Healthy ||
                  context.EsmController.State != DiagnosticConnectionState.Connected ||
                  context.LmConnection.State != DiagnosticConnectionState.Connected))
@@ -232,7 +233,7 @@ namespace HonestFlow.Application.PointStatus
                     context.EsmController.Details + Environment.NewLine + context.LmConnection.Details,
                     DiagnosticFixKey.RestartLmController));
 
-            if (!context.GisPathAvailable && !context.LmPathAvailable)
+            if (!result.ComponentsHostedOnServer && !context.GisPathAvailable && !context.LmPathAvailable)
                 Add(issues, Issue(DiagnosticIssueCode.MARKING_CHANNEL_UNAVAILABLE, DiagnosticComponent.MarkingChannel,
                     DiagnosticSeverity.WorkImpossible, "Проверка маркировки недоступна",
                     "Нет доступного канала проверки маркировки.",

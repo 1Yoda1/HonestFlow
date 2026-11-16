@@ -11,6 +11,7 @@ namespace HonestFlow.Models
         public string Inn { get; set; }
         public string Architecture { get; set; } = "x64";
         public bool HasLmDatabaseBackup { get; set; } = false;
+        public bool ComponentsHostedOnServer { get; set; }
         public RuDesktopOptions RuDesktop { get; set; } = new();
         public EngineerAccessSettings EngineerAccess { get; set; }
 

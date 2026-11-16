@@ -9,6 +9,28 @@ namespace HonestFlow.Tests
         private readonly DiagnosticsSnapshotBuilder _builder = new();
 
         [Fact]
+        public void ServerHostedComponents_DoNotProduceLocalFailuresOrFixes()
+        {
+            PointStatusResult result = Healthy();
+            result.ComponentsHostedOnServer = true;
+            result.Lm = null;
+            result.LmProbe = null;
+            result.Controller = null;
+            result.ControllerServiceStatus = null;
+            result.ControllerServiceInfo = null;
+            DiagnosticsSnapshot snapshot = _builder.Create(result);
+            Assert.Equal(WorkState.Ready, snapshot.WorkState);
+            Assert.DoesNotContain(snapshot.Issues, issue =>
+                issue.Component is DiagnosticComponent.Lm or DiagnosticComponent.Controller);
+            Assert.DoesNotContain(snapshot.Facts, fact =>
+                fact.Component is DiagnosticComponent.Lm or DiagnosticComponent.Controller);
+            Assert.Contains("размещены на сервере", new PointStatusReportBuilder().Build(result));
+
+            result.ComponentsHostedOnServer = false;
+            Assert.Contains(_builder.Create(result).Issues, issue => issue.Component == DiagnosticComponent.Lm);
+        }
+
+        [Fact]
         public void EsmApiUnavailable_MakesEsmFailed_WorkImpossible_AndDependentLinksUnknown()
         {
             PointStatusResult result = Healthy();
