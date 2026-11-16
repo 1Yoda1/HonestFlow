@@ -121,6 +121,19 @@ public sealed class MainWindowFreeServicePresentationTests
         Assert.Contains("includeRemoteAccess: true", refresh);
     }
 
+    [Fact]
+    public void ServiceActions_ExposeFailuresAndHideUnavailableLmRestore()
+    {
+        string source = ReadProjectFile("UI", "MainWindow.xaml.cs");
+        string components = Segment(source, "private async Task ShowComponentsAsync()", "private void LogNav_Click");
+        string help = Segment(source, "private async Task SendHelpAsync()", "private async void RequestHelp_Click");
+        string operation = Segment(source, "private async Task RunOperationAsync", "private void SetActionsEnabled");
+
+        Assert.Contains("_client?.HasLmDatabaseBackup == true", components);
+        Assert.Contains("failureDialogTitle: \"Запрос помощи\"", help);
+        Assert.Contains("MessageBox.Show(this, ex.Message, failureDialogTitle", operation);
+    }
+
     private static string Segment(string source, string startMarker, string endMarker)
     {
         int start = source.IndexOf(startMarker, StringComparison.Ordinal);
