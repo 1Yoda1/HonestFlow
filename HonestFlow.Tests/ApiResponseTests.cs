@@ -23,8 +23,25 @@ public sealed class ApiResponseTests
 
         Assert.Equal(HttpStatusCode.Forbidden, error.StatusCode);
         Assert.Equal(ApiErrorCodes.ServiceRequired, error.ErrorCode);
-        Assert.Equal("Service request was denied.", error.Message);
+        Assert.Equal("Service request was denied. (HTTP 403, service_required)", error.Message);
         Assert.True(ApiErrorCodes.IsServiceEntitlementDenied(error));
+    }
+
+    [Fact]
+    public async Task RateLimitError_UsesLegacyErrorPropertyAndExplainsRetry()
+    {
+        using var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StringContent("{\"error\":\"rate_limit_exceeded\"}")
+        };
+
+        ApiRequestException error = await Assert.ThrowsAsync<ApiRequestException>(() =>
+            ApiResponse.EnsureSuccessAsync(response, CancellationToken.None,
+                "Не удалось отправить запрос помощи."));
+
+        Assert.Equal("rate_limit_exceeded", error.ErrorCode);
+        Assert.Contains("Слишком много запросов", error.Message);
+        Assert.Contains("HTTP 429, rate_limit_exceeded", error.Message);
     }
 
     [Theory]

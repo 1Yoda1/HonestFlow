@@ -267,7 +267,9 @@ public partial class MainWindow : Window
                 : "Установленные и требуемые версии компонентов рабочей точки.",
             _paidExecutionEnabled ? "Обновить всё" : null,
             null,
-            _paidExecutionEnabled ? "Восстановить базу ЛМ" : null,
+            _paidExecutionEnabled && _client?.HasLmDatabaseBackup == true
+                ? "Восстановить базу ЛМ"
+                : null,
             null);
         PopulateComponentLoadingRows();
         await LoadComponentVersionsAsync();
@@ -929,7 +931,7 @@ public partial class MainWindow : Window
 
     private async Task RestoreLmDatabaseAsync()
     {
-        if (!_paidExecutionEnabled || _startup == null || _client == null) return;
+        if (!_paidExecutionEnabled || _startup == null || _client?.HasLmDatabaseBackup != true) return;
         LmDatabaseRestoreResult restoreResult = null;
         await RunInstallationOperationAsync(
             "Восстановление ЛМ ЧЗ",
@@ -1177,7 +1179,7 @@ public partial class MainWindow : Window
                 if (_section != Section.Log)
                     SectionOutput.Text = $"Запрос помощи отправлен {accepted.CreatedAtUtc.ToLocalTime():dd.MM.yyyy HH:mm}.";
             }
-        });
+        }, failureDialogTitle: "Запрос помощи");
     }
 
     private async void RequestHelp_Click(object sender, RoutedEventArgs e) => await SendHelpAsync();
@@ -1490,7 +1492,10 @@ public partial class MainWindow : Window
         };
     }
 
-    private async Task RunOperationAsync(string status, Func<CancellationToken, Task> operation)
+    private async Task RunOperationAsync(
+        string status,
+        Func<CancellationToken, Task> operation,
+        string? failureDialogTitle = null)
     {
         if (_operationRunning || _lifetime.IsCancellationRequested) return;
         long generation = _runtimeRefreshes.Generation;
@@ -1505,7 +1510,13 @@ public partial class MainWindow : Window
             Logger.LogException(ex, status, nameof(MainWindow));
             if (await HandleServiceEntitlementDeniedAsync(ex))
                 return;
-            if (IsCurrentRuntime(generation) && _section != Section.Log) SectionOutput.Text = ex.Message;
+            if (IsCurrentRuntime(generation))
+            {
+                if (_section != Section.Log) SectionOutput.Text = ex.Message;
+                if (!string.IsNullOrWhiteSpace(failureDialogTitle))
+                    MessageBox.Show(this, ex.Message, failureDialogTitle,
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
         finally
         {
